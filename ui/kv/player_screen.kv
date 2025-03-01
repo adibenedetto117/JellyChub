@@ -1,0 +1,163 @@
+#:kivy 2.0.0
+
+<PlayerScreen>:
+    BoxLayout:
+        orientation: 'vertical'
+        spacing: dp(16)
+        padding: dp(8)
+        
+        # Top app bar
+        MDTopAppBar:
+            title: "Now Playing"
+            left_action_items: [["arrow-left", lambda x: root.back_to_album()]]
+            elevation: 4
+        
+        # Album art and info
+        BoxLayout:
+            orientation: 'vertical'
+            padding: dp(16)
+            spacing: dp(16)
+            
+            # Album art
+            BoxLayout:
+                size_hint_y: 0.6
+                padding: dp(16)
+                
+                RelativeLayout:
+                    
+                    FitImage:
+                        source: root.album_art
+                        radius: [8,]
+                    
+                    # Loading spinner overlay
+                    MDSpinner:
+                        size_hint: None, None
+                        size: dp(46), dp(46)
+                        pos_hint: {'center_x': .5, 'center_y': .5}
+                        active: root.loading_image
+            
+            # Track info
+            BoxLayout:
+                orientation: 'vertical'
+                size_hint_y: 0.1
+                spacing: dp(8)
+                
+                MDLabel:
+                    text: root.track_title
+                    font_style: 'H6'
+                    halign: 'center'
+                    size_hint_y: None
+                    height: self.texture_size[1]
+                
+                MDLabel:
+                    text: f"{root.track_artist} • {root.track_album}"
+                    font_style: 'Subtitle1'
+                    theme_text_color: "Secondary"
+                    halign: 'center'
+                    size_hint_y: None
+                    height: self.texture_size[1]
+            
+            # Progress slider
+            BoxLayout:
+                orientation: 'vertical'
+                size_hint_y: 0.1
+                spacing: dp(8)
+                
+                BoxLayout:
+                    orientation: 'horizontal'
+                    size_hint_y: None
+                    height: dp(30)
+                    
+                    MDSlider:
+                        id: position_slider
+                        min: 0
+                        max: 1
+                        step: 0.001
+                        value: 0 if root.duration == 0 else root.position / root.duration
+                        on_touch_up: if self.collide_point(*args[1].pos): root.seek(self.value)
+                
+                BoxLayout:
+                    orientation: 'horizontal'
+                    size_hint_y: None
+                    height: dp(20)
+                    
+                    MDLabel:
+                        text: root.position_text
+                        font_style: 'Caption'
+                        theme_text_color: "Secondary"
+                        halign: 'left'
+                    
+                    Widget:
+                        size_hint_x: 1
+                    
+                    MDLabel:
+                        text: root.duration_text
+                        font_style: 'Caption'
+                        theme_text_color: "Secondary"
+                        halign: 'right'
+            
+            # Player controls
+            BoxLayout:
+                orientation: 'horizontal'
+                size_hint_y: 0.1
+                padding: dp(16)
+                spacing: dp(8)
+                
+                MDIconButton:
+                    icon: "repeat" if root.repeat_mode == "off" else "repeat-once" if root.repeat_mode == "one" else "repeat"
+                    theme_text_color: "Secondary" if root.repeat_mode == "off" else "Primary"
+                    on_release: root.toggle_repeat()
+                
+                Widget:
+                    size_hint_x: 0.5
+                
+                MDIconButton:
+                    icon: "skip-previous"
+                    theme_text_color: "Secondary"
+                    on_release: root.previous_track()
+                
+                MDIconButton:
+                    icon: "pause" if root.playing else "play"
+                    theme_text_color: "Primary"
+                    user_font_size: "36sp"
+                    on_release: root.play_pause()
+                
+                MDIconButton:
+                    icon: "skip-next"
+                    theme_text_color: "Secondary"
+                    on_release: root.next_track()
+                
+                Widget:
+                    size_hint_x: 0.5
+                
+                MDIconButton:
+                    icon: "shuffle-variant"
+                    theme_text_color: "Primary" if root.shuffle else "Secondary"
+                    on_release: root.toggle_shuffle()
+            
+            # Volume slider
+            BoxLayout:
+                orientation: 'horizontal'
+                size_hint_y: 0.05
+                padding: dp(16), 0
+                spacing: dp(8)
+                
+                MDIconButton:
+                    icon: "volume-low"
+                    theme_text_color: "Secondary"
+                    size_hint: None, None
+                    size: dp(36), dp(36)
+                
+                MDSlider:
+                    id: volume_slider
+                    min: 0
+                    max: 1
+                    step: 0.01
+                    value: root.volume
+                    on_value: root.set_volume(self.value)
+                
+                MDIconButton:
+                    icon: "volume-high"
+                    theme_text_color: "Secondary"
+                    size_hint: None, None
+                    size: dp(36), dp(36)

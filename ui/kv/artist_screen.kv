@@ -1,0 +1,144 @@
+#:kivy 2.0.0
+
+<ArtistScreen>:
+    # Show either list view or detail view
+    BoxLayout:
+        orientation: 'vertical'
+        
+        # Artist list view (default)
+        BoxLayout:
+            orientation: 'vertical'
+            opacity: 0 if root.detail_view else 1
+            disabled: root.detail_view
+            
+            MDTopAppBar:
+                title: "Artists"
+                left_action_items: [["menu", lambda x: app.root.ids.nav_drawer.set_state("open")]]
+                right_action_items: [["refresh", lambda x: root.refresh()]]
+                elevation: 4
+            
+            ScrollView:
+                do_scroll_x: False
+                effect_cls: "ScrollEffect"  # Remove overscroll glow on Android
+                
+                BoxLayout:
+                    orientation: 'vertical'
+                    size_hint_y: None
+                    height: self.minimum_height
+                    padding: dp(8)
+                    
+                    # Artists grid
+                    MDGridLayout:
+                        id: artists_list
+                        cols: 3
+                        spacing: dp(8)
+                        adaptive_height: True
+                        size_hint_y: None
+                        height: self.minimum_height
+                    
+                    # Loading indicator
+                    MDBoxLayout:
+                        orientation: 'vertical'
+                        adaptive_height: True
+                        padding: dp(16)
+                        
+                        MDSpinner:
+                            size_hint: None, None
+                            size: dp(46), dp(46)
+                            pos_hint: {'center_x': .5}
+                            active: root.loading
+                    
+                    # Load more button
+                    MDBoxLayout:
+                        orientation: 'vertical'
+                        adaptive_height: True
+                        padding: dp(16)
+                        opacity: 1 if root.artists and len(root.artists) < root.total_artists and not root.loading else 0
+                        
+                        MDRaisedButton:
+                            text: "Load More"
+                            pos_hint: {'center_x': .5}
+                            on_release: root.load_more()
+        
+        # Artist detail view
+        BoxLayout:
+            orientation: 'vertical'
+            opacity: 1 if root.detail_view else 0
+            disabled: not root.detail_view
+            
+            MDTopAppBar:
+                title: root.current_artist.get('Name', 'Artist')
+                left_action_items: [["arrow-left", lambda x: root.close_detail_view()]]
+                elevation: 4
+            
+            ScrollView:
+                do_scroll_x: False
+                
+                BoxLayout:
+                    orientation: 'vertical'
+                    size_hint_y: None
+                    height: self.minimum_height
+                    padding: 0
+                    
+                    # Artist header
+                    MDBoxLayout:
+                        orientation: 'horizontal'
+                        adaptive_height: True
+                        padding: dp(16)
+                        spacing: dp(16)
+                        size_hint_y: None
+                        height: dp(150)
+                        
+                        # Artist image
+                        FitImage:
+                            source: app.api.get_image_url(root.current_artist.get('Id')) if root.current_artist else ""
+                            size_hint: None, None
+                            size: dp(150), dp(150)
+                            radius: [75,]  # Circle
+                        
+                        # Artist info
+                        MDBoxLayout:
+                            orientation: 'vertical'
+                            spacing: dp(4)
+                            
+                            MDLabel:
+                                text: root.current_artist.get('Name', 'Unknown Artist')
+                                font_style: 'H5'
+                                bold: True
+                                adaptive_height: True
+                    
+                    MDDivider:
+                        height: dp(1)
+                    
+                    # Albums section
+                    MDBoxLayout:
+                        orientation: 'vertical'
+                        adaptive_height: True
+                        padding: dp(16), dp(8)
+                        
+                        MDLabel:
+                            text: "Albums"
+                            font_style: "H6"
+                            adaptive_height: True
+                    
+                    # Albums grid
+                    MDGridLayout:
+                        id: albums_grid
+                        cols: 2
+                        spacing: dp(8)
+                        padding: dp(8)
+                        adaptive_height: True
+                        size_hint_y: None
+                        height: self.minimum_height
+                    
+                    # Loading indicator for albums
+                    MDBoxLayout:
+                        orientation: 'vertical'
+                        adaptive_height: True
+                        padding: dp(16)
+                        
+                        MDSpinner:
+                            size_hint: None, None
+                            size: dp(46), dp(46)
+                            pos_hint: {'center_x': .5}
+                            active: root.loading_albums

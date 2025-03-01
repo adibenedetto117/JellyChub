@@ -1,0 +1,89 @@
+#:kivy 2.0.0
+
+<LoginScreen>:
+    BoxLayout:
+        orientation: 'vertical'
+        padding: dp(16)
+        spacing: dp(10)
+        
+        MDBoxLayout:
+            orientation: 'vertical'
+            adaptive_height: True
+            size_hint_y: None
+            height: self.minimum_height
+            pos_hint: {'center_y': 0.5}
+            spacing: dp(15)
+            padding: [dp(20), dp(20), dp(20), dp(20)]
+            
+            Widget:
+                size_hint_y: None
+                height: dp(50)
+            
+            MDLabel:
+                text: "Jellyfin Music"
+                halign: "center"
+                font_style: "H4"
+                size_hint_y: None
+                height: self.texture_size[1]
+                
+            MDLabel:
+                text: "Sign in to your Jellyfin server"
+                halign: "center"
+                theme_text_color: "Secondary"
+                size_hint_y: None
+                height: self.texture_size[1]
+                
+            Widget:
+                size_hint_y: None
+                height: dp(30)
+                
+            MDTextField:
+                id: server_url
+                hint_text: "Server URL (e.g. https://jellyfin.example.com)"
+                helper_text: "Enter your Jellyfin server address"
+                helper_text_mode: "on_focus"
+                text: root.server_url
+                on_text: root.server_url = self.text
+                size_hint_y: None
+                height: self.minimum_height
+                
+            MDTextField:
+                id: username
+                hint_text: "Username"
+                helper_text: "Enter your Jellyfin username"
+                helper_text_mode: "on_focus"
+                text: root.username
+                on_text: root.username = self.text
+                size_hint_y: None
+                height: self.minimum_height
+                
+            MDTextField:
+                id: password
+                hint_text: "Password"
+                helper_text: "Enter your Jellyfin password"
+                helper_text_mode: "on_focus"
+                password: True
+                text: root.password
+                on_text: root.password = self.text
+                size_hint_y: None
+                height: self.minimum_height
+                
+            Widget:
+                size_hint_y: None
+                height: dp(20)
+                
+            MDRaisedButton:
+                text: "Sign In"
+                size_hint_x: 1
+                on_release: root.login()
+                disabled: root.loading
+                
+            MDSpinner:
+                size_hint: None, None
+                size: dp(46), dp(46)
+                pos_hint: {'center_x': .5}
+                active: root.loading
+                
+            Widget:
+                size_hint_y: None
+                height: dp(50)

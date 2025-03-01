@@ -1,0 +1,46 @@
+#:kivy 2.0.0
+
+<AlbumCard>:
+    orientation: 'vertical'
+    padding: 0
+    md_bg_color: app.theme_cls.bg_normal
+    
+    BoxLayout:
+        orientation: 'vertical'
+        padding: 0
+        spacing: 0
+        
+        # Album art container
+        BoxLayout:
+            size_hint_y: 0.8
+            
+            FitImage:
+                source: root.album_art
+                radius: root.radius
+            
+            # Loading spinner overlay
+            MDSpinner:
+                size_hint: None, None
+                size: dp(30), dp(30)
+                pos_hint: {'center_x': .5, 'center_y': .5}
+                active: root.loading_image
+        
+        # Album info container
+        BoxLayout:
+            orientation: 'vertical'
+            size_hint_y: 0.2
+            padding: dp(8), dp(4)
+            
+            MDLabel:
+                text: root.album_title
+                font_style: 'Body1'
+                bold: True
+                shorten: True
+                shorten_from: 'right'
+                
+            MDLabel:
+                text: root.album_artist
+                font_style: 'Caption'
+                theme_text_color: "Secondary"
+                shorten: True
+                shorten_from: 'right'

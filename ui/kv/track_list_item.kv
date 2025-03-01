@@ -1,0 +1,30 @@
+#:kivy 2.0.0
+
+<TrackNumberIcon>:
+    theme_text_color: "Secondary"
+    
+    canvas.before:
+        Color:
+            rgba: app.theme_cls.primary_color if self.theme_text_color == "Primary" else (0.5, 0.5, 0.5, 0.5)
+        Ellipse:
+            size: self.size[0] * 0.8, self.size[1] * 0.8
+            pos: self.pos[0] + self.size[0] * 0.1, self.pos[1] + self.size[1] * 0.1
+    
+    MDLabel:
+        text: str(root.track_number)
+        font_style: "Caption"
+        theme_text_color: "Custom"
+        text_color: 1, 1, 1, 1
+        halign: 'center'
+        valign: 'middle'
+        center: root.center
+
+<PlayButton>:
+    theme_text_color: "Secondary"
+    pos_hint: {'center_y': 0.5}
+
+<TrackListItem>:
+    text: root.track_title
+    secondary_text: f"{root.track_artist} • {root.track_duration}"
+    theme_text_color: "Primary" if root.is_playing else "Secondary"
+    secondary_theme_text_color: "Primary" if root.is_playing else "Secondary"

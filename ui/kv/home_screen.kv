@@ -1,0 +1,143 @@
+#:kivy 2.0.0
+
+<HomeScreen>:
+    BoxLayout:
+        orientation: 'vertical'
+        
+        # Top app bar
+        MDTopAppBar:
+            title: "Jellyfin Music"
+            right_action_items: [["account", lambda x: app.logout()]]
+            elevation: 4
+        
+        # Main content area with navigation
+        MDNavigationLayout:
+            
+            # Main content area - Screen Manager will be placed here
+            ScreenManager:
+                id: screen_manager
+                
+                Screen:
+                    name: "main_screen"
+                    
+                    BoxLayout:
+                        orientation: 'vertical'
+                        
+                        # Content area
+                        BoxLayout:
+                            id: content_area
+                            orientation: 'vertical'
+                            
+                        # Mini player at bottom (always visible)
+                        MiniPlayer:
+                            id: mini_player
+                            size_hint_y: None
+                            height: dp(60)
+                            on_release: root.show_now_playing()
+            
+            # Navigation drawer
+            MDNavigationDrawer:
+                id: nav_drawer
+                radius: (0, 16, 16, 0)
+                
+                MDNavigationDrawerMenu:
+                    
+                    MDNavigationDrawerHeader:
+                        title: "Jellyfin Music"
+                        text: root.current_user_name
+                        spacing: "4dp"
+                        padding: "12dp", 0, 0, "56dp"
+                    
+                    MDNavigationDrawerDivider:
+                    
+                    MDNavigationDrawerItem:
+                        icon: "music-note"
+                        text: "Music"
+                        on_release: 
+                            root.navigate_to("music")
+                            nav_drawer.set_state("close")
+                    
+                    MDNavigationDrawerItem:
+                        icon: "account-music"
+                        text: "Artists"
+                        on_release: 
+                            root.navigate_to("artists")
+                            nav_drawer.set_state("close")
+                    
+                    MDNavigationDrawerItem:
+                        icon: "album"
+                        text: "Albums"
+                        on_release: 
+                            root.navigate_to("albums")
+                            nav_drawer.set_state("close")
+                    
+                    MDNavigationDrawerItem:
+                        icon: "playlist-music"
+                        text: "Playlists"
+                        on_release: 
+                            root.navigate_to("playlists")
+                            nav_drawer.set_state("close")
+                    
+                    MDNavigationDrawerDivider:
+                    
+                    MDNavigationDrawerItem:
+                        icon: "cog"
+                        text: "Settings"
+                        on_release: 
+                            root.navigate_to("settings")
+                            nav_drawer.set_state("close")
+                    
+                    MDNavigationDrawerItem:
+                        icon: "logout"
+                        text: "Logout"
+                        on_release: 
+                            app.logout()
+                            nav_drawer.set_state("close")
+
+
+# Mini Player Widget shown at bottom of home screen
+<MiniPlayer@MDCard>:
+    orientation: 'horizontal'
+    padding: dp(8)
+    spacing: dp(8)
+    elevation: 4
+    ripple_behavior: True
+    
+    # Only show when there's a current track
+    opacity: 1 if app.player.current_track else 0
+    disabled: not app.player.current_track
+    
+    # Album art
+    FitImage:
+        id: album_art
+        size_hint_x: None
+        width: dp(44)
+        radius: [4,]
+        source: app.api.get_image_url(app.player.current_track.get('Id')) if app.player.current_track else ""
+    
+    # Track info
+    BoxLayout:
+        orientation: 'vertical'
+        spacing: dp(2)
+        
+        MDLabel:
+            text: app.player.current_track.get('Name', '') if app.player.current_track else ""
+            font_style: "Subtitle1"
+            shorten: True
+            shorten_from: 'right'
+            
+        MDLabel:
+            text: app.player.current_track.get('AlbumArtist', '') if app.player.current_track else ""
+            font_style: "Caption"
+            theme_text_color: "Secondary"
+            shorten: True
+            shorten_from: 'right'
+    
+    # Player controls
+    MDIconButton:
+        icon: "play" if not app.player.playing else "pause"
+        on_release: app.player.play() if not app.player.playing else app.player.pause()
+    
+    MDIconButton:
+        icon: "skip-next"
+        on_release: app.player.next()

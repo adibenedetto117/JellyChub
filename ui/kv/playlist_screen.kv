@@ -1,0 +1,115 @@
+#:kivy 2.0.0
+
+<PlaylistScreen>:
+    # Show either list view or detail view
+    BoxLayout:
+        orientation: 'vertical'
+        
+        # Playlist list view (default)
+        BoxLayout:
+            orientation: 'vertical'
+            opacity: 0 if root.detail_view else 1
+            disabled: root.detail_view
+            
+            MDTopAppBar:
+                title: "Playlists"
+                left_action_items: [["menu", lambda x: app.root.ids.nav_drawer.set_state("open")]]
+                right_action_items: [["refresh", lambda x: root.refresh()]]
+                elevation: 4
+            
+            ScrollView:
+                do_scroll_x: False
+                effect_cls: "ScrollEffect"  # Remove overscroll glow on Android
+                
+                BoxLayout:
+                    orientation: 'vertical'
+                    size_hint_y: None
+                    height: self.minimum_height
+                    padding: dp(8)
+                    
+                    # Playlists list
+                    MDList:
+                        id: playlists_list
+                        adaptive_height: True
+                    
+                    # Loading indicator
+                    MDBoxLayout:
+                        orientation: 'vertical'
+                        adaptive_height: True
+                        padding: dp(16)
+                        
+                        MDSpinner:
+                            size_hint: None, None
+                            size: dp(46), dp(46)
+                            pos_hint: {'center_x': .5}
+                            active: root.loading
+                    
+                    # Load more button
+                    MDBoxLayout:
+                        orientation: 'vertical'
+                        adaptive_height: True
+                        padding: dp(16)
+                        opacity: 1 if root.playlists and len(root.playlists) < root.total_playlists and not root.loading else 0
+                        
+                        MDRaisedButton:
+                            text: "Load More"
+                            pos_hint: {'center_x': .5}
+                            on_release: root.load_more()
+        
+        # Playlist detail view
+        BoxLayout:
+            orientation: 'vertical'
+            opacity: 1 if root.detail_view else 0
+            disabled: not root.detail_view
+            
+            MDTopAppBar:
+                title: root.current_playlist.get('Name', 'Playlist')
+                left_action_items: [["arrow-left", lambda x: root.close_detail_view()]]
+                right_action_items: [["play", lambda x: root.play_playlist()]]
+                elevation: 4
+            
+            ScrollView:
+                do_scroll_x: False
+                
+                BoxLayout:
+                    orientation: 'vertical'
+                    size_hint_y: None
+                    height: self.minimum_height
+                    padding: 0
+                    
+                    # Playlist header
+                    MDBoxLayout:
+                        orientation: 'vertical'
+                        adaptive_height: True
+                        padding: dp(16)
+                        spacing: dp(8)
+                        
+                        MDLabel:
+                            text: root.current_playlist.get('Name', 'Unknown Playlist')
+                            font_style: 'H5'
+                            bold: True
+                            adaptive_height: True
+                        
+                        MDRaisedButton:
+                            text: "PLAY ALL"
+                            on_release: root.play_playlist()
+                    
+                    MDDivider:
+                        height: dp(1)
+                    
+                    # Song list
+                    MDList:
+                        id: items_list
+                        adaptive_height: True
+                        
+                        # Load items here dynamically
+                        MDBoxLayout:
+                            orientation: 'vertical'
+                            adaptive_height: True
+                            padding: dp(16)
+                            
+                            MDSpinner:
+                                size_hint: None, None
+                                size: dp(46), dp(46)
+                                pos_hint: {'center_x': .5}
+                                active: root.loading_items

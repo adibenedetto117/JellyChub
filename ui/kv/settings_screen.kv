@@ -1,0 +1,114 @@
+#:kivy 2.0.0
+
+<SettingsScreen>:
+    BoxLayout:
+        orientation: 'vertical'
+        
+        MDTopAppBar:
+            title: "Settings"
+            left_action_items: [["menu", lambda x: app.root.ids.nav_drawer.set_state("open")]]
+            elevation: 4
+        
+        ScrollView:
+            do_scroll_x: False
+            
+            MDList:
+                
+                # Account section
+                MDBoxLayout:
+                    orientation: 'vertical'
+                    adaptive_height: True
+                    padding: dp(16), dp(8)
+                    
+                    MDLabel:
+                        text: "Account"
+                        font_style: "H6"
+                        adaptive_height: True
+                
+                OneLineIconListItem:
+                    text: f"Logged in as: {root.current_user_name}"
+                    divider: "Full"
+                    IconLeftWidget:
+                        icon: "account"
+                
+                OneLineIconListItem:
+                    text: f"Server: {root.current_server}"
+                    divider: "Full"
+                    IconLeftWidget:
+                        icon: "server"
+                
+                OneLineIconListItem:
+                    text: "Log Out"
+                    on_release: root.logout()
+                    divider: "Full"
+                    IconLeftWidget:
+                        icon: "logout"
+                
+                MDDivider:
+                    height: dp(8)
+                
+                # Appearance section
+                MDBoxLayout:
+                    orientation: 'vertical'
+                    adaptive_height: True
+                    padding: dp(16), dp(8)
+                    
+                    MDLabel:
+                        text: "Appearance"
+                        font_style: "H6"
+                        adaptive_height: True
+                
+                OneLineIconListItem:
+                    text: f"Theme: {'Dark' if root.theme == 'dark' else 'Light'}"
+                    on_release: root.toggle_theme()
+                    divider: "Full"
+                    IconLeftWidget:
+                        icon: "theme-light-dark"
+                
+                MDDivider:
+                    height: dp(8)
+                
+                # Cache section
+                MDBoxLayout:
+                    orientation: 'vertical'
+                    adaptive_height: True
+                    padding: dp(16), dp(8)
+                    
+                    MDLabel:
+                        text: "Storage"
+                        font_style: "H6"
+                        adaptive_height: True
+                
+                OneLineIconListItem:
+                    text: f"Cache Size: {root.cache_size}"
+                    divider: "Full"
+                    IconLeftWidget:
+                        icon: "folder"
+                
+                OneLineIconListItem:
+                    text: "Clear Cache"
+                    on_release: root.clear_cache()
+                    divider: "Full"
+                    IconLeftWidget:
+                        icon: "delete"
+                
+                MDDivider:
+                    height: dp(8)
+                
+                # About section
+                MDBoxLayout:
+                    orientation: 'vertical'
+                    adaptive_height: True
+                    padding: dp(16), dp(8)
+                    
+                    MDLabel:
+                        text: "About"
+                        font_style: "H6"
+                        adaptive_height: True
+                
+                OneLineIconListItem:
+                    text: "About Jellyfin Music"
+                    on_release: root.show_about()
+                    divider: "Full"
+                    IconLeftWidget:
+                        icon: "information"
