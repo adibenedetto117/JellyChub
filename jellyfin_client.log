@@ -1,0 +1,384 @@
+2025-03-01 17:11:13,149 - root - INFO - Initializing Jellyfin Music Client
+2025-03-01 17:11:13,150 - root - INFO - Created directory: cache
+2025-03-01 17:11:13,150 - root - INFO - Created directory: cache/images
+2025-03-01 17:11:13,150 - root - INFO - Created directory: cache/audio
+2025-03-01 17:11:13,150 - root - INFO - Created directory: cache/metadata
+2025-03-01 17:11:13,150 - root - INFO - Created directory: cache/temp
+2025-03-01 17:11:13,150 - root - INFO - Created directory: ui
+2025-03-01 17:11:13,150 - root - INFO - Created directory: ui/screens
+2025-03-01 17:11:13,150 - root - INFO - Created directory: ui/widgets
+2025-03-01 17:11:13,150 - root - INFO - Created directory: ui/kv
+2025-03-01 17:11:13,150 - root - INFO - Created directory: libs
+2025-03-01 17:11:13,171 - kivy - INFO - Kivy: v2.3.1
+2025-03-01 17:11:13,172 - kivy - INFO - Logger: Record log in /Users/anthonypdibenedetto/.kivy/logs/kivy_25-03-01_30.txt
+2025-03-01 17:11:13,172 - kivy - INFO - Kivy: Installed at "/opt/anaconda3/envs/kivy_env/lib/python3.9/site-packages/kivy/__init__.py"
+2025-03-01 17:11:13,172 - kivy - INFO - Python: v3.9.18 | packaged by conda-forge | (main, Dec 23 2023, 16:36:46) 
+[Clang 16.0.6 ]
+2025-03-01 17:11:13,172 - kivy - INFO - Python: Interpreter at "/opt/anaconda3/envs/kivy_env/bin/python"
+2025-03-01 17:11:13,172 - kivy - INFO - Logger: Purge log fired. Processing...
+2025-03-01 17:11:13,174 - kivy - INFO - Logger: Purge finished!
+2025-03-01 17:11:13,174 - kivy - INFO - KivyMD: 1.2.0, git-Unknown, 2025-02-15 (installed at "/opt/anaconda3/envs/kivy_env/lib/python3.9/site-packages/kivymd/__init__.py")
+2025-03-01 17:11:13,174 - kivy - WARNING - KivyMD: Version 1.2.0 is deprecated and is no longer supported. Use KivyMD version 2.0.0 from the master branch (pip install https://github.com/kivymd/KivyMD/archive/master.zip)
+2025-03-01 17:11:13,176 - kivy - INFO - Factory: 195 symbols loaded
+2025-03-01 17:11:13,274 - kivy - INFO - ImageLoaderFFPy: Using ffpyplayer 4.5.2
+2025-03-01 17:11:13,274 - kivy - INFO - Image: Providers: img_tex, img_imageio, img_dds, img_sdl2, img_pil, img_ffpyplayer 
+2025-03-01 17:11:13,290 - kivy - INFO - Text: Provider: sdl2
+2025-03-01 17:11:13,358 - kivy - INFO - Window: Provider: sdl2
+2025-03-01 17:11:13,524 - kivy - INFO - GL: Using the "OpenGL ES 2" graphics system
+2025-03-01 17:11:13,524 - kivy - INFO - GL: Backend used <sdl2>
+2025-03-01 17:11:13,524 - kivy - INFO - GL: OpenGL version <b'2.1 ATI-6.1.13'>
+2025-03-01 17:11:13,524 - kivy - INFO - GL: OpenGL vendor <b'ATI Technologies Inc.'>
+2025-03-01 17:11:13,524 - kivy - INFO - GL: OpenGL renderer <b'AMD Radeon Pro 5700 XT OpenGL Engine'>
+2025-03-01 17:11:13,524 - kivy - INFO - GL: OpenGL parsed version: 2, 1
+2025-03-01 17:11:13,525 - kivy - INFO - GL: Shading version <b'1.20'>
+2025-03-01 17:11:13,525 - kivy - INFO - GL: Texture max size <16384>
+2025-03-01 17:11:13,525 - kivy - INFO - GL: Texture max units <16>
+2025-03-01 17:11:13,534 - kivy - INFO - Window: auto add sdl2 input provider
+2025-03-01 17:11:13,611 - kivy - INFO - Window: virtual keyboard not allowed, single mode, not docked
+2025-03-01 17:11:13,703 - kivy - INFO - AudioGstplayer: Using Gstreamer 1.24.7.0
+2025-03-01 17:11:13,724 - kivy - INFO - SoundFFPy: Using ffpyplayer 4.5.2
+2025-03-01 17:11:13,726 - kivy - INFO - Audio: Providers: audio_gstplayer, audio_ffpyplayer, audio_sdl2 (audio_avplayer ignored)
+2025-03-01 17:11:13,727 - root - INFO - Starting Jellyfin Music App
+2025-03-01 17:11:13,727 - root - INFO - Building Jellyfin Music App
+2025-03-01 17:11:13,728 - root - INFO - Initializing app components
+2025-03-01 17:11:13,728 - root - INFO - Settings loaded: {'device_id': {'value': {'value': 'a863e9a4-547b-43a4-8705-7683eeccdb43'}}, 'last_server': {'value': {'url': 'http://192.168.8.165:8096'}}, 'auth_data': {'server_url': 'http://192.168.8.165:8096', 'user_id': '9e4d877f9586475bbbe9b6eb2656dbda', 'access_token': '4a5fe882716e49b4b337513d8edf771d', 'user_data': {'User': {'Name': 'root', 'ServerId': '8135232f7193428f947464313362b60c', 'Id': '9e4d877f9586475bbbe9b6eb2656dbda', 'HasPassword': True, 'HasConfiguredPassword': True, 'HasConfiguredEasyPassword': False, 'EnableAutoLogin': False, 'LastLoginDate': '2025-03-01T23:02:35.3012879Z', 'LastActivityDate': '2025-03-01T23:02:35.3012879Z', 'Configuration': {'AudioLanguagePreference': 'eng', 'PlayDefaultAudioTrack': True, 'SubtitleLanguagePreference': 'eng', 'DisplayMissingEpisodes': False, 'GroupedFolders': [], 'SubtitleMode': 'Default', 'DisplayCollectionsView': False, 'EnableLocalPassword': False, 'OrderedViews': ['f137a2dd21bbc1b99aa5c0f6bf02a805', 'a656b907eb3a73532e40e44b968d0225', '7e64e319657a9516ec78490da03edccb', 'c0c1444b416777d3fa55d5f13da1ce58'], 'LatestItemsExcludes': ['c0c1444b416777d3fa55d5f13da1ce58'], 'MyMediaExcludes': [], 'HidePlayedInLatest': True, 'RememberAudioSelections': True, 'RememberSubtitleSelections': True, 'EnableNextEpisodeAutoPlay': True, 'CastReceiverId': 'F007D354'}, 'Policy': {'IsAdministrator': True, 'IsHidden': True, 'EnableCollectionManagement': True, 'EnableSubtitleManagement': False, 'EnableLyricManagement': False, 'IsDisabled': False, 'BlockedTags': [], 'AllowedTags': [], 'EnableUserPreferenceAccess': True, 'AccessSchedules': [], 'BlockUnratedItems': [], 'EnableRemoteControlOfOtherUsers': True, 'EnableSharedDeviceControl': True, 'EnableRemoteAccess': True, 'EnableLiveTvManagement': True, 'EnableLiveTvAccess': True, 'EnableMediaPlayback': True, 'EnableAudioPlaybackTranscoding': True, 'EnableVideoPlaybackTranscoding': True, 'EnablePlaybackRemuxing': True, 'ForceRemoteSourceTranscoding': False, 'EnableContentDeletion': True, 'EnableContentDeletionFromFolders': [], 'EnableContentDownloading': True, 'EnableSyncTranscoding': True, 'EnableMediaConversion': True, 'EnabledDevices': [], 'EnableAllDevices': True, 'EnabledChannels': [], 'EnableAllChannels': True, 'EnabledFolders': [], 'EnableAllFolders': True, 'InvalidLoginAttemptCount': 0, 'LoginAttemptsBeforeLockout': -1, 'MaxActiveSessions': 0, 'EnablePublicSharing': True, 'BlockedMediaFolders': [], 'BlockedChannels': [], 'RemoteClientBitrateLimit': 0, 'AuthenticationProviderId': 'Jellyfin.Server.Implementations.Users.DefaultAuthenticationProvider', 'PasswordResetProviderId': 'Jellyfin.Server.Implementations.Users.DefaultPasswordResetProvider', 'SyncPlayAccess': 'CreateAndJoinGroups'}}, 'SessionInfo': {'PlayState': {'CanSeek': False, 'IsPaused': False, 'IsMuted': False, 'RepeatMode': 'RepeatNone', 'PlaybackOrder': 'Default'}, 'AdditionalUsers': [], 'Capabilities': {'PlayableMediaTypes': [], 'SupportedCommands': [], 'SupportsMediaControl': False, 'SupportsPersistentIdentifier': True}, 'RemoteEndPoint': '192.168.8.208', 'PlayableMediaTypes': [], 'Id': 'b7a87404c534f7cc12bfe1249bb20764', 'UserId': '9e4d877f9586475bbbe9b6eb2656dbda', 'UserName': 'root', 'Client': 'Jellyfin Music', 'LastActivityDate': '2025-03-01T23:02:35.4806358Z', 'LastPlaybackCheckIn': '0001-01-01T00:00:00.0000000Z', 'DeviceName': 'Python Kivy Client', 'DeviceId': "{'value': 'a863e9a4-547b-43a4-8705-7683eeccdb43'}", 'ApplicationVersion': '1.0.0', 'IsActive': True, 'SupportsMediaControl': False, 'SupportsRemoteControl': False, 'NowPlayingQueue': [], 'NowPlayingQueueFullItems': [], 'HasCustomDeviceName': False, 'ServerId': '8135232f7193428f947464313362b60c', 'SupportedCommands': []}, 'AccessToken': '4a5fe882716e49b4b337513d8edf771d', 'ServerId': '8135232f7193428f947464313362b60c'}}}
+2025-03-01 17:11:13,729 - root - INFO - Loading KV files
+2025-03-01 17:11:13,729 - root - INFO - Loading KV files
+2025-03-01 17:11:13,748 - root - INFO - Creating login screen
+2025-03-01 17:11:13,758 - kivy - INFO - Clipboard: Provider: sdl2(['clipboard_nspaste'] ignored)
+2025-03-01 17:11:13,822 - kivy - INFO - GL: NPOT texture support is available
+2025-03-01 17:11:13,827 - root - INFO - App starting - checking for saved credentials
+2025-03-01 17:11:13,827 - root - INFO - Found saved credentials - attempting auto login
+2025-03-01 17:11:13,938 - root - INFO - Auto login result: True
+2025-03-01 17:11:13,938 - kivy - INFO - Base: Start application main loop
+2025-03-01 17:11:13,954 - kivy - WARNING - Deprecated property "<NumericProperty name=width_mult>" of object "<kivymd.uix.toolbar.toolbar.OverFlowMenu object at 0x129926d60>" has been set, it will be removed in a future version
+2025-03-01 17:11:13,961 - kivy - INFO - Loader: using a thread pool of 2 workers
+2025-03-01 17:11:17,078 - kivy - INFO - Base: Leaving application in progress...
+2025-03-01 17:11:17,078 - root - INFO - Application stopping
+2025-03-01 17:14:55,253 - root - INFO - Initializing Jellyfin Music Client
+2025-03-01 17:14:55,253 - root - INFO - Created directory: cache
+2025-03-01 17:14:55,253 - root - INFO - Created directory: cache/images
+2025-03-01 17:14:55,253 - root - INFO - Created directory: cache/audio
+2025-03-01 17:14:55,253 - root - INFO - Created directory: cache/metadata
+2025-03-01 17:14:55,253 - root - INFO - Created directory: cache/temp
+2025-03-01 17:14:55,253 - root - INFO - Created directory: ui
+2025-03-01 17:14:55,253 - root - INFO - Created directory: ui/screens
+2025-03-01 17:14:55,253 - root - INFO - Created directory: ui/widgets
+2025-03-01 17:14:55,254 - root - INFO - Created directory: ui/kv
+2025-03-01 17:14:55,254 - root - INFO - Created directory: libs
+2025-03-01 17:14:55,278 - kivy - INFO - Kivy: v2.3.1
+2025-03-01 17:14:55,279 - kivy - INFO - Logger: Record log in /Users/anthonypdibenedetto/.kivy/logs/kivy_25-03-01_31.txt
+2025-03-01 17:14:55,280 - kivy - INFO - Kivy: Installed at "/opt/anaconda3/envs/kivy_env/lib/python3.9/site-packages/kivy/__init__.py"
+2025-03-01 17:14:55,280 - kivy - INFO - Python: v3.9.18 | packaged by conda-forge | (main, Dec 23 2023, 16:36:46) 
+[Clang 16.0.6 ]
+2025-03-01 17:14:55,280 - kivy - INFO - Python: Interpreter at "/opt/anaconda3/envs/kivy_env/bin/python"
+2025-03-01 17:14:55,280 - kivy - INFO - Logger: Purge log fired. Processing...
+2025-03-01 17:14:55,282 - kivy - INFO - Logger: Purge finished!
+2025-03-01 17:14:55,283 - kivy - INFO - KivyMD: 2.0.1.dev0, git-Unknown, 2025-03-01 (installed at "/opt/anaconda3/envs/kivy_env/lib/python3.9/site-packages/kivymd/__init__.py")
+2025-03-01 17:14:55,284 - kivy - INFO - Factory: 195 symbols loaded
+2025-03-01 17:14:55,392 - kivy - INFO - ImageLoaderFFPy: Using ffpyplayer 4.5.2
+2025-03-01 17:14:55,392 - kivy - INFO - Image: Providers: img_tex, img_imageio, img_dds, img_sdl2, img_pil, img_ffpyplayer 
+2025-03-01 17:14:55,410 - kivy - INFO - Text: Provider: sdl2
+2025-03-01 17:14:55,480 - kivy - INFO - Window: Provider: sdl2
+2025-03-01 17:14:55,667 - kivy - INFO - GL: Using the "OpenGL ES 2" graphics system
+2025-03-01 17:14:55,667 - kivy - INFO - GL: Backend used <sdl2>
+2025-03-01 17:14:55,668 - kivy - INFO - GL: OpenGL version <b'2.1 ATI-6.1.13'>
+2025-03-01 17:14:55,668 - kivy - INFO - GL: OpenGL vendor <b'ATI Technologies Inc.'>
+2025-03-01 17:14:55,668 - kivy - INFO - GL: OpenGL renderer <b'AMD Radeon Pro 5700 XT OpenGL Engine'>
+2025-03-01 17:14:55,668 - kivy - INFO - GL: OpenGL parsed version: 2, 1
+2025-03-01 17:14:55,668 - kivy - INFO - GL: Shading version <b'1.20'>
+2025-03-01 17:14:55,668 - kivy - INFO - GL: Texture max size <16384>
+2025-03-01 17:14:55,668 - kivy - INFO - GL: Texture max units <16>
+2025-03-01 17:14:55,678 - kivy - INFO - Window: auto add sdl2 input provider
+2025-03-01 17:14:55,758 - kivy - INFO - Window: virtual keyboard not allowed, single mode, not docked
+2025-03-01 17:14:56,237 - kivy - INFO - AudioGstplayer: Using Gstreamer 1.24.7.0
+2025-03-01 17:14:56,247 - kivy - INFO - SoundFFPy: Using ffpyplayer 4.5.2
+2025-03-01 17:14:56,250 - kivy - INFO - Audio: Providers: audio_gstplayer, audio_ffpyplayer, audio_sdl2 (audio_avplayer ignored)
+2025-03-01 17:14:56,250 - root - INFO - Starting Jellyfin Music App
+2025-03-01 17:14:56,263 - root - INFO - Building Jellyfin Music App
+2025-03-01 17:14:56,263 - root - CRITICAL - Unhandled exception: ThemeManager.primary_palette is set to an invalid option 'BlueGray'. Must be one of: ['Aliceblue', 'Antiquewhite', 'Aqua', 'Aquamarine', 'Azure', 'Beige', 'Bisque', 'Black', 'Blanchedalmond', 'Blue', 'Blueviolet', 'Brown', 'Burlywood', 'Cadetblue', 'Chartreuse', 'Chocolate', 'Coral', 'Cornflowerblue', 'Cornsilk', 'Crimson', 'Cyan', 'Darkblue', 'Darkcyan', 'Darkgoldenrod', 'Darkgray', 'Darkgrey', 'Darkgreen', 'Darkkhaki', 'Darkmagenta', 'Darkolivegreen', 'Darkorange', 'Darkorchid', 'Darkred', 'Darksalmon', 'Darkseagreen', 'Darkslateblue', 'Darkslategray', 'Darkslategrey', 'Darkturquoise', 'Darkviolet', 'Deeppink', 'Deepskyblue', 'Dimgray', 'Dimgrey', 'Dodgerblue', 'Firebrick', 'Floralwhite', 'Forestgreen', 'Fuchsia', 'Gainsboro', 'Ghostwhite', 'Gold', 'Goldenrod', 'Gray', 'Grey', 'Green', 'Greenyellow', 'Honeydew', 'Hotpink', 'Indianred', 'Indigo', 'Ivory', 'Khaki', 'Lavender', 'Lavenderblush', 'Lawngreen', 'Lemonchiffon', 'Lightblue', 'Lightcoral', 'Lightcyan', 'Lightgoldenrodyellow', 'Lightgreen', 'Lightgray', 'Lightgrey', 'Lightpink', 'Lightsalmon', 'Lightseagreen', 'Lightskyblue', 'Lightslategray', 'Lightslategrey', 'Lightsteelblue', 'Lightyellow', 'Lime', 'Limegreen', 'Linen', 'Magenta', 'Maroon', 'Mediumaquamarine', 'Mediumblue', 'Mediumorchid', 'Mediumpurple', 'Mediumseagreen', 'Mediumslateblue', 'Mediumspringgreen', 'Mediumturquoise', 'Mediumvioletred', 'Midnightblue', 'Mintcream', 'Mistyrose', 'Moccasin', 'Navajowhite', 'Navy', 'Oldlace', 'Olive', 'Olivedrab', 'Orange', 'Orangered', 'Orchid', 'Palegoldenrod', 'Palegreen', 'Paleturquoise', 'Palevioletred', 'Papayawhip', 'Peachpuff', 'Peru', 'Pink', 'Plum', 'Powderblue', 'Purple', 'Red', 'Rosybrown', 'Royalblue', 'Saddlebrown', 'Salmon', 'Sandybrown', 'Seagreen', 'Seashell', 'Sienna', 'Silver', 'Skyblue', 'Slateblue', 'Slategray', 'Slategrey', 'Snow', 'Springgreen', 'Steelblue', 'Tan', 'Teal', 'Thistle', 'Tomato', 'Turquoise', 'Violet', 'Wheat', 'White', 'Whitesmoke', 'Yellow', 'Yellowgreen']
+Traceback (most recent call last):
+  File "/Users/anthonypdibenedetto/Desktop/Python/JellyfinClient/main.py", line 68, in <module>
+    JellyfinApp().run()
+  File "/opt/anaconda3/envs/kivy_env/lib/python3.9/site-packages/kivy/app.py", line 955, in run
+    self._run_prepare()
+  File "/opt/anaconda3/envs/kivy_env/lib/python3.9/site-packages/kivymd/app.py", line 142, in _run_prepare
+    super()._run_prepare()
+  File "/opt/anaconda3/envs/kivy_env/lib/python3.9/site-packages/kivy/app.py", line 925, in _run_prepare
+    root = self.build()
+  File "/Users/anthonypdibenedetto/Desktop/Python/JellyfinClient/ui/app.py", line 48, in build
+    self.theme_cls.primary_palette = "BlueGray"
+  File "kivy/properties.pyx", line 520, in kivy.properties.Property.__set__
+  File "kivy/properties.pyx", line 564, in kivy.properties.Property.set
+  File "kivy/properties.pyx", line 555, in kivy.properties.Property.set
+  File "kivy/properties.pyx", line 1354, in kivy.properties.OptionProperty.check
+ValueError: ThemeManager.primary_palette is set to an invalid option 'BlueGray'. Must be one of: ['Aliceblue', 'Antiquewhite', 'Aqua', 'Aquamarine', 'Azure', 'Beige', 'Bisque', 'Black', 'Blanchedalmond', 'Blue', 'Blueviolet', 'Brown', 'Burlywood', 'Cadetblue', 'Chartreuse', 'Chocolate', 'Coral', 'Cornflowerblue', 'Cornsilk', 'Crimson', 'Cyan', 'Darkblue', 'Darkcyan', 'Darkgoldenrod', 'Darkgray', 'Darkgrey', 'Darkgreen', 'Darkkhaki', 'Darkmagenta', 'Darkolivegreen', 'Darkorange', 'Darkorchid', 'Darkred', 'Darksalmon', 'Darkseagreen', 'Darkslateblue', 'Darkslategray', 'Darkslategrey', 'Darkturquoise', 'Darkviolet', 'Deeppink', 'Deepskyblue', 'Dimgray', 'Dimgrey', 'Dodgerblue', 'Firebrick', 'Floralwhite', 'Forestgreen', 'Fuchsia', 'Gainsboro', 'Ghostwhite', 'Gold', 'Goldenrod', 'Gray', 'Grey', 'Green', 'Greenyellow', 'Honeydew', 'Hotpink', 'Indianred', 'Indigo', 'Ivory', 'Khaki', 'Lavender', 'Lavenderblush', 'Lawngreen', 'Lemonchiffon', 'Lightblue', 'Lightcoral', 'Lightcyan', 'Lightgoldenrodyellow', 'Lightgreen', 'Lightgray', 'Lightgrey', 'Lightpink', 'Lightsalmon', 'Lightseagreen', 'Lightskyblue', 'Lightslategray', 'Lightslategrey', 'Lightsteelblue', 'Lightyellow', 'Lime', 'Limegreen', 'Linen', 'Magenta', 'Maroon', 'Mediumaquamarine', 'Mediumblue', 'Mediumorchid', 'Mediumpurple', 'Mediumseagreen', 'Mediumslateblue', 'Mediumspringgreen', 'Mediumturquoise', 'Mediumvioletred', 'Midnightblue', 'Mintcream', 'Mistyrose', 'Moccasin', 'Navajowhite', 'Navy', 'Oldlace', 'Olive', 'Olivedrab', 'Orange', 'Orangered', 'Orchid', 'Palegoldenrod', 'Palegreen', 'Paleturquoise', 'Palevioletred', 'Papayawhip', 'Peachpuff', 'Peru', 'Pink', 'Plum', 'Powderblue', 'Purple', 'Red', 'Rosybrown', 'Royalblue', 'Saddlebrown', 'Salmon', 'Sandybrown', 'Seagreen', 'Seashell', 'Sienna', 'Silver', 'Skyblue', 'Slateblue', 'Slategray', 'Slategrey', 'Snow', 'Springgreen', 'Steelblue', 'Tan', 'Teal', 'Thistle', 'Tomato', 'Turquoise', 'Violet', 'Wheat', 'White', 'Whitesmoke', 'Yellow', 'Yellowgreen']
+2025-03-01 17:17:28,494 - root - INFO - Initializing Jellyfin Music Client
+2025-03-01 17:17:28,494 - root - INFO - Created directory: cache
+2025-03-01 17:17:28,494 - root - INFO - Created directory: cache/images
+2025-03-01 17:17:28,494 - root - INFO - Created directory: cache/audio
+2025-03-01 17:17:28,494 - root - INFO - Created directory: cache/metadata
+2025-03-01 17:17:28,494 - root - INFO - Created directory: cache/temp
+2025-03-01 17:17:28,495 - root - INFO - Created directory: ui
+2025-03-01 17:17:28,495 - root - INFO - Created directory: ui/screens
+2025-03-01 17:17:28,495 - root - INFO - Created directory: ui/widgets
+2025-03-01 17:17:28,495 - root - INFO - Created directory: ui/kv
+2025-03-01 17:17:28,495 - root - INFO - Created directory: libs
+2025-03-01 17:17:28,519 - kivy - INFO - Kivy: v2.3.1
+2025-03-01 17:17:28,519 - kivy - INFO - Logger: Record log in /Users/anthonypdibenedetto/.kivy/logs/kivy_25-03-01_32.txt
+2025-03-01 17:17:28,519 - kivy - INFO - Kivy: Installed at "/opt/anaconda3/envs/kivy_env/lib/python3.9/site-packages/kivy/__init__.py"
+2025-03-01 17:17:28,519 - kivy - INFO - Python: v3.9.18 | packaged by conda-forge | (main, Dec 23 2023, 16:36:46) 
+[Clang 16.0.6 ]
+2025-03-01 17:17:28,520 - kivy - INFO - Python: Interpreter at "/opt/anaconda3/envs/kivy_env/bin/python"
+2025-03-01 17:17:28,520 - kivy - INFO - Logger: Purge log fired. Processing...
+2025-03-01 17:17:28,521 - kivy - INFO - Logger: Purge finished!
+2025-03-01 17:17:28,522 - kivy - INFO - KivyMD: 2.0.1.dev0, git-Unknown, 2025-03-01 (installed at "/opt/anaconda3/envs/kivy_env/lib/python3.9/site-packages/kivymd/__init__.py")
+2025-03-01 17:17:28,523 - kivy - INFO - Factory: 195 symbols loaded
+2025-03-01 17:17:28,623 - kivy - INFO - ImageLoaderFFPy: Using ffpyplayer 4.5.2
+2025-03-01 17:17:28,623 - kivy - INFO - Image: Providers: img_tex, img_imageio, img_dds, img_sdl2, img_pil, img_ffpyplayer 
+2025-03-01 17:17:28,640 - kivy - INFO - Text: Provider: sdl2
+2025-03-01 17:17:28,708 - kivy - INFO - Window: Provider: sdl2
+2025-03-01 17:17:28,873 - kivy - INFO - GL: Using the "OpenGL ES 2" graphics system
+2025-03-01 17:17:28,873 - kivy - INFO - GL: Backend used <sdl2>
+2025-03-01 17:17:28,873 - kivy - INFO - GL: OpenGL version <b'2.1 ATI-6.1.13'>
+2025-03-01 17:17:28,873 - kivy - INFO - GL: OpenGL vendor <b'ATI Technologies Inc.'>
+2025-03-01 17:17:28,874 - kivy - INFO - GL: OpenGL renderer <b'AMD Radeon Pro 5700 XT OpenGL Engine'>
+2025-03-01 17:17:28,874 - kivy - INFO - GL: OpenGL parsed version: 2, 1
+2025-03-01 17:17:28,874 - kivy - INFO - GL: Shading version <b'1.20'>
+2025-03-01 17:17:28,874 - kivy - INFO - GL: Texture max size <16384>
+2025-03-01 17:17:28,874 - kivy - INFO - GL: Texture max units <16>
+2025-03-01 17:17:28,884 - kivy - INFO - Window: auto add sdl2 input provider
+2025-03-01 17:17:28,961 - kivy - INFO - Window: virtual keyboard not allowed, single mode, not docked
+2025-03-01 17:17:29,066 - kivy - INFO - AudioGstplayer: Using Gstreamer 1.24.7.0
+2025-03-01 17:17:29,075 - kivy - INFO - SoundFFPy: Using ffpyplayer 4.5.2
+2025-03-01 17:17:29,078 - kivy - INFO - Audio: Providers: audio_gstplayer, audio_ffpyplayer, audio_sdl2 (audio_avplayer ignored)
+2025-03-01 17:17:29,078 - root - INFO - Starting Jellyfin Music App
+2025-03-01 17:17:29,091 - root - INFO - Building Jellyfin Music App
+2025-03-01 17:17:29,117 - root - INFO - Initializing app components
+2025-03-01 17:17:29,117 - root - INFO - Settings loaded: {'device_id': {'value': {'value': 'a863e9a4-547b-43a4-8705-7683eeccdb43'}}, 'last_server': {'value': {'url': 'http://192.168.8.165:8096'}}, 'auth_data': {'server_url': 'http://192.168.8.165:8096', 'user_id': '9e4d877f9586475bbbe9b6eb2656dbda', 'access_token': '4a5fe882716e49b4b337513d8edf771d', 'user_data': {'User': {'Name': 'root', 'ServerId': '8135232f7193428f947464313362b60c', 'Id': '9e4d877f9586475bbbe9b6eb2656dbda', 'HasPassword': True, 'HasConfiguredPassword': True, 'HasConfiguredEasyPassword': False, 'EnableAutoLogin': False, 'LastLoginDate': '2025-03-01T23:02:35.3012879Z', 'LastActivityDate': '2025-03-01T23:02:35.3012879Z', 'Configuration': {'AudioLanguagePreference': 'eng', 'PlayDefaultAudioTrack': True, 'SubtitleLanguagePreference': 'eng', 'DisplayMissingEpisodes': False, 'GroupedFolders': [], 'SubtitleMode': 'Default', 'DisplayCollectionsView': False, 'EnableLocalPassword': False, 'OrderedViews': ['f137a2dd21bbc1b99aa5c0f6bf02a805', 'a656b907eb3a73532e40e44b968d0225', '7e64e319657a9516ec78490da03edccb', 'c0c1444b416777d3fa55d5f13da1ce58'], 'LatestItemsExcludes': ['c0c1444b416777d3fa55d5f13da1ce58'], 'MyMediaExcludes': [], 'HidePlayedInLatest': True, 'RememberAudioSelections': True, 'RememberSubtitleSelections': True, 'EnableNextEpisodeAutoPlay': True, 'CastReceiverId': 'F007D354'}, 'Policy': {'IsAdministrator': True, 'IsHidden': True, 'EnableCollectionManagement': True, 'EnableSubtitleManagement': False, 'EnableLyricManagement': False, 'IsDisabled': False, 'BlockedTags': [], 'AllowedTags': [], 'EnableUserPreferenceAccess': True, 'AccessSchedules': [], 'BlockUnratedItems': [], 'EnableRemoteControlOfOtherUsers': True, 'EnableSharedDeviceControl': True, 'EnableRemoteAccess': True, 'EnableLiveTvManagement': True, 'EnableLiveTvAccess': True, 'EnableMediaPlayback': True, 'EnableAudioPlaybackTranscoding': True, 'EnableVideoPlaybackTranscoding': True, 'EnablePlaybackRemuxing': True, 'ForceRemoteSourceTranscoding': False, 'EnableContentDeletion': True, 'EnableContentDeletionFromFolders': [], 'EnableContentDownloading': True, 'EnableSyncTranscoding': True, 'EnableMediaConversion': True, 'EnabledDevices': [], 'EnableAllDevices': True, 'EnabledChannels': [], 'EnableAllChannels': True, 'EnabledFolders': [], 'EnableAllFolders': True, 'InvalidLoginAttemptCount': 0, 'LoginAttemptsBeforeLockout': -1, 'MaxActiveSessions': 0, 'EnablePublicSharing': True, 'BlockedMediaFolders': [], 'BlockedChannels': [], 'RemoteClientBitrateLimit': 0, 'AuthenticationProviderId': 'Jellyfin.Server.Implementations.Users.DefaultAuthenticationProvider', 'PasswordResetProviderId': 'Jellyfin.Server.Implementations.Users.DefaultPasswordResetProvider', 'SyncPlayAccess': 'CreateAndJoinGroups'}}, 'SessionInfo': {'PlayState': {'CanSeek': False, 'IsPaused': False, 'IsMuted': False, 'RepeatMode': 'RepeatNone', 'PlaybackOrder': 'Default'}, 'AdditionalUsers': [], 'Capabilities': {'PlayableMediaTypes': [], 'SupportedCommands': [], 'SupportsMediaControl': False, 'SupportsPersistentIdentifier': True}, 'RemoteEndPoint': '192.168.8.208', 'PlayableMediaTypes': [], 'Id': 'b7a87404c534f7cc12bfe1249bb20764', 'UserId': '9e4d877f9586475bbbe9b6eb2656dbda', 'UserName': 'root', 'Client': 'Jellyfin Music', 'LastActivityDate': '2025-03-01T23:02:35.4806358Z', 'LastPlaybackCheckIn': '0001-01-01T00:00:00.0000000Z', 'DeviceName': 'Python Kivy Client', 'DeviceId': "{'value': 'a863e9a4-547b-43a4-8705-7683eeccdb43'}", 'ApplicationVersion': '1.0.0', 'IsActive': True, 'SupportsMediaControl': False, 'SupportsRemoteControl': False, 'NowPlayingQueue': [], 'NowPlayingQueueFullItems': [], 'HasCustomDeviceName': False, 'ServerId': '8135232f7193428f947464313362b60c', 'SupportedCommands': []}, 'AccessToken': '4a5fe882716e49b4b337513d8edf771d', 'ServerId': '8135232f7193428f947464313362b60c'}}}
+2025-03-01 17:17:29,118 - root - INFO - Loading KV files
+2025-03-01 17:17:29,118 - root - INFO - Loading KV files
+2025-03-01 17:17:29,138 - root - INFO - Creating login screen
+2025-03-01 17:17:29,144 - kivy - INFO - Clipboard: Provider: sdl2(['clipboard_nspaste'] ignored)
+2025-03-01 17:17:29,159 - root - CRITICAL - Unhandled exception: cannot import name 'MDFlatButton' from 'kivymd.uix.button' (/opt/anaconda3/envs/kivy_env/lib/python3.9/site-packages/kivymd/uix/button/__init__.py)
+Traceback (most recent call last):
+  File "/Users/anthonypdibenedetto/Desktop/Python/JellyfinClient/main.py", line 68, in <module>
+    JellyfinApp().run()
+  File "/opt/anaconda3/envs/kivy_env/lib/python3.9/site-packages/kivy/app.py", line 955, in run
+    self._run_prepare()
+  File "/opt/anaconda3/envs/kivy_env/lib/python3.9/site-packages/kivymd/app.py", line 142, in _run_prepare
+    super()._run_prepare()
+  File "/opt/anaconda3/envs/kivy_env/lib/python3.9/site-packages/kivy/app.py", line 925, in _run_prepare
+    root = self.build()
+  File "/Users/anthonypdibenedetto/Desktop/Python/JellyfinClient/ui/app.py", line 73, in build
+    from ui.screens.login_screen import LoginScreen
+  File "/Users/anthonypdibenedetto/Desktop/Python/JellyfinClient/ui/screens/login_screen.py", line 6, in <module>
+    from kivymd.uix.button import MDFlatButton, MDRaisedButton
+ImportError: cannot import name 'MDFlatButton' from 'kivymd.uix.button' (/opt/anaconda3/envs/kivy_env/lib/python3.9/site-packages/kivymd/uix/button/__init__.py)
+2025-03-01 17:17:53,606 - root - INFO - Initializing Jellyfin Music Client
+2025-03-01 17:17:53,606 - root - INFO - Created directory: cache
+2025-03-01 17:17:53,606 - root - INFO - Created directory: cache/images
+2025-03-01 17:17:53,607 - root - INFO - Created directory: cache/audio
+2025-03-01 17:17:53,607 - root - INFO - Created directory: cache/metadata
+2025-03-01 17:17:53,607 - root - INFO - Created directory: cache/temp
+2025-03-01 17:17:53,607 - root - INFO - Created directory: ui
+2025-03-01 17:17:53,607 - root - INFO - Created directory: ui/screens
+2025-03-01 17:17:53,607 - root - INFO - Created directory: ui/widgets
+2025-03-01 17:17:53,607 - root - INFO - Created directory: ui/kv
+2025-03-01 17:17:53,607 - root - INFO - Created directory: libs
+2025-03-01 17:17:53,628 - kivy - INFO - Kivy: v2.3.1
+2025-03-01 17:17:53,628 - kivy - INFO - Logger: Record log in /Users/anthonypdibenedetto/.kivy/logs/kivy_25-03-01_33.txt
+2025-03-01 17:17:53,629 - kivy - INFO - Kivy: Installed at "/opt/anaconda3/envs/kivy_env/lib/python3.9/site-packages/kivy/__init__.py"
+2025-03-01 17:17:53,629 - kivy - INFO - Python: v3.9.18 | packaged by conda-forge | (main, Dec 23 2023, 16:36:46) 
+[Clang 16.0.6 ]
+2025-03-01 17:17:53,629 - kivy - INFO - Python: Interpreter at "/opt/anaconda3/envs/kivy_env/bin/python"
+2025-03-01 17:17:53,629 - kivy - INFO - Logger: Purge log fired. Processing...
+2025-03-01 17:17:53,632 - kivy - INFO - Logger: Purge finished!
+2025-03-01 17:17:53,632 - kivy - INFO - KivyMD: 2.0.1.dev0, git-Unknown, 2025-03-01 (installed at "/opt/anaconda3/envs/kivy_env/lib/python3.9/site-packages/kivymd/__init__.py")
+2025-03-01 17:17:53,634 - kivy - INFO - Factory: 195 symbols loaded
+2025-03-01 17:17:53,732 - kivy - INFO - ImageLoaderFFPy: Using ffpyplayer 4.5.2
+2025-03-01 17:17:53,733 - kivy - INFO - Image: Providers: img_tex, img_imageio, img_dds, img_sdl2, img_pil, img_ffpyplayer 
+2025-03-01 17:17:53,749 - kivy - INFO - Text: Provider: sdl2
+2025-03-01 17:17:53,815 - kivy - INFO - Window: Provider: sdl2
+2025-03-01 17:17:53,977 - kivy - INFO - GL: Using the "OpenGL ES 2" graphics system
+2025-03-01 17:17:53,978 - kivy - INFO - GL: Backend used <sdl2>
+2025-03-01 17:17:53,978 - kivy - INFO - GL: OpenGL version <b'2.1 ATI-6.1.13'>
+2025-03-01 17:17:53,978 - kivy - INFO - GL: OpenGL vendor <b'ATI Technologies Inc.'>
+2025-03-01 17:17:53,978 - kivy - INFO - GL: OpenGL renderer <b'AMD Radeon Pro 5700 XT OpenGL Engine'>
+2025-03-01 17:17:53,978 - kivy - INFO - GL: OpenGL parsed version: 2, 1
+2025-03-01 17:17:53,978 - kivy - INFO - GL: Shading version <b'1.20'>
+2025-03-01 17:17:53,978 - kivy - INFO - GL: Texture max size <16384>
+2025-03-01 17:17:53,978 - kivy - INFO - GL: Texture max units <16>
+2025-03-01 17:17:53,987 - kivy - INFO - Window: auto add sdl2 input provider
+2025-03-01 17:17:54,063 - kivy - INFO - Window: virtual keyboard not allowed, single mode, not docked
+2025-03-01 17:17:54,166 - kivy - INFO - AudioGstplayer: Using Gstreamer 1.24.7.0
+2025-03-01 17:17:54,174 - kivy - INFO - SoundFFPy: Using ffpyplayer 4.5.2
+2025-03-01 17:17:54,176 - kivy - INFO - Audio: Providers: audio_gstplayer, audio_ffpyplayer, audio_sdl2 (audio_avplayer ignored)
+2025-03-01 17:17:54,177 - root - INFO - Starting Jellyfin Music App
+2025-03-01 17:17:54,189 - root - INFO - Building Jellyfin Music App
+2025-03-01 17:17:54,213 - root - INFO - Initializing app components
+2025-03-01 17:17:54,213 - root - INFO - Settings loaded: {'device_id': {'value': {'value': 'a863e9a4-547b-43a4-8705-7683eeccdb43'}}, 'last_server': {'value': {'url': 'http://192.168.8.165:8096'}}, 'auth_data': {'server_url': 'http://192.168.8.165:8096', 'user_id': '9e4d877f9586475bbbe9b6eb2656dbda', 'access_token': '4a5fe882716e49b4b337513d8edf771d', 'user_data': {'User': {'Name': 'root', 'ServerId': '8135232f7193428f947464313362b60c', 'Id': '9e4d877f9586475bbbe9b6eb2656dbda', 'HasPassword': True, 'HasConfiguredPassword': True, 'HasConfiguredEasyPassword': False, 'EnableAutoLogin': False, 'LastLoginDate': '2025-03-01T23:02:35.3012879Z', 'LastActivityDate': '2025-03-01T23:02:35.3012879Z', 'Configuration': {'AudioLanguagePreference': 'eng', 'PlayDefaultAudioTrack': True, 'SubtitleLanguagePreference': 'eng', 'DisplayMissingEpisodes': False, 'GroupedFolders': [], 'SubtitleMode': 'Default', 'DisplayCollectionsView': False, 'EnableLocalPassword': False, 'OrderedViews': ['f137a2dd21bbc1b99aa5c0f6bf02a805', 'a656b907eb3a73532e40e44b968d0225', '7e64e319657a9516ec78490da03edccb', 'c0c1444b416777d3fa55d5f13da1ce58'], 'LatestItemsExcludes': ['c0c1444b416777d3fa55d5f13da1ce58'], 'MyMediaExcludes': [], 'HidePlayedInLatest': True, 'RememberAudioSelections': True, 'RememberSubtitleSelections': True, 'EnableNextEpisodeAutoPlay': True, 'CastReceiverId': 'F007D354'}, 'Policy': {'IsAdministrator': True, 'IsHidden': True, 'EnableCollectionManagement': True, 'EnableSubtitleManagement': False, 'EnableLyricManagement': False, 'IsDisabled': False, 'BlockedTags': [], 'AllowedTags': [], 'EnableUserPreferenceAccess': True, 'AccessSchedules': [], 'BlockUnratedItems': [], 'EnableRemoteControlOfOtherUsers': True, 'EnableSharedDeviceControl': True, 'EnableRemoteAccess': True, 'EnableLiveTvManagement': True, 'EnableLiveTvAccess': True, 'EnableMediaPlayback': True, 'EnableAudioPlaybackTranscoding': True, 'EnableVideoPlaybackTranscoding': True, 'EnablePlaybackRemuxing': True, 'ForceRemoteSourceTranscoding': False, 'EnableContentDeletion': True, 'EnableContentDeletionFromFolders': [], 'EnableContentDownloading': True, 'EnableSyncTranscoding': True, 'EnableMediaConversion': True, 'EnabledDevices': [], 'EnableAllDevices': True, 'EnabledChannels': [], 'EnableAllChannels': True, 'EnabledFolders': [], 'EnableAllFolders': True, 'InvalidLoginAttemptCount': 0, 'LoginAttemptsBeforeLockout': -1, 'MaxActiveSessions': 0, 'EnablePublicSharing': True, 'BlockedMediaFolders': [], 'BlockedChannels': [], 'RemoteClientBitrateLimit': 0, 'AuthenticationProviderId': 'Jellyfin.Server.Implementations.Users.DefaultAuthenticationProvider', 'PasswordResetProviderId': 'Jellyfin.Server.Implementations.Users.DefaultPasswordResetProvider', 'SyncPlayAccess': 'CreateAndJoinGroups'}}, 'SessionInfo': {'PlayState': {'CanSeek': False, 'IsPaused': False, 'IsMuted': False, 'RepeatMode': 'RepeatNone', 'PlaybackOrder': 'Default'}, 'AdditionalUsers': [], 'Capabilities': {'PlayableMediaTypes': [], 'SupportedCommands': [], 'SupportsMediaControl': False, 'SupportsPersistentIdentifier': True}, 'RemoteEndPoint': '192.168.8.208', 'PlayableMediaTypes': [], 'Id': 'b7a87404c534f7cc12bfe1249bb20764', 'UserId': '9e4d877f9586475bbbe9b6eb2656dbda', 'UserName': 'root', 'Client': 'Jellyfin Music', 'LastActivityDate': '2025-03-01T23:02:35.4806358Z', 'LastPlaybackCheckIn': '0001-01-01T00:00:00.0000000Z', 'DeviceName': 'Python Kivy Client', 'DeviceId': "{'value': 'a863e9a4-547b-43a4-8705-7683eeccdb43'}", 'ApplicationVersion': '1.0.0', 'IsActive': True, 'SupportsMediaControl': False, 'SupportsRemoteControl': False, 'NowPlayingQueue': [], 'NowPlayingQueueFullItems': [], 'HasCustomDeviceName': False, 'ServerId': '8135232f7193428f947464313362b60c', 'SupportedCommands': []}, 'AccessToken': '4a5fe882716e49b4b337513d8edf771d', 'ServerId': '8135232f7193428f947464313362b60c'}}}
+2025-03-01 17:17:54,214 - root - INFO - Loading KV files
+2025-03-01 17:17:54,215 - root - INFO - Loading KV files
+2025-03-01 17:17:54,234 - root - INFO - Creating login screen
+2025-03-01 17:17:54,240 - kivy - INFO - Clipboard: Provider: sdl2(['clipboard_nspaste'] ignored)
+2025-03-01 17:17:54,255 - root - CRITICAL - Unhandled exception: cannot import name 'MDFlatButton' from 'kivymd.uix.button' (/opt/anaconda3/envs/kivy_env/lib/python3.9/site-packages/kivymd/uix/button/__init__.py)
+Traceback (most recent call last):
+  File "/Users/anthonypdibenedetto/Desktop/Python/JellyfinClient/main.py", line 68, in <module>
+    JellyfinApp().run()
+  File "/opt/anaconda3/envs/kivy_env/lib/python3.9/site-packages/kivy/app.py", line 955, in run
+    self._run_prepare()
+  File "/opt/anaconda3/envs/kivy_env/lib/python3.9/site-packages/kivymd/app.py", line 142, in _run_prepare
+    super()._run_prepare()
+  File "/opt/anaconda3/envs/kivy_env/lib/python3.9/site-packages/kivy/app.py", line 925, in _run_prepare
+    root = self.build()
+  File "/Users/anthonypdibenedetto/Desktop/Python/JellyfinClient/ui/app.py", line 73, in build
+    from ui.screens.login_screen import LoginScreen
+  File "/Users/anthonypdibenedetto/Desktop/Python/JellyfinClient/ui/screens/login_screen.py", line 6, in <module>
+    from kivymd.uix.button import MDFlatButton, MDRaisedButton
+ImportError: cannot import name 'MDFlatButton' from 'kivymd.uix.button' (/opt/anaconda3/envs/kivy_env/lib/python3.9/site-packages/kivymd/uix/button/__init__.py)
+2025-03-01 17:19:03,476 - root - INFO - Initializing Jellyfin Music Client
+2025-03-01 17:19:03,476 - root - INFO - Created directory: cache
+2025-03-01 17:19:03,476 - root - INFO - Created directory: cache/images
+2025-03-01 17:19:03,476 - root - INFO - Created directory: cache/audio
+2025-03-01 17:19:03,476 - root - INFO - Created directory: cache/metadata
+2025-03-01 17:19:03,476 - root - INFO - Created directory: cache/temp
+2025-03-01 17:19:03,476 - root - INFO - Created directory: ui
+2025-03-01 17:19:03,476 - root - INFO - Created directory: ui/screens
+2025-03-01 17:19:03,477 - root - INFO - Created directory: ui/widgets
+2025-03-01 17:19:03,477 - root - INFO - Created directory: ui/kv
+2025-03-01 17:19:03,477 - root - INFO - Created directory: libs
+2025-03-01 17:19:03,499 - kivy - INFO - Kivy: v2.3.1
+2025-03-01 17:19:03,499 - kivy - INFO - Logger: Record log in /Users/anthonypdibenedetto/.kivy/logs/kivy_25-03-01_34.txt
+2025-03-01 17:19:03,499 - kivy - INFO - Kivy: Installed at "/opt/anaconda3/envs/kivy_env/lib/python3.9/site-packages/kivy/__init__.py"
+2025-03-01 17:19:03,499 - kivy - INFO - Python: v3.9.18 | packaged by conda-forge | (main, Dec 23 2023, 16:36:46) 
+[Clang 16.0.6 ]
+2025-03-01 17:19:03,500 - kivy - INFO - Python: Interpreter at "/opt/anaconda3/envs/kivy_env/bin/python"
+2025-03-01 17:19:03,500 - kivy - INFO - Logger: Purge log fired. Processing...
+2025-03-01 17:19:03,501 - kivy - INFO - Logger: Purge finished!
+2025-03-01 17:19:03,502 - kivy - INFO - KivyMD: 2.0.1.dev0, git-Unknown, 2025-03-01 (installed at "/opt/anaconda3/envs/kivy_env/lib/python3.9/site-packages/kivymd/__init__.py")
+2025-03-01 17:19:03,503 - kivy - INFO - Factory: 195 symbols loaded
+2025-03-01 17:19:03,607 - kivy - INFO - ImageLoaderFFPy: Using ffpyplayer 4.5.2
+2025-03-01 17:19:03,607 - kivy - INFO - Image: Providers: img_tex, img_imageio, img_dds, img_sdl2, img_pil, img_ffpyplayer 
+2025-03-01 17:19:03,624 - kivy - INFO - Text: Provider: sdl2
+2025-03-01 17:19:03,693 - kivy - INFO - Window: Provider: sdl2
+2025-03-01 17:19:03,861 - kivy - INFO - GL: Using the "OpenGL ES 2" graphics system
+2025-03-01 17:19:03,861 - kivy - INFO - GL: Backend used <sdl2>
+2025-03-01 17:19:03,861 - kivy - INFO - GL: OpenGL version <b'2.1 ATI-6.1.13'>
+2025-03-01 17:19:03,861 - kivy - INFO - GL: OpenGL vendor <b'ATI Technologies Inc.'>
+2025-03-01 17:19:03,861 - kivy - INFO - GL: OpenGL renderer <b'AMD Radeon Pro 5700 XT OpenGL Engine'>
+2025-03-01 17:19:03,862 - kivy - INFO - GL: OpenGL parsed version: 2, 1
+2025-03-01 17:19:03,862 - kivy - INFO - GL: Shading version <b'1.20'>
+2025-03-01 17:19:03,862 - kivy - INFO - GL: Texture max size <16384>
+2025-03-01 17:19:03,862 - kivy - INFO - GL: Texture max units <16>
+2025-03-01 17:19:03,871 - kivy - INFO - Window: auto add sdl2 input provider
+2025-03-01 17:19:03,948 - kivy - INFO - Window: virtual keyboard not allowed, single mode, not docked
+2025-03-01 17:19:04,054 - kivy - INFO - AudioGstplayer: Using Gstreamer 1.24.7.0
+2025-03-01 17:19:04,063 - kivy - INFO - SoundFFPy: Using ffpyplayer 4.5.2
+2025-03-01 17:19:04,065 - kivy - INFO - Audio: Providers: audio_gstplayer, audio_ffpyplayer, audio_sdl2 (audio_avplayer ignored)
+2025-03-01 17:19:04,065 - root - INFO - Starting Jellyfin Music App
+2025-03-01 17:19:04,078 - root - INFO - Building Jellyfin Music App
+2025-03-01 17:19:04,102 - root - INFO - Initializing app components
+2025-03-01 17:19:04,103 - root - INFO - Settings loaded: {'device_id': {'value': {'value': 'a863e9a4-547b-43a4-8705-7683eeccdb43'}}, 'last_server': {'value': {'url': 'http://192.168.8.165:8096'}}, 'auth_data': {'server_url': 'http://192.168.8.165:8096', 'user_id': '9e4d877f9586475bbbe9b6eb2656dbda', 'access_token': '4a5fe882716e49b4b337513d8edf771d', 'user_data': {'User': {'Name': 'root', 'ServerId': '8135232f7193428f947464313362b60c', 'Id': '9e4d877f9586475bbbe9b6eb2656dbda', 'HasPassword': True, 'HasConfiguredPassword': True, 'HasConfiguredEasyPassword': False, 'EnableAutoLogin': False, 'LastLoginDate': '2025-03-01T23:02:35.3012879Z', 'LastActivityDate': '2025-03-01T23:02:35.3012879Z', 'Configuration': {'AudioLanguagePreference': 'eng', 'PlayDefaultAudioTrack': True, 'SubtitleLanguagePreference': 'eng', 'DisplayMissingEpisodes': False, 'GroupedFolders': [], 'SubtitleMode': 'Default', 'DisplayCollectionsView': False, 'EnableLocalPassword': False, 'OrderedViews': ['f137a2dd21bbc1b99aa5c0f6bf02a805', 'a656b907eb3a73532e40e44b968d0225', '7e64e319657a9516ec78490da03edccb', 'c0c1444b416777d3fa55d5f13da1ce58'], 'LatestItemsExcludes': ['c0c1444b416777d3fa55d5f13da1ce58'], 'MyMediaExcludes': [], 'HidePlayedInLatest': True, 'RememberAudioSelections': True, 'RememberSubtitleSelections': True, 'EnableNextEpisodeAutoPlay': True, 'CastReceiverId': 'F007D354'}, 'Policy': {'IsAdministrator': True, 'IsHidden': True, 'EnableCollectionManagement': True, 'EnableSubtitleManagement': False, 'EnableLyricManagement': False, 'IsDisabled': False, 'BlockedTags': [], 'AllowedTags': [], 'EnableUserPreferenceAccess': True, 'AccessSchedules': [], 'BlockUnratedItems': [], 'EnableRemoteControlOfOtherUsers': True, 'EnableSharedDeviceControl': True, 'EnableRemoteAccess': True, 'EnableLiveTvManagement': True, 'EnableLiveTvAccess': True, 'EnableMediaPlayback': True, 'EnableAudioPlaybackTranscoding': True, 'EnableVideoPlaybackTranscoding': True, 'EnablePlaybackRemuxing': True, 'ForceRemoteSourceTranscoding': False, 'EnableContentDeletion': True, 'EnableContentDeletionFromFolders': [], 'EnableContentDownloading': True, 'EnableSyncTranscoding': True, 'EnableMediaConversion': True, 'EnabledDevices': [], 'EnableAllDevices': True, 'EnabledChannels': [], 'EnableAllChannels': True, 'EnabledFolders': [], 'EnableAllFolders': True, 'InvalidLoginAttemptCount': 0, 'LoginAttemptsBeforeLockout': -1, 'MaxActiveSessions': 0, 'EnablePublicSharing': True, 'BlockedMediaFolders': [], 'BlockedChannels': [], 'RemoteClientBitrateLimit': 0, 'AuthenticationProviderId': 'Jellyfin.Server.Implementations.Users.DefaultAuthenticationProvider', 'PasswordResetProviderId': 'Jellyfin.Server.Implementations.Users.DefaultPasswordResetProvider', 'SyncPlayAccess': 'CreateAndJoinGroups'}}, 'SessionInfo': {'PlayState': {'CanSeek': False, 'IsPaused': False, 'IsMuted': False, 'RepeatMode': 'RepeatNone', 'PlaybackOrder': 'Default'}, 'AdditionalUsers': [], 'Capabilities': {'PlayableMediaTypes': [], 'SupportedCommands': [], 'SupportsMediaControl': False, 'SupportsPersistentIdentifier': True}, 'RemoteEndPoint': '192.168.8.208', 'PlayableMediaTypes': [], 'Id': 'b7a87404c534f7cc12bfe1249bb20764', 'UserId': '9e4d877f9586475bbbe9b6eb2656dbda', 'UserName': 'root', 'Client': 'Jellyfin Music', 'LastActivityDate': '2025-03-01T23:02:35.4806358Z', 'LastPlaybackCheckIn': '0001-01-01T00:00:00.0000000Z', 'DeviceName': 'Python Kivy Client', 'DeviceId': "{'value': 'a863e9a4-547b-43a4-8705-7683eeccdb43'}", 'ApplicationVersion': '1.0.0', 'IsActive': True, 'SupportsMediaControl': False, 'SupportsRemoteControl': False, 'NowPlayingQueue': [], 'NowPlayingQueueFullItems': [], 'HasCustomDeviceName': False, 'ServerId': '8135232f7193428f947464313362b60c', 'SupportedCommands': []}, 'AccessToken': '4a5fe882716e49b4b337513d8edf771d', 'ServerId': '8135232f7193428f947464313362b60c'}}}
+2025-03-01 17:19:04,104 - root - INFO - Loading KV files
+2025-03-01 17:19:04,104 - root - INFO - Loading KV files
+2025-03-01 17:19:04,123 - root - INFO - Creating login screen
+2025-03-01 17:19:04,131 - kivy - INFO - Clipboard: Provider: sdl2(['clipboard_nspaste'] ignored)
+2025-03-01 17:19:04,161 - kivy - INFO - GL: NPOT texture support is available
+2025-03-01 17:19:04,181 - root - CRITICAL - Unhandled exception: Unknown class <MDProgressIndicator>
+Traceback (most recent call last):
+  File "/Users/anthonypdibenedetto/Desktop/Python/JellyfinClient/main.py", line 68, in <module>
+    JellyfinApp().run()
+  File "/opt/anaconda3/envs/kivy_env/lib/python3.9/site-packages/kivy/app.py", line 955, in run
+    self._run_prepare()
+  File "/opt/anaconda3/envs/kivy_env/lib/python3.9/site-packages/kivymd/app.py", line 142, in _run_prepare
+    super()._run_prepare()
+  File "/opt/anaconda3/envs/kivy_env/lib/python3.9/site-packages/kivy/app.py", line 925, in _run_prepare
+    root = self.build()
+  File "/Users/anthonypdibenedetto/Desktop/Python/JellyfinClient/ui/app.py", line 74, in build
+    return LoginScreen()
+  File "/Users/anthonypdibenedetto/Desktop/Python/JellyfinClient/ui/screens/login_screen.py", line 20, in __init__
+    super(LoginScreen, self).__init__(**kwargs)
+  File "/opt/anaconda3/envs/kivy_env/lib/python3.9/site-packages/kivy/uix/relativelayout.py", line 274, in __init__
+    super(RelativeLayout, self).__init__(**kw)
+  File "/opt/anaconda3/envs/kivy_env/lib/python3.9/site-packages/kivy/uix/floatlayout.py", line 65, in __init__
+    super(FloatLayout, self).__init__(**kwargs)
+  File "/opt/anaconda3/envs/kivy_env/lib/python3.9/site-packages/kivy/uix/layout.py", line 76, in __init__
+    super(Layout, self).__init__(**kwargs)
+  File "/opt/anaconda3/envs/kivy_env/lib/python3.9/site-packages/kivy/uix/widget.py", line 366, in __init__
+    self.apply_class_lang_rules(
+  File "/opt/anaconda3/envs/kivy_env/lib/python3.9/site-packages/kivy/uix/widget.py", line 470, in apply_class_lang_rules
+    Builder.apply(
+  File "/opt/anaconda3/envs/kivy_env/lib/python3.9/site-packages/kivy/lang/builder.py", line 545, in apply
+    self._apply_rule(
+  File "/opt/anaconda3/envs/kivy_env/lib/python3.9/site-packages/kivy/lang/builder.py", line 667, in _apply_rule
+    self._apply_rule(
+  File "/opt/anaconda3/envs/kivy_env/lib/python3.9/site-packages/kivy/lang/builder.py", line 667, in _apply_rule
+    self._apply_rule(
+  File "/opt/anaconda3/envs/kivy_env/lib/python3.9/site-packages/kivy/lang/builder.py", line 625, in _apply_rule
+    cls = Factory_get(cname)
+  File "/opt/anaconda3/envs/kivy_env/lib/python3.9/site-packages/kivy/factory.py", line 147, in __getattr__
+    raise FactoryException('Unknown class <%s>' % name)
+kivy.factory.FactoryException: Unknown class <MDProgressIndicator>
+2025-03-01 17:20:08,020 - root - INFO - Initializing Jellyfin Music Client
+2025-03-01 17:20:08,021 - root - INFO - Created directory: cache
+2025-03-01 17:20:08,021 - root - INFO - Created directory: cache/images
+2025-03-01 17:20:08,021 - root - INFO - Created directory: cache/audio
+2025-03-01 17:20:08,021 - root - INFO - Created directory: cache/metadata
+2025-03-01 17:20:08,021 - root - INFO - Created directory: cache/temp
+2025-03-01 17:20:08,021 - root - INFO - Created directory: ui
+2025-03-01 17:20:08,021 - root - INFO - Created directory: ui/screens
+2025-03-01 17:20:08,021 - root - INFO - Created directory: ui/widgets
+2025-03-01 17:20:08,021 - root - INFO - Created directory: ui/kv
+2025-03-01 17:20:08,021 - root - INFO - Created directory: libs
+2025-03-01 17:20:08,045 - kivy - INFO - Kivy: v2.3.1
+2025-03-01 17:20:08,046 - kivy - INFO - Logger: Record log in /Users/anthonypdibenedetto/.kivy/logs/kivy_25-03-01_35.txt
+2025-03-01 17:20:08,046 - kivy - INFO - Kivy: Installed at "/opt/anaconda3/envs/kivy_env/lib/python3.9/site-packages/kivy/__init__.py"
+2025-03-01 17:20:08,046 - kivy - INFO - Python: v3.9.18 | packaged by conda-forge | (main, Dec 23 2023, 16:36:46) 
+[Clang 16.0.6 ]
+2025-03-01 17:20:08,046 - kivy - INFO - Python: Interpreter at "/opt/anaconda3/envs/kivy_env/bin/python"
+2025-03-01 17:20:08,046 - kivy - INFO - Logger: Purge log fired. Processing...
+2025-03-01 17:20:08,048 - kivy - INFO - Logger: Purge finished!
+2025-03-01 17:20:08,049 - kivy - INFO - KivyMD: 2.0.1.dev0, git-Unknown, 2025-03-01 (installed at "/opt/anaconda3/envs/kivy_env/lib/python3.9/site-packages/kivymd/__init__.py")
+2025-03-01 17:20:08,051 - kivy - INFO - Factory: 195 symbols loaded
+2025-03-01 17:20:08,160 - kivy - INFO - ImageLoaderFFPy: Using ffpyplayer 4.5.2
+2025-03-01 17:20:08,161 - kivy - INFO - Image: Providers: img_tex, img_imageio, img_dds, img_sdl2, img_pil, img_ffpyplayer 
+2025-03-01 17:20:08,178 - kivy - INFO - Text: Provider: sdl2
+2025-03-01 17:20:08,257 - kivy - INFO - Window: Provider: sdl2
+2025-03-01 17:20:08,438 - kivy - INFO - GL: Using the "OpenGL ES 2" graphics system
+2025-03-01 17:20:08,439 - kivy - INFO - GL: Backend used <sdl2>
+2025-03-01 17:20:08,439 - kivy - INFO - GL: OpenGL version <b'2.1 ATI-6.1.13'>
+2025-03-01 17:20:08,439 - kivy - INFO - GL: OpenGL vendor <b'ATI Technologies Inc.'>
+2025-03-01 17:20:08,439 - kivy - INFO - GL: OpenGL renderer <b'AMD Radeon Pro 5700 XT OpenGL Engine'>
+2025-03-01 17:20:08,439 - kivy - INFO - GL: OpenGL parsed version: 2, 1
+2025-03-01 17:20:08,439 - kivy - INFO - GL: Shading version <b'1.20'>
+2025-03-01 17:20:08,439 - kivy - INFO - GL: Texture max size <16384>
+2025-03-01 17:20:08,439 - kivy - INFO - GL: Texture max units <16>
+2025-03-01 17:20:08,450 - kivy - INFO - Window: auto add sdl2 input provider
+2025-03-01 17:20:08,532 - kivy - INFO - Window: virtual keyboard not allowed, single mode, not docked
+2025-03-01 17:20:08,642 - kivy - INFO - AudioGstplayer: Using Gstreamer 1.24.7.0
+2025-03-01 17:20:08,651 - kivy - INFO - SoundFFPy: Using ffpyplayer 4.5.2
+2025-03-01 17:20:08,654 - kivy - INFO - Audio: Providers: audio_gstplayer, audio_ffpyplayer, audio_sdl2 (audio_avplayer ignored)
+2025-03-01 17:20:08,654 - root - INFO - Starting Jellyfin Music App
+2025-03-01 17:20:08,667 - root - INFO - Building Jellyfin Music App
+2025-03-01 17:20:08,692 - root - INFO - Initializing app components
+2025-03-01 17:20:08,693 - root - INFO - Settings loaded: {'device_id': {'value': {'value': 'a863e9a4-547b-43a4-8705-7683eeccdb43'}}, 'last_server': {'value': {'url': 'http://192.168.8.165:8096'}}, 'auth_data': {'server_url': 'http://192.168.8.165:8096', 'user_id': '9e4d877f9586475bbbe9b6eb2656dbda', 'access_token': '4a5fe882716e49b4b337513d8edf771d', 'user_data': {'User': {'Name': 'root', 'ServerId': '8135232f7193428f947464313362b60c', 'Id': '9e4d877f9586475bbbe9b6eb2656dbda', 'HasPassword': True, 'HasConfiguredPassword': True, 'HasConfiguredEasyPassword': False, 'EnableAutoLogin': False, 'LastLoginDate': '2025-03-01T23:02:35.3012879Z', 'LastActivityDate': '2025-03-01T23:02:35.3012879Z', 'Configuration': {'AudioLanguagePreference': 'eng', 'PlayDefaultAudioTrack': True, 'SubtitleLanguagePreference': 'eng', 'DisplayMissingEpisodes': False, 'GroupedFolders': [], 'SubtitleMode': 'Default', 'DisplayCollectionsView': False, 'EnableLocalPassword': False, 'OrderedViews': ['f137a2dd21bbc1b99aa5c0f6bf02a805', 'a656b907eb3a73532e40e44b968d0225', '7e64e319657a9516ec78490da03edccb', 'c0c1444b416777d3fa55d5f13da1ce58'], 'LatestItemsExcludes': ['c0c1444b416777d3fa55d5f13da1ce58'], 'MyMediaExcludes': [], 'HidePlayedInLatest': True, 'RememberAudioSelections': True, 'RememberSubtitleSelections': True, 'EnableNextEpisodeAutoPlay': True, 'CastReceiverId': 'F007D354'}, 'Policy': {'IsAdministrator': True, 'IsHidden': True, 'EnableCollectionManagement': True, 'EnableSubtitleManagement': False, 'EnableLyricManagement': False, 'IsDisabled': False, 'BlockedTags': [], 'AllowedTags': [], 'EnableUserPreferenceAccess': True, 'AccessSchedules': [], 'BlockUnratedItems': [], 'EnableRemoteControlOfOtherUsers': True, 'EnableSharedDeviceControl': True, 'EnableRemoteAccess': True, 'EnableLiveTvManagement': True, 'EnableLiveTvAccess': True, 'EnableMediaPlayback': True, 'EnableAudioPlaybackTranscoding': True, 'EnableVideoPlaybackTranscoding': True, 'EnablePlaybackRemuxing': True, 'ForceRemoteSourceTranscoding': False, 'EnableContentDeletion': True, 'EnableContentDeletionFromFolders': [], 'EnableContentDownloading': True, 'EnableSyncTranscoding': True, 'EnableMediaConversion': True, 'EnabledDevices': [], 'EnableAllDevices': True, 'EnabledChannels': [], 'EnableAllChannels': True, 'EnabledFolders': [], 'EnableAllFolders': True, 'InvalidLoginAttemptCount': 0, 'LoginAttemptsBeforeLockout': -1, 'MaxActiveSessions': 0, 'EnablePublicSharing': True, 'BlockedMediaFolders': [], 'BlockedChannels': [], 'RemoteClientBitrateLimit': 0, 'AuthenticationProviderId': 'Jellyfin.Server.Implementations.Users.DefaultAuthenticationProvider', 'PasswordResetProviderId': 'Jellyfin.Server.Implementations.Users.DefaultPasswordResetProvider', 'SyncPlayAccess': 'CreateAndJoinGroups'}}, 'SessionInfo': {'PlayState': {'CanSeek': False, 'IsPaused': False, 'IsMuted': False, 'RepeatMode': 'RepeatNone', 'PlaybackOrder': 'Default'}, 'AdditionalUsers': [], 'Capabilities': {'PlayableMediaTypes': [], 'SupportedCommands': [], 'SupportsMediaControl': False, 'SupportsPersistentIdentifier': True}, 'RemoteEndPoint': '192.168.8.208', 'PlayableMediaTypes': [], 'Id': 'b7a87404c534f7cc12bfe1249bb20764', 'UserId': '9e4d877f9586475bbbe9b6eb2656dbda', 'UserName': 'root', 'Client': 'Jellyfin Music', 'LastActivityDate': '2025-03-01T23:02:35.4806358Z', 'LastPlaybackCheckIn': '0001-01-01T00:00:00.0000000Z', 'DeviceName': 'Python Kivy Client', 'DeviceId': "{'value': 'a863e9a4-547b-43a4-8705-7683eeccdb43'}", 'ApplicationVersion': '1.0.0', 'IsActive': True, 'SupportsMediaControl': False, 'SupportsRemoteControl': False, 'NowPlayingQueue': [], 'NowPlayingQueueFullItems': [], 'HasCustomDeviceName': False, 'ServerId': '8135232f7193428f947464313362b60c', 'SupportedCommands': []}, 'AccessToken': '4a5fe882716e49b4b337513d8edf771d', 'ServerId': '8135232f7193428f947464313362b60c'}}}
+2025-03-01 17:20:08,694 - root - INFO - Loading KV files
+2025-03-01 17:20:08,694 - root - INFO - Loading KV files
+2025-03-01 17:20:08,715 - root - INFO - Creating login screen
+2025-03-01 17:20:08,723 - kivy - INFO - Clipboard: Provider: sdl2(['clipboard_nspaste'] ignored)
+2025-03-01 17:20:08,739 - root - CRITICAL - Unhandled exception: cannot import name 'MDRaisedButton' from 'kivymd.uix.button' (/opt/anaconda3/envs/kivy_env/lib/python3.9/site-packages/kivymd/uix/button/__init__.py)
+Traceback (most recent call last):
+  File "/Users/anthonypdibenedetto/Desktop/Python/JellyfinClient/main.py", line 68, in <module>
+    JellyfinApp().run()
+  File "/opt/anaconda3/envs/kivy_env/lib/python3.9/site-packages/kivy/app.py", line 955, in run
+    self._run_prepare()
+  File "/opt/anaconda3/envs/kivy_env/lib/python3.9/site-packages/kivymd/app.py", line 142, in _run_prepare
+    super()._run_prepare()
+  File "/opt/anaconda3/envs/kivy_env/lib/python3.9/site-packages/kivy/app.py", line 925, in _run_prepare
+    root = self.build()
+  File "/Users/anthonypdibenedetto/Desktop/Python/JellyfinClient/ui/app.py", line 73, in build
+    from ui.screens.login_screen import LoginScreen
+  File "/Users/anthonypdibenedetto/Desktop/Python/JellyfinClient/ui/screens/login_screen.py", line 7, in <module>
+    from kivymd.uix.button import MDRaisedButton
+ImportError: cannot import name 'MDRaisedButton' from 'kivymd.uix.button' (/opt/anaconda3/envs/kivy_env/lib/python3.9/site-packages/kivymd/uix/button/__init__.py)

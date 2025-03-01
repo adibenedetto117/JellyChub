@@ -156,7 +156,7 @@ class AuthManager:
         # Reset app state
         self.app.api.user_id = None
         self.app.api.access_token = None
-        self.app.current_user = None
+        self.app.current_user = {}  # Use empty dict instead of None
         self.app.auth_token = ""
         
         # Clear temporary cache (but keep persistent cache)
@@ -164,3 +164,14 @@ class AuthManager:
         if cache_path.exists():
             for file in cache_path.glob("*"):
                 file.unlink()
+        
+        # From the main thread, switch back to login screen
+        from kivy.clock import Clock
+        from ui.screens.login_screen import LoginScreen
+        
+        def reset_to_login(dt):
+            # Clear current root and add LoginScreen
+            self.app.root.clear_widgets()
+            self.app.root.add_widget(LoginScreen())
+        
+        Clock.schedule_once(reset_to_login, 0)

@@ -1,3 +1,7 @@
+"""
+Music Screen for Jellyfin Client
+Displays music libraries and recent albums
+"""
 import json
 from kivy.uix.screenmanager import Screen
 from kivy.properties import ListProperty, BooleanProperty, NumericProperty
@@ -22,16 +26,21 @@ class MusicScreen(Screen):
     
     def on_enter(self):
         """Called when screen is entered"""
+        print("MusicScreen: Entering screen")
+        
+        # Verify app and current user
+        app = self.get_app()
+        print(f"MusicScreen: Current user data: {app.current_user}")
+        print(f"MusicScreen: Current user name: {app.current_user.get('User', {}).get('Name')}")
+        print(f"MusicScreen: Auth token: {app.auth_token}")
+        
         # Load recent albums when screen is shown
         if not self.recent_albums and not self.loading:
+            print("MusicScreen: Loading recent music")
             self.load_recent_music()
+        else:
+            print("MusicScreen: Skipping music load - albums exist or loading")
             
-        print("Entered music screen")
-        app = self.get_app()
-        print(f"Current user: {app.current_user}")
-        print(f"Auth token: {app.auth_token}")
-        print(f"Libraries: {self.libraries}")
-    
     def get_app(self):
         """Get app instance"""
         from kivy.app import App
@@ -39,41 +48,82 @@ class MusicScreen(Screen):
     
     def set_libraries(self, libraries):
         """Set available music libraries"""
-        print(f"Setting music libraries: {len(libraries)} libraries")
-        for lib in libraries:
-            print(f"Library: {lib.get('Name')} (ID: {lib.get('Id')})")
+        print(f"MusicScreen: Setting libraries - Total: {len(libraries)} libraries")
         
-        self.libraries = libraries
-        self.update_libraries_list()
+        # Detailed library logging
+        for lib in libraries:
+            print(f"Library Details:")
+            for key, value in lib.items():
+                print(f"  {key}: {value}")
+        
+        # Filter only music libraries
+        music_libraries = [lib for lib in libraries if lib.get('CollectionType') == 'music']
+        
+        print(f"MusicScreen: Found {len(music_libraries)} music libraries")
+        
+        # Fallback to all libraries if no music libraries found
+        if not music_libraries:
+            print("MusicScreen: No specific music libraries found. Using all libraries.")
+            music_libraries = libraries
+        
+        self.libraries = music_libraries
+        
+        # Update UI on main thread
+        Clock.schedule_once(self.update_libraries_list, 0)
+        
+        # Try to load recent music or all albums if no libraries found
+        if music_libraries:
+            print("MusicScreen: Loading recent music from libraries")
+            self.load_recent_music()
+        else:
+            print("MusicScreen: No libraries found - attempting to load all albums")
+            self.load_all_albums()
+
+    def load_all_albums(self):
+        """Load albums when no libraries are found"""
+        print("MusicScreen: Attempting to load ALL albums")
+        app = self.get_app()
+        
+        app.api.get_albums(
+            limit=50,  # Adjust as needed
+            offset=0,
+            success_callback=self.on_recent_albums_loaded,
+            error_callback=self.on_load_error
+        )
     
-    def update_libraries_list(self):
+    def update_libraries_list(self, dt=None):
         """Update the libraries list widget"""
-        print("Updating libraries list in UI")
-        libraries_list = self.ids.libraries_list
+        print(f"MusicScreen: Updating libraries list - {len(self.libraries)} libraries")
         
         try:
+            libraries_list = self.ids.libraries_list
             libraries_list.clear_widgets()
             
             if not self.libraries:
-                print("No libraries to display")
+                print("MusicScreen: No libraries to display")
                 return
                 
-            print(f"Adding {len(self.libraries)} libraries to UI")
+            print(f"MusicScreen: Adding {len(self.libraries)} libraries to UI")
             
             for library in self.libraries:
+                lib_name = library.get('Name', 'Unknown Library')
+                lib_id = library.get('Id', 'No ID')
+                print(f"MusicScreen: Adding library - Name: {lib_name}, ID: {lib_id}")
+                
                 item = OneLineAvatarIconListItem(
-                    text=library.get('Name', 'Unknown Library'),
+                    text=lib_name,
                     on_release=lambda x, lib=library: self.open_library(lib)
                 )
                 icon = IconLeftWidget(icon="music-box-multiple")
                 item.add_widget(icon)
                 libraries_list.add_widget(item)
-                print(f"Added library: {library.get('Name')}")
         except Exception as e:
-            print(f"ERROR updating libraries list: {str(e)}")
+            print(f"MusicScreen: ERROR updating libraries list: {str(e)}")
     
     def open_library(self, library):
         """Open a specific library"""
+        print(f"MusicScreen: Opening library - {library.get('Name', 'Unknown')}")
+        
         # Get parent screens
         app = self.get_app()
         home_screen = app.root
@@ -85,6 +135,7 @@ class MusicScreen(Screen):
     
     def load_recent_music(self):
         """Load recently added music"""
+        print("MusicScreen: Loading recent music")
         self.loading = True
         app = self.get_app()
         
@@ -100,7 +151,7 @@ class MusicScreen(Screen):
         """Handle loaded recent albums"""
         self.loading = False
         
-        print(f"Recent albums response: {json.dumps(response, indent=2)}")
+        print(f"MusicScreen: Recent albums response: {json.dumps(response, indent=2)}")
         
         if response and 'Items' in response:
             self.recent_albums = response['Items']
@@ -108,11 +159,15 @@ class MusicScreen(Screen):
             app = self.get_app()
             app.cache_manager.cache_metadata('recent_albums', response)
             
-            # Update the UI
-            self.update_recent_albums()
+            # Update the UI on main thread
+            Clock.schedule_once(self.update_recent_albums, 0)
+        else:
+            print("MusicScreen: No recent albums found or invalid response")
     
-    def update_recent_albums(self):
+    def update_recent_albums(self, dt=None):
         """Update recent albums in the UI"""
+        print(f"MusicScreen: Updating recent albums - {len(self.recent_albums)} albums")
+        
         recent_grid = self.ids.recent_albums_grid
         recent_grid.clear_widgets()
         
@@ -124,6 +179,7 @@ class MusicScreen(Screen):
     def on_load_error(self, error_message):
         """Handle error loading data"""
         self.loading = False
+        print(f"MusicScreen: Error loading music: {error_message}")
         self.show_error(f"Error loading music: {error_message}")
     
     def show_error(self, message):
@@ -145,4 +201,5 @@ class MusicScreen(Screen):
     
     def refresh(self):
         """Refresh data"""
+        print("MusicScreen: Refreshing data")
         self.load_recent_music()

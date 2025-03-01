@@ -28,13 +28,29 @@ class HomeScreen(Screen):
         """Called when screen is entered"""
         app = self.get_app()
         
+        # Log detailed user information
+        print("HomeScreen: Entering screen")
+        print(f"HomeScreen: Current user raw data: {app.current_user}")
+        
         # Set current user name
-        if app.current_user and app.current_user.get('User', {}).get('Name'):
-            self.current_user_name = app.current_user['User']['Name']
+        if app.current_user and isinstance(app.current_user, dict) and 'User' in app.current_user:
+            user_data = app.current_user['User']
+            print(f"HomeScreen: User data details: {json.dumps(user_data, indent=2)}")
+            self.current_user_name = user_data.get('Name', 'Unknown User')
+        else:
+            print("HomeScreen: No valid user data found")
+            self.current_user_name = "Unknown User"
+        
+        # Log current user name and other details
+        print(f"HomeScreen: Current user name set to: {self.current_user_name}")
+        print(f"HomeScreen: Auth token: {app.auth_token}")
         
         # Set up screen manager if not already done
         if not self.screen_manager:
+            print("HomeScreen: Setting up screen manager")
             self.setup_screen_manager()
+        else:
+            print("HomeScreen: Screen manager already set up")
             
         # Wait for widget to be added to the tree before loading data
         Clock.schedule_once(self.load_initial_data, 0.5)
@@ -46,7 +62,7 @@ class HomeScreen(Screen):
     
     def setup_screen_manager(self):
         """Set up the nested screen manager for content"""
-        print("Setting up screen manager")
+        print("HomeScreen: Setting up screen manager")
         # Add all content screens
         self.screen_manager = ScreenManager()
         self.screen_manager.add_widget(MusicScreen(name="music"))
@@ -64,9 +80,9 @@ class HomeScreen(Screen):
             content_area = self.ids.content_area
             content_area.clear_widgets()
             content_area.add_widget(self.screen_manager)
-            print("Screen manager setup complete")
+            print("HomeScreen: Screen manager setup complete")
         except Exception as e:
-            print(f"ERROR setting up screen manager: {str(e)}")
+            print(f"HomeScreen: ERROR setting up screen manager: {str(e)}")
     
     def load_initial_data(self, dt):
         """Load initial data for the app"""
@@ -74,8 +90,8 @@ class HomeScreen(Screen):
         self.loading = True
         app = self.get_app()
         
-        print(f"Loading initial data for user: {app.current_user}")
-        print(f"Auth token: {app.auth_token}")
+        print(f"HomeScreen: Loading initial data for user: {self.current_user_name}")
+        print(f"HomeScreen: Auth token: {app.auth_token}")
         
         app.api.get_music_libraries(
             success_callback=self.on_libraries_loaded,
@@ -86,7 +102,11 @@ class HomeScreen(Screen):
         """Handle loaded music libraries"""
         self.loading = False
         
-        print(f"Libraries loaded: {json.dumps(libraries, indent=2)}")
+        print("HomeScreen: Libraries loaded successfully")
+        print(f"HomeScreen: Total libraries found: {len(libraries)}")
+        print("HomeScreen: Library details:")
+        for lib in libraries:
+            print(json.dumps(lib, indent=2))
         
         # Notify music screen of loaded libraries
         music_screen = self.screen_manager.get_screen("music")
@@ -95,7 +115,7 @@ class HomeScreen(Screen):
     def on_libraries_error(self, error_message):
         """Handle error loading libraries"""
         self.loading = False
-        print(f"Error loading libraries: {error_message}")
+        print(f"HomeScreen: Error loading libraries: {error_message}")
         self.show_error(f"Error loading libraries: {error_message}")
     
     def show_error(self, message):
@@ -118,6 +138,7 @@ class HomeScreen(Screen):
     def navigate_to(self, screen_name):
         """Navigate to a specific screen"""
         if self.screen_manager:
+            print(f"HomeScreen: Navigating to {screen_name}")
             self.screen_manager.current = screen_name
     
     def show_now_playing(self):

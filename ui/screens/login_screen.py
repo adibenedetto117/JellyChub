@@ -3,10 +3,12 @@ Login Screen for Jellyfin Music Client
 """
 from kivy.uix.screenmanager import Screen
 from kivy.properties import StringProperty, BooleanProperty
-from kivymd.uix.button import MDFlatButton, MDRaisedButton
+from kivymd.uix.label import MDLabel
+from kivymd.uix.button import MDRaisedButton
 from kivymd.uix.dialog import MDDialog
 from kivymd.uix.boxlayout import MDBoxLayout
 from kivymd.uix.textfield import MDTextField
+from kivymd.uix.spinner import MDSpinner
 
 class LoginScreen(Screen):
     """Login screen for Jellyfin authentication"""
@@ -98,11 +100,12 @@ class LoginScreen(Screen):
         if self.error_dialog:
             self.error_dialog.dismiss()
             
+        # Use MDDialog with KivyMD components
         self.error_dialog = MDDialog(
             title="Error",
             text=message,
             buttons=[
-                MDFlatButton(
+                MDRaisedButton(
                     text="OK",
                     on_release=lambda x: self.error_dialog.dismiss()
                 )
