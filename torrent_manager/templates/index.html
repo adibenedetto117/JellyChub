@@ -3,237 +3,281 @@
 {% block title %}Torrent Manager - Downloads{% endblock %}
 
 {% block content %}
-<div class="row mb-4">
-    <div class="col-md-12">
-        <div class="card">
-            <div class="card-header bg-primary text-white">
-                <h5 class="mb-0">Add New Torrent</h5>
-            </div>
-            <div class="card-body">
-                <form action="{{ url_for('add_torrent') }}" method="post" enctype="multipart/form-data">
-                    <div class="mb-3">
-                        <label for="magnet" class="form-label">Magnet Link</label>
-                        <input type="text" class="form-control" id="magnet" name="magnet" placeholder="magnet:?xt=urn:btih:...">
+<div class="container">
+    <!-- Statistics Dashboard -->
+    <div class="row mb-4 mt-4">
+        <div class="col-md-12">
+            <div class="card shadow-sm">
+                <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Dashboard</h5>
+                    <span class="badge bg-light text-dark" id="update-time">Last updated: Just now</span>
+                </div>
+                <div class="card-body">
+                    <div class="row text-center">
+                        <div class="col-md-3 col-sm-6 mb-3 mb-md-0">
+                            <div class="p-3 bg-light rounded">
+                                <h6>Download Speed</h6>
+                                <h3 id="total-download-speed">0 KB/s</h3>
+                                <div class="progress mt-2">
+                                    <div class="progress-bar bg-primary" id="download-speed-bar" role="progressbar" style="width: 0%"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3 col-sm-6 mb-3 mb-md-0">
+                            <div class="p-3 bg-light rounded">
+                                <h6>Upload Speed</h6>
+                                <h3 id="total-upload-speed">0 KB/s</h3>
+                                <div class="progress mt-2">
+                                    <div class="progress-bar bg-success" id="upload-speed-bar" role="progressbar" style="width: 0%"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3 col-sm-6 mb-3 mb-md-0">
+                            <div class="p-3 bg-light rounded">
+                                <h6>Active Torrents</h6>
+                                <h3 id="active-torrents">0/0</h3>
+                                <small class="text-muted" id="torrents-stats">Downloading: 0 | Seeding: 0</small>
+                            </div>
+                        </div>
+                        <div class="col-md-3 col-sm-6">
+                            <div class="p-3 bg-light rounded">
+                                <h6>Disk Space</h6>
+                                <h3 id="disk-space-used">0 MB</h3>
+                                <div class="progress mt-2">
+                                    <div class="progress-bar bg-warning" id="disk-space-bar" role="progressbar" style="width: 0%"></div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                    <div class="mb-3">
-                        <label for="torrent_file" class="form-label">Or Upload Torrent File</label>
-                        <input class="form-control" type="file" id="torrent_file" name="torrent_file" accept=".torrent">
-                    </div>
-                    <button type="submit" class="btn btn-primary">Add Torrent</button>
-                </form>
-            </div>
-        </div>
-    </div>
-</div>
-
-<div class="row">
-    <div class="col-md-12">
-        <div class="card">
-            <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
-                <h5 class="mb-0">Current Downloads</h5>
-                <button id="refresh-btn" class="btn btn-sm btn-outline-light">Refresh</button>
-            </div>
-            <div class="card-body p-0">
-                <div class="table-responsive">
-                    <table class="table table-hover mb-0" id="torrents-table">
-                        <thead class="table-light">
-                            <tr>
-                                <th>Name</th>
-                                <th>Size</th>
-                                <th>Progress</th>
-                                <th>Speed</th>
-                                <th>Status</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% if torrents %}
-                                {% for torrent in torrents %}
-                                <tr data-hash="{{ torrent.hash }}">
-                                    <td>{{ torrent.name }}</td>
-                                    <td>{{ (torrent.size / (1024 * 1024))|round(2) }} MB</td>
-                                    <td>
-                                        <div class="progress">
-                                            <div class="progress-bar" role="progressbar" style="width: {{ torrent.progress }}%">
-                                                {{ torrent.progress|round(1) }}%
-                                            </div>
-                                        </div>
-                                    </td>
-                                    <td>{{ torrent.download_rate|round(1) }} KB/s</td>
-                                    <td>{{ torrent.status }}</td>
-                                    <td>
-                                        {% if torrent.status == 'paused' %}
-                                            <a href="{{ url_for('resume_torrent', torrent_id=torrent.hash) }}" class="btn btn-sm btn-success">Resume</a>
-                                        {% else %}
-                                            <a href="{{ url_for('pause_torrent', torrent_id=torrent.hash) }}" class="btn btn-sm btn-warning">Pause</a>
-                                        {% endif %}
-                                        <a href="{{ url_for('remove_torrent', torrent_id=torrent.hash) }}" class="btn btn-sm btn-danger" onclick="return confirm('Are you sure you want to remove this torrent?');">Remove</a>
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                            {% else %}
-                                <tr>
-                                    <td colspan="6" class="text-center py-3">No torrents found. Add a new torrent to get started.</td>
-                                </tr>
-                            {% endif %}
-                        </tbody>
-                    </table>
                 </div>
             </div>
         </div>
     </div>
-</div>
 
-<!-- Torrent Details Modal -->
-<div class="modal fade" id="torrentDetailsModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="detailsModalTitle">Torrent Details</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body" id="detailsModalBody">
-                <!-- Content will be filled via JavaScript -->
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+    <!-- Add New Torrent -->
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="card shadow-sm">
+                <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Add New Torrent</h5>
+                    <button type="button" class="btn btn-sm btn-light" data-bs-toggle="collapse" data-bs-target="#add-torrent-form">
+                        <i class="fas fa-chevron-down"></i>
+                    </button>
+                </div>
+                <div class="card-body collapse show" id="add-torrent-form">
+                    <form action="{{ url_for('add_torrent') }}" method="post" enctype="multipart/form-data" id="torrent-form">
+                        <div class="mb-3">
+                            <label for="magnet" class="form-label">Magnet Link or URL</label>
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="magnet" name="magnet" placeholder="magnet:?xt=urn:btih:... or https://...">
+                                <button class="btn btn-outline-secondary" type="button" id="paste-magnet">Paste</button>
+                            </div>
+                            <div class="form-text">Enter a magnet link, torrent URL, or upload a torrent file</div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="torrent_file" class="form-label">Or Upload Torrent File</label>
+                            <input class="form-control" type="file" id="torrent_file" name="torrent_file" accept=".torrent">
+                        </div>
+                        
+                        <div class="mb-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="show_advanced" name="show_advanced">
+                                <label class="form-check-label" for="show_advanced">
+                                    Show advanced options
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <div id="advanced-options" class="mb-3" style="display: none;">
+                            <div class="card card-body bg-light">
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label for="download_dir_specific" class="form-label">Download Directory</label>
+                                            <input type="text" class="form-control" id="download_dir_specific" name="download_dir_specific" placeholder="Use default">
+                                            <div class="form-text">Leave empty to use default download directory</div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label for="start_option" class="form-label">Start Option</label>
+                                            <select class="form-select" id="start_option" name="start_option">
+                                                <option value="default">Use default settings</option>
+                                                <option value="start">Start immediately</option>
+                                                <option value="pause">Add paused</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label for="priority" class="form-label">Priority</label>
+                                            <select class="form-select" id="priority" name="priority">
+                                                <option value="normal">Normal</option>
+                                                <option value="high">High</option>
+                                                <option value="low">Low</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="mb-3">
+                                            <label for="seed_ratio" class="form-label">Seed Ratio Limit</label>
+                                            <input type="number" class="form-control" id="seed_ratio" name="seed_ratio" placeholder="Use default" min="0" step="0.1">
+                                            <div class="form-text">Leave empty to use default seed ratio</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="sequential" name="sequential">
+                                    <label class="form-check-label" for="sequential">
+                                        Download sequentially (for streaming)
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <button type="submit" class="btn btn-primary" id="add-torrent-btn">
+                            <i class="fas fa-plus-circle me-2"></i>Add Torrent
+                        </button>
+                    </form>
+                </div>
             </div>
         </div>
     </div>
-</div>
-{% endblock %}
 
-{% block extra_js %}
-<script>
-    // Auto-refresh the torrents list every 5 seconds
-    setInterval(refreshTorrents, 5000);
-    
-    // Manual refresh button
-    document.getElementById('refresh-btn').addEventListener('click', refreshTorrents);
-    
-    // Add click event to show torrent details
-    document.querySelector('#torrents-table tbody').addEventListener('click', function(e) {
-        const row = e.target.closest('tr');
-        if (row && !e.target.closest('a')) {
-            const hash = row.dataset.hash;
-            if (hash) {
-                showTorrentDetails(hash);
-            }
-        }
-    });
-    
-    function refreshTorrents() {
-        fetch('{{ url_for("get_status") }}')
-            .then(response => response.json())
-            .then(torrents => {
-                const tbody = document.querySelector('#torrents-table tbody');
-                
-                // Clear the table if there are no torrents
-                if (torrents.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="6" class="text-center py-3">No torrents found. Add a new torrent to get started.</td></tr>';
-                    return;
-                }
-                
-                // Clear the table if we're going to repopulate it
-                if (tbody.querySelector('td[colspan="6"]')) {
-                    tbody.innerHTML = '';
-                }
-                
-                // Update or add rows for each torrent
-                torrents.forEach(torrent => {
-                    // Check if row exists
-                    let row = tbody.querySelector(`tr[data-hash="${torrent.hash}"]`);
-                    
-                    if (!row) {
-                        // Create new row
-                        row = document.createElement('tr');
-                        row.dataset.hash = torrent.hash;
-                        tbody.appendChild(row);
-                    }
-                    
-                    // Update row content
-                    row.innerHTML = `
-                        <td>${torrent.name}</td>
-                        <td>${(torrent.size / (1024 * 1024)).toFixed(2)} MB</td>
-                        <td>
-                            <div class="progress">
-                                <div class="progress-bar" role="progressbar" style="width: ${torrent.progress}%">
-                                    ${torrent.progress.toFixed(1)}%
-                                </div>
-                            </div>
-                        </td>
-                        <td>${torrent.download_rate.toFixed(1)} KB/s</td>
-                        <td>${torrent.status}</td>
-                        <td>
-                            ${torrent.status === 'paused' 
-                                ? `<a href="{{ url_for('resume_torrent', torrent_id='') }}${torrent.hash}" class="btn btn-sm btn-success">Resume</a>`
-                                : `<a href="{{ url_for('pause_torrent', torrent_id='') }}${torrent.hash}" class="btn btn-sm btn-warning">Pause</a>`
-                            }
-                            <a href="{{ url_for('remove_torrent', torrent_id='') }}${torrent.hash}" class="btn btn-sm btn-danger" onclick="return confirm('Are you sure you want to remove this torrent?');">Remove</a>
-                        </td>
-                    `;
-                });
-                
-                // Remove rows for torrents that no longer exist
-                const currentHashes = torrents.map(t => t.hash);
-                const rows = tbody.querySelectorAll('tr[data-hash]');
-                rows.forEach(row => {
-                    if (!currentHashes.includes(row.dataset.hash)) {
-                        row.remove();
-                    }
-                });
-            })
-            .catch(error => console.error('Error refreshing torrents:', error));
-    }
-    
-    function showTorrentDetails(hash) {
-        fetch('{{ url_for("get_status") }}')
-            .then(response => response.json())
-            .then(torrents => {
-                const torrent = torrents.find(t => t.hash === hash);
-                if (!torrent) return;
-                
-                const modalTitle = document.getElementById('detailsModalTitle');
-                const modalBody = document.getElementById('detailsModalBody');
-                
-                modalTitle.textContent = torrent.name;
-                
-                let filesHtml = '';
-                if (torrent.files && torrent.files.length > 0) {
-                    filesHtml = '<div class="mt-3"><h6>Files:</h6><ul>';
-                    torrent.files.forEach(file => {
-                        filesHtml += `<li>${file}</li>`;
-                    });
-                    filesHtml += '</ul></div>';
-                }
-                
-                modalBody.innerHTML = `
-                    <div class="row">
-                        <div class="col-md-6">
-                            <p><strong>Size:</strong> ${(torrent.size / (1024 * 1024)).toFixed(2)} MB</p>
-                            <p><strong>Progress:</strong> ${torrent.progress.toFixed(1)}%</p>
-                            <p><strong>Status:</strong> ${torrent.status}</p>
+    <!-- Torrents List -->
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card shadow-sm">
+                <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Torrents</h5>
+                    <div>
+                        <div class="btn-group me-2">
+                            <button id="filter-all" class="btn btn-sm btn-outline-light active">All</button>
+                            <button id="filter-downloading" class="btn btn-sm btn-outline-light">Downloading</button>
+                            <button id="filter-seeding" class="btn btn-sm btn-outline-light">Seeding</button>
+                            <button id="filter-paused" class="btn btn-sm btn-outline-light">Paused</button>
+                            <button id="filter-completed" class="btn btn-sm btn-outline-light">Completed</button>
                         </div>
-                        <div class="col-md-6">
-                            <p><strong>Download Speed:</strong> ${torrent.download_rate.toFixed(1)} KB/s</p>
-                            <p><strong>Upload Speed:</strong> ${torrent.upload_rate.toFixed(1)} KB/s</p>
-                            <p><strong>Peers/Seeds:</strong> ${torrent.peers}/${torrent.seeds}</p>
-                        </div>
+                        <button id="refresh-btn" class="btn btn-sm btn-outline-light">
+                            <i class="fas fa-sync-alt me-1"></i>Refresh
+                        </button>
                     </div>
-                    <div class="row mt-2">
-                        <div class="col-md-12">
-                            <p><strong>Downloaded:</strong> ${torrent.total_downloaded.toFixed(2)} MB</p>
-                            <p><strong>Uploaded:</strong> ${torrent.total_uploaded.toFixed(2)} MB</p>
-                            <p><strong>Hash:</strong> ${torrent.hash}</p>
-                        </div>
-                    </div>
-                    ${filesHtml}
-                `;
-                
-                const modal = new bootstrap.Modal(document.getElementById('torrentDetailsModal'));
-                modal.show();
-            })
-            .catch(error => console.error('Error getting torrent details:', error));
-    }
-</script>
-{% endblock %}
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0" id="torrents-table">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width: 30%">Name</th>
+                                    <th style="width: 10%">Size</th>
+                                    <th style="width: 20%">Progress</th>
+                                    <th style="width: 10%">Speed</th>
+                                    <th style="width: 10%">ETA</th>
+                                    <th style="width: 10%">Status</th>
+                                    <th style="width: 10%">Actions</th>
+                                </tr>
+                            </thead>
+                                                            <tbody>
+                                {% if torrents %}
+                                    {% for torrent in torrents %}
+                                    <tr data-hash="{{ torrent.hash }}" data-status="{{ torrent.status }}">
+                                        <td class="torrent-name">
+                                            <div class="d-flex align-items-center">
+                                                <div class="me-2">
+                                                    {% if torrent.progress == 100 %}
+                                                        <i class="fas fa-check-circle text-success"></i>
+                                                    {% elif torrent.status == 'paused' %}
+                                                        <i class="fas fa-pause-circle text-warning"></i>
+                                                    {% elif torrent.status == 'downloading' %}
+                                                        <i class="fas fa-arrow-circle-down text-primary"></i>
+                                                    {% elif torrent.status == 'seeding' %}
+                                                        <i class="fas fa-arrow-circle-up text-info"></i>
+                                                    {% else %}
+                                                        <i class="fas fa-circle text-secondary"></i>
+                                                    {% endif %}
+                                                </div>
+                                                <div>
+                                                    <div class="font-weight-bold">{{ torrent.name }}</div>
+                                                    <small class="text-muted">Added: {{ torrent.added_time|format_timestamp }}</small>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td>{{ torrent.size|format_size }}</td>
+                                        <td>
+                                            <div class="progress">
+                                                <div class="progress-bar bg-{{ torrent.progress|progress_color }}" role="progressbar" style="width: {{ torrent.progress }}%">
+                                                    {{ torrent.progress|round(1) }}%
+                                                </div>
+                                            </div>
+                                            <small class="text-muted">{{ torrent.total_downloaded|format_size }} of {{ torrent.size|format_size }}</small>
+                                        </td>
+                                        <td>
+                                            <div>↓ {{ torrent.download_rate|round(1) }} KB/s</div>
+                                            <div>↑ {{ torrent.upload_rate|round(1) }} KB/s</div>
+                                        </td>
+                                        <td>{{ torrent|calculate_eta }}</td>
+                                        <td>
+                                            <span class="badge bg-{{ torrent.status|status_color }}">
+                                                {{ torrent.status|capitalize }}
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <div class="btn-group">
+                                                <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                                                    Actions
+                                                </button>
+                                                <ul class="dropdown-menu dropdown-menu-end">
+                                                    {% if torrent.status == 'paused' %}
+                                                        <li><a class="dropdown-item" href="{{ url_for('resume_torrent', torrent_id=torrent.hash) }}">
+                                                            <i class="fas fa-play me-2"></i>Resume
+                                                        </a></li>
+                                                    {% else %}
+                                                        <li><a class="dropdown-item" href="{{ url_for('pause_torrent', torrent_id=torrent.hash) }}">
+                                                            <i class="fas fa-pause me-2"></i>Pause
+                                                        </a></li>
+                                                    {% endif %}
+                                                    <li><a class="dropdown-item" href="{{ url_for('prioritize_torrent', torrent_id=torrent.hash) }}">
+                                                        <i class="fas fa-arrow-up me-2"></i>Prioritize
+                                                    </a></li>
+                                                    <li><a class="dropdown-item" href="{{ url_for('torrent_files', torrent_id=torrent.hash) }}">
+                                                        <i class="fas fa-file-alt me-2"></i>Files
+                                                    </a></li>
+                                                    <li><a class="dropdown-item" href="{{ url_for('torrent_trackers', torrent_id=torrent.hash) }}">
+                                                        <i class="fas fa-server me-2"></i>Trackers
+                                                    </a></li>
+                                                    <li><a class="dropdown-item" href="{{ url_for('torrent_peers', torrent_id=torrent.hash) }}">
+                                                        <i class="fas fa-users me-2"></i>Peers
+                                                    </a></li>
+                                                    <li><hr class="dropdown-divider"></li>
+                                                    <li><a class="dropdown-item" href="{{ url_for('force_recheck', torrent_id=torrent.hash) }}">
+                                                        <i class="fas fa-sync me-2"></i>Force Recheck
+                                                    </a></li>
+                                                    <li><a class="dropdown-item" href="{{ url_for('force_reannounce', torrent_id=torrent.hash) }}">
+                                                        <i class="fas fa-bullhorn me-2"></i>Force Reannounce
+                                                    </a></li>
+                                                    <li><hr class="dropdown-divider"></li>
+                                                    <li><a class="dropdown-item text-danger remove-torrent" href="{{ url_for('remove_torrent', torrent_id=torrent.hash) }}" data-name="{{ torrent.name }}">
+                                                        <i class="fas fa-trash-alt me-2"></i>Remove
+                                                    </a></li>
+                                                </ul>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                {% else %}
+                                    <tr>
+                                        <td colspan="7" class="text-center py-5">
+                                            <div class="empty-state">
+                                                <i class="fas fa-download fa-3x mb-3 text-muted"></i>
+                                                <h5>No torrents found</h5>
+                                                <p class="text-muted">Add a new torrent to get started</p>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                {% endif %}
+                                </tbody>

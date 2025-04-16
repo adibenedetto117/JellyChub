@@ -25,22 +25,29 @@ MANIFEST
 venv/
 env/
 ENV/
+.env/
+.venv/
 
 # IDE files
 .idea/
 .vscode/
 *.swp
 *.swo
+.spyderproject
+.spyproject
+.ropeproject
 
 # Logs
 *.log
-torrent_manager/torrent_manager.log
-jellytorrent.log
 logs/
+log/
+*.log.*
+torrent_manager/torrent_manager.log
 
 # Database
 *.sqlite
 *.db
+*.sqlite3
 
 # Torrent related
 *.torrent
@@ -48,15 +55,26 @@ logs/
 *.state
 dht.state
 session.state
+resume/
+state/
 
 # Downloaded content
 downloads/
+torrents/
+media/
+temp_uploads/
 
 # Configuration files with sensitive data
 config.yml
 *.secret
 *.key
 *.pem
+.env
+instance/
+config.ini
+settings.json
+user_settings.json
+app_settings.json
 
 # Temporary files
 tmp/
@@ -64,13 +82,40 @@ tmp/
 .tmp/
 temp/
 
-# User specific settings
-user_settings.json
-
 # System files
 .DS_Store
 Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+Icon?
+.directory
 
 # Test coverage
 .coverage
 htmlcov/
+.tox/
+.nox/
+.hypothesis/
+.pytest_cache/
+nosetests.xml
+coverage.xml
+*.cover
+
+# User specific data
+user_data/
+profiles/
+
+# Auto-generated documentation
+docs/_build/
+docs/api/
+_build/
+_static/
+_templates/
+
+# Package specific
+*.pkl
+*.pt
+
+# Local development
+local_settings.py

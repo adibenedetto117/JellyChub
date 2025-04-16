@@ -4,42 +4,295 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Torrent Manager{% endblock %}</title>
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/favicon.png') }}">
+    
+    <!-- Bootstrap CSS -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css">
+    
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.1/css/all.min.css">
+    
+    <!-- Google Fonts - Inter -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap">
+    
+    <!-- Custom CSS -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    
+    <!-- Extra CSS -->
     {% block extra_css %}{% endblock %}
+    
+    <!-- Theme Color for Mobile -->
+    <meta name="theme-color" content="#4361ee">
 </head>
 <body>
+    <!-- Navigation Bar -->
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
         <div class="container">
-            <a class="navbar-brand" href="{{ url_for('index') }}">Torrent Manager</a>
+            <a class="navbar-brand d-flex align-items-center" href="{{ url_for('index') }}">
+                <i class="fas fa-magnet me-2"></i>
+                <span>Torrent Manager</span>
+                <span class="badge bg-light text-dark ms-2">v0.2.0</span>
+            </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav ms-auto">
                     <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('index') }}">Torrents</a>
+                        <a class="nav-link {% if request.endpoint == 'index' %}active{% endif %}" href="{{ url_for('index') }}">
+                            <i class="fas fa-download me-1"></i> Torrents
+                        </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('settings') }}">Settings</a>
+                        <a class="nav-link {% if request.endpoint == 'settings' %}active{% endif %}" href="{{ url_for('settings') }}">
+                            <i class="fas fa-cog me-1"></i> Settings
+                        </a>
+                    </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="fas fa-tools me-1"></i> Tools
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="navbarDropdown">
+                            <li><a class="dropdown-item" href="{{ url_for('check_updates') }}">
+                                <i class="fas fa-sync me-2"></i> Check for Updates
+                            </a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('test_connection') }}">
+                                <i class="fas fa-network-wired me-2"></i> Test Connection
+                            </a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#speedLimitModal">
+                                <i class="fas fa-tachometer-alt me-2"></i> Speed Limits
+                            </a></li>
+                        </ul>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="https://github.com/yourusername/torrent-manager" target="_blank">
+                            <i class="fab fa-github me-1"></i> GitHub
+                        </a>
                     </li>
                 </ul>
             </div>
         </div>
     </nav>
 
+    <!-- Main Content -->
     <div class="container mt-4">
+        <!-- Flash Messages -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }} alert-dismissible fade show mb-4" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+        
+        <!-- Page Content -->
         {% block content %}{% endblock %}
     </div>
 
-    <footer class="mt-5 py-3 text-center text-muted">
+    <!-- Footer -->
+    <footer class="footer mt-auto py-3 bg-light">
         <div class="container">
-            <p>Torrent Manager &copy; 2025</p>
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <span class="text-muted">Torrent Manager &copy; 2025</span>
+                </div>
+                <div>
+                    <span class="d-none d-md-inline text-muted me-3">Powered by libtorrent</span>
+                    <a href="#" class="text-muted me-3" data-bs-toggle="modal" data-bs-target="#aboutModal">
+                        <i class="fas fa-info-circle"></i> About
+                    </a>
+                    <a href="https://github.com/yourusername/torrent-manager/issues" target="_blank" class="text-muted">
+                        <i class="fas fa-bug"></i> Report Issue
+                    </a>
+                </div>
+            </div>
         </div>
     </footer>
 
+    <!-- Speed Limit Modal -->
+    <div class="modal fade" id="speedLimitModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Speed Limits</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="speed-limit-form">
+                        <div class="mb-3">
+                            <label for="download_speed_limit" class="form-label">Download Speed Limit (KB/s)</label>
+                            <input type="number" class="form-control" id="download_speed_limit" name="download_speed_limit" value="{{ settings.max_download_speed if settings else 0 }}" min="0">
+                            <div class="form-text">0 means unlimited</div>
+                        </div>
+                        <div class="mb-3">
+                            <label for="upload_speed_limit" class="form-label">Upload Speed Limit (KB/s)</label>
+                            <input type="number" class="form-control" id="upload_speed_limit" name="upload_speed_limit" value="{{ settings.max_upload_speed if settings else 0 }}" min="0">
+                            <div class="form-text">0 means unlimited</div>
+                        </div>
+                        <div class="mb-3 form-check">
+                            <input type="checkbox" class="form-check-input" id="alternative_speed_enabled" name="alternative_speed_enabled" 
+                                {{ 'checked' if settings and settings.alternative_speed_enabled else '' }}>
+                            <label class="form-check-label" for="alternative_speed_enabled">Enable Alternative Speed</label>
+                            <div class="form-text">Apply these limits only during scheduled times</div>
+                        </div>
+                        <div id="alternative-speed-schedule" class="mb-3" style="{{ '' if settings and settings.alternative_speed_enabled else 'display: none;' }}">
+                            <label class="form-label">Alternative Speed Schedule</label>
+                            <div class="row">
+                                <div class="col-6">
+                                    <label for="alt_speed_start" class="form-label">Start Time</label>
+                                    <input type="time" class="form-control" id="alt_speed_start" name="alt_speed_start" 
+                                        value="{{ settings.alt_speed_start if settings else '08:00' }}">
+                                </div>
+                                <div class="col-6">
+                                    <label for="alt_speed_end" class="form-label">End Time</label>
+                                    <input type="time" class="form-control" id="alt_speed_end" name="alt_speed_end" 
+                                        value="{{ settings.alt_speed_end if settings else '23:00' }}">
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="save-speed-limits">Save Changes</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- About Modal -->
+    <div class="modal fade" id="aboutModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">About Torrent Manager</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="text-center mb-4">
+                        <i class="fas fa-magnet fa-4x text-primary mb-3"></i>
+                        <h4>Torrent Manager</h4>
+                        <p class="text-muted">Version 0.2.0</p>
+                    </div>
+                    <p>A modern, web-based torrent download manager powered by libtorrent and Flask.</p>
+                    <p>This application allows you to manage torrent downloads through a clean, responsive interface.</p>
+                    <hr>
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <strong>Developer:</strong> Your Name
+                        </div>
+                        <div>
+                            <strong>License:</strong> MIT
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <a href="https://github.com/yourusername/torrent-manager" target="_blank" class="btn btn-primary">
+                        <i class="fab fa-github me-1"></i> GitHub
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification Toast -->
+    <div class="position-fixed bottom-0 end-0 p-3" style="z-index: 11">
+        <div id="liveToast" class="toast" role="alert" aria-live="assertive" aria-atomic="true">
+            <div class="toast-header">
+                <strong class="me-auto" id="toast-title">Notification</strong>
+                <small id="toast-time">Just now</small>
+                <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+            </div>
+            <div class="toast-body" id="toast-message">
+                <!-- Toast message will be filled via JavaScript -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS Bundle with Popper -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Custom JavaScript -->
     <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+    
+    <!-- Extra JavaScript -->
     {% block extra_js %}{% endblock %}
+    
+    <script>
+        // Enable alternative speed schedule toggle
+        document.addEventListener('DOMContentLoaded', function() {
+            const altSpeedCheckbox = document.getElementById('alternative_speed_enabled');
+            const altSpeedSchedule = document.getElementById('alternative-speed-schedule');
+            
+            if (altSpeedCheckbox && altSpeedSchedule) {
+                altSpeedCheckbox.addEventListener('change', function() {
+                    altSpeedSchedule.style.display = this.checked ? 'block' : 'none';
+                });
+            }
+            
+            // Save speed limits
+            const saveSpeedLimitsBtn = document.getElementById('save-speed-limits');
+            if (saveSpeedLimitsBtn) {
+                saveSpeedLimitsBtn.addEventListener('click', function() {
+                    const formData = new FormData(document.getElementById('speed-limit-form'));
+                    
+                    fetch('{{ url_for("update_speed_limits") }}', {
+                        method: 'POST',
+                        body: formData
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            // Close modal
+                            const modal = bootstrap.Modal.getInstance(document.getElementById('speedLimitModal'));
+                            modal.hide();
+                            
+                            // Show toast notification
+                            showToast('Success', 'Speed limits updated successfully', 'success');
+                        } else {
+                            showToast('Error', data.error || 'Failed to update speed limits', 'danger');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error updating speed limits:', error);
+                        showToast('Error', 'Failed to update speed limits: ' + error.message, 'danger');
+                    });
+                });
+            }
+        });
+        
+        // Show toast notification function
+        function showToast(title, message, type = 'info') {
+            const toastEl = document.getElementById('liveToast');
+            const toastTitle = document.getElementById('toast-title');
+            const toastMessage = document.getElementById('toast-message');
+            const toastTime = document.getElementById('toast-time');
+            
+            if (!toastEl || !toastTitle || !toastMessage || !toastTime) {
+                // Fallback to console if toast elements don't exist
+                console.log(`${title}: ${message}`);
+                return;
+            }
+            
+            // Set toast content
+            toastTitle.textContent = title;
+            toastMessage.textContent = message;
+            toastTime.textContent = 'Just now';
+            
+            // Set toast type
+            toastEl.className = `toast border-${type}`;
+            
+            // Show the toast
+            const toast = new bootstrap.Toast(toastEl);
+            toast.show();
+        }
+    </script>
 </body>
 </html>

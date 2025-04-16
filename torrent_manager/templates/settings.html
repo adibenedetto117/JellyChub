@@ -3,47 +3,265 @@
 {% block title %}Torrent Manager - Settings{% endblock %}
 
 {% block content %}
-<div class="row">
-    <div class="col-md-12">
-        <div class="card">
-            <div class="card-header bg-primary text-white">
-                <h5 class="mb-0">Settings</h5>
-            </div>
-            <div class="card-body">
-                <form action="{{ url_for('settings') }}" method="post">
-                    <div class="mb-3">
-                        <label for="download_dir" class="form-label">Download Directory</label>
-                        <input type="text" class="form-control" id="download_dir" name="download_dir" value="{{ download_dir }}">
-                        <div class="form-text">This is where downloaded files will be saved.</div>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label for="max_connections" class="form-label">Maximum Connections</label>
-                        <input type="number" class="form-control" id="max_connections" name="max_connections" value="200" min="1" max="500">
-                        <div class="form-text">Maximum number of connections per torrent.</div>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label for="max_upload_speed" class="form-label">Maximum Upload Speed (KB/s)</label>
-                        <input type="number" class="form-control" id="max_upload_speed" name="max_upload_speed" value="0" min="0">
-                        <div class="form-text">0 means unlimited. Set a value to limit upload bandwidth.</div>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label for="max_download_speed" class="form-label">Maximum Download Speed (KB/s)</label>
-                        <input type="number" class="form-control" id="max_download_speed" name="max_download_speed" value="0" min="0">
-                        <div class="form-text">0 means unlimited. Set a value to limit download bandwidth.</div>
-                    </div>
-                    
-                    <div class="mb-3 form-check">
-                        <input type="checkbox" class="form-check-input" id="start_paused" name="start_paused">
-                        <label class="form-check-label" for="start_paused">Start torrents in paused state</label>
-                    </div>
-                    
-                    <button type="submit" class="btn btn-primary">Save Settings</button>
-                </form>
+<div class="container">
+    <div class="row mt-4">
+        <div class="col-md-12">
+            <div class="card shadow-sm">
+                <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Settings</h5>
+                    <span class="badge bg-light text-dark">v0.2.0</span>
+                </div>
+                <div class="card-body">
+                    <form action="{{ url_for('settings') }}" method="post">
+                        <ul class="nav nav-tabs mb-4" id="settingsTabs" role="tablist">
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link active" id="general-tab" data-bs-toggle="tab" data-bs-target="#general" type="button" role="tab" aria-controls="general" aria-selected="true">General</button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="network-tab" data-bs-toggle="tab" data-bs-target="#network" type="button" role="tab" aria-controls="network" aria-selected="false">Network</button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="privacy-tab" data-bs-toggle="tab" data-bs-target="#privacy" type="button" role="tab" aria-controls="privacy" aria-selected="false">Privacy</button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="advanced-tab" data-bs-toggle="tab" data-bs-target="#advanced" type="button" role="tab" aria-controls="advanced" aria-selected="false">Advanced</button>
+                            </li>
+                        </ul>
+
+                        <div class="tab-content" id="settingsTabContent">
+                            <!-- General Settings -->
+                            <div class="tab-pane fade show active" id="general" role="tabpanel" aria-labelledby="general-tab">
+                                <div class="mb-4">
+                                    <label for="download_dir" class="form-label">Download Directory</label>
+                                    <div class="input-group">
+                                        <input type="text" class="form-control" id="download_dir" name="download_dir" value="{{ settings.download_dir }}">
+                                        <button class="btn btn-outline-secondary" type="button" id="browse-btn">Browse</button>
+                                    </div>
+                                    <div class="form-text">Location where downloaded files will be saved</div>
+                                </div>
+                                
+                                <div class="mb-4">
+                                    <label for="incomplete_dir" class="form-label">Incomplete Downloads Directory</label>
+                                    <div class="input-group">
+                                        <input type="text" class="form-control" id="incomplete_dir" name="incomplete_dir" value="{{ settings.incomplete_dir }}">
+                                        <button class="btn btn-outline-secondary" type="button" id="browse-incomplete-btn">Browse</button>
+                                    </div>
+                                    <div class="form-text">Directory for storing incomplete downloads (blank = same as download directory)</div>
+                                </div>
+                                
+                                <div class="mb-4">
+                                    <label class="form-label">Start Behavior</label>
+                                    <div class="form-check">
+                                        <input type="checkbox" class="form-check-input" id="start_paused" name="start_paused" {% if settings.start_paused %}checked{% endif %}>
+                                        <label class="form-check-label" for="start_paused">Start torrents in paused state</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input type="checkbox" class="form-check-input" id="auto_start" name="auto_start" {% if settings.auto_start %}checked{% endif %}>
+                                        <label class="form-check-label" for="auto_start">Automatically start torrents when added</label>
+                                    </div>
+                                </div>
+                                
+                                <div class="mb-4">
+                                    <div class="form-check">
+                                        <input type="checkbox" class="form-check-input" id="remove_completed" name="remove_completed" {% if settings.remove_completed %}checked{% endif %}>
+                                        <label class="form-check-label" for="remove_completed">Remove completed torrents</label>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Network Settings -->
+                            <div class="tab-pane fade" id="network" role="tabpanel" aria-labelledby="network-tab">
+                                <div class="row mb-4">
+                                    <div class="col-md-6">
+                                        <label for="max_download_speed" class="form-label">Maximum Download Speed (KB/s)</label>
+                                        <input type="number" class="form-control" id="max_download_speed" name="max_download_speed" value="{{ settings.max_download_speed }}" min="0">
+                                        <div class="form-text">0 means unlimited</div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label for="max_upload_speed" class="form-label">Maximum Upload Speed (KB/s)</label>
+                                        <input type="number" class="form-control" id="max_upload_speed" name="max_upload_speed" value="{{ settings.max_upload_speed }}" min="0">
+                                        <div class="form-text">0 means unlimited</div>
+                                    </div>
+                                </div>
+                                
+                                <div class="row mb-4">
+                                    <div class="col-md-6">
+                                        <label for="listen_port" class="form-label">Listening Port</label>
+                                        <input type="number" class="form-control" id="listen_port" name="listen_port" value="{{ settings.listen_port }}" min="1024" max="65535">
+                                        <div class="form-text">Port to listen for incoming connections (1024-65535)</div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label for="max_connections" class="form-label">Maximum Connections</label>
+                                        <input type="number" class="form-control" id="max_connections" name="max_connections" value="{{ settings.max_connections }}" min="1" max="3000">
+                                        <div class="form-text">Maximum number of connections per torrent</div>
+                                    </div>
+                                </div>
+                                
+                                <div class="mb-4">
+                                    <div class="form-check">
+                                        <input type="checkbox" class="form-check-input" id="port_forwarding" name="port_forwarding" {% if settings.port_forwarding %}checked{% endif %}>
+                                        <label class="form-check-label" for="port_forwarding">Enable UPnP port forwarding</label>
+                                    </div>
+                                </div>
+                                
+                                <div class="mb-4">
+                                    <div class="form-check">
+                                        <input type="checkbox" class="form-check-input" id="dht" name="dht" {% if settings.dht %}checked{% endif %}>
+                                        <label class="form-check-label" for="dht">Enable DHT network</label>
+                                    </div>
+                                </div>
+                                
+                                <div class="mb-4">
+                                    <div class="form-check">
+                                        <input type="checkbox" class="form-check-input" id="pex" name="pex" {% if settings.pex %}checked{% endif %}>
+                                        <label class="form-check-label" for="pex">Enable Peer Exchange (PEX)</label>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Privacy Settings -->
+                            <div class="tab-pane fade" id="privacy" role="tabpanel" aria-labelledby="privacy-tab">
+                                <div class="alert alert-info">
+                                    <i class="fas fa-info-circle me-2"></i>
+                                    Privacy settings help protect your identity while downloading torrents. Some settings may affect performance.
+                                </div>
+                                
+                                <div class="mb-4">
+                                    <label for="proxy_type" class="form-label">Proxy Type</label>
+                                    <select class="form-select" id="proxy_type" name="proxy_type">
+                                        <option value="none" {% if settings.proxy_type == "none" %}selected{% endif %}>None</option>
+                                        <option value="socks4" {% if settings.proxy_type == "socks4" %}selected{% endif %}>SOCKS4</option>
+                                        <option value="socks5" {% if settings.proxy_type == "socks5" %}selected{% endif %}>SOCKS5</option>
+                                        <option value="http" {% if settings.proxy_type == "http" %}selected{% endif %}>HTTP</option>
+                                    </select>
+                                    <div class="form-text">Type of proxy to use for torrent traffic</div>
+                                </div>
+                                
+                                <div class="row mb-4 proxy-settings" {% if settings.proxy_type == "none" %}style="display: none;"{% endif %}>
+                                    <div class="col-md-6">
+                                        <label for="proxy_host" class="form-label">Proxy Host</label>
+                                        <input type="text" class="form-control" id="proxy_host" name="proxy_host" value="{{ settings.proxy_host }}">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label for="proxy_port" class="form-label">Proxy Port</label>
+                                        <input type="number" class="form-control" id="proxy_port" name="proxy_port" value="{{ settings.proxy_port }}" min="1" max="65535">
+                                    </div>
+                                </div>
+                                
+                                <div class="row mb-4 proxy-settings" {% if settings.proxy_type == "none" %}style="display: none;"{% endif %}>
+                                    <div class="col-md-6">
+                                        <label for="proxy_username" class="form-label">Proxy Username (optional)</label>
+                                        <input type="text" class="form-control" id="proxy_username" name="proxy_username" value="{{ settings.proxy_username }}">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label for="proxy_password" class="form-label">Proxy Password (optional)</label>
+                                        <input type="password" class="form-control" id="proxy_password" name="proxy_password" value="{{ settings.proxy_password }}">
+                                    </div>
+                                </div>
+                                
+                                <div class="mb-4">
+                                    <div class="form-check">
+                                        <input type="checkbox" class="form-check-input" id="anonymous_mode" name="anonymous_mode" {% if settings.anonymous_mode %}checked{% endif %}>
+                                        <label class="form-check-label" for="anonymous_mode">Anonymous Mode</label>
+                                    </div>
+                                    <div class="form-text">Disables features that might leak identifying information</div>
+                                </div>
+                                
+                                <div class="mb-4">
+                                    <div class="form-check">
+                                        <input type="checkbox" class="form-check-input" id="force_encryption" name="force_encryption" {% if settings.force_encryption %}checked{% endif %}>
+                                        <label class="form-check-label" for="force_encryption">Force Encryption</label>
+                                    </div>
+                                    <div class="form-text">Force encrypted connections with peers</div>
+                                </div>
+                            </div>
+                            
+                            <!-- Advanced Settings -->
+                            <div class="tab-pane fade" id="advanced" role="tabpanel" aria-labelledby="advanced-tab">
+                                <div class="alert alert-warning">
+                                    <i class="fas fa-exclamation-triangle me-2"></i>
+                                    Changing these settings may affect performance. Only modify if you know what you're doing.
+                                </div>
+                                
+                                <div class="mb-4">
+                                    <label for="max_active_torrents" class="form-label">Maximum Active Torrents</label>
+                                    <input type="number" class="form-control" id="max_active_torrents" name="max_active_torrents" value="{{ settings.max_active_torrents }}" min="1" max="50">
+                                    <div class="form-text">Maximum number of torrents to download simultaneously</div>
+                                </div>
+                                
+                                <div class="mb-4">
+                                    <label for="max_active_seeding" class="form-label">Maximum Active Seeding</label>
+                                    <input type="number" class="form-control" id="max_active_seeding" name="max_active_seeding" value="{{ settings.max_active_seeding }}" min="0" max="50">
+                                    <div class="form-text">Maximum number of torrents to seed simultaneously (0 means unlimited)</div>
+                                </div>
+                                
+                                <div class="mb-4">
+                                    <label for="seed_ratio_limit" class="form-label">Seed Ratio Limit</label>
+                                    <input type="number" class="form-control" id="seed_ratio_limit" name="seed_ratio_limit" value="{{ settings.seed_ratio_limit }}" min="0" step="0.1">
+                                    <div class="form-text">Ratio at which to stop seeding (0 means seed indefinitely)</div>
+                                </div>
+                                
+                                <div class="mb-4">
+                                    <label for="cache_size" class="form-label">Disk Cache Size (MB)</label>
+                                    <input type="number" class="form-control" id="cache_size" name="cache_size" value="{{ settings.cache_size }}" min="8" max="4096">
+                                    <div class="form-text">Size of disk cache for all torrents (8-4096 MB)</div>
+                                </div>
+                                
+                                <div class="mb-4">
+                                    <div class="form-check">
+                                        <input type="checkbox" class="form-check-input" id="enable_scrape" name="enable_scrape" {% if settings.enable_scrape %}checked{% endif %}>
+                                        <label class="form-check-label" for="enable_scrape">Enable tracker scrape</label>
+                                    </div>
+                                </div>
+                                
+                                <div class="mb-4">
+                                    <div class="form-check">
+                                        <input type="checkbox" class="form-check-input" id="enable_lsd" name="enable_lsd" {% if settings.enable_lsd %}checked{% endif %}>
+                                        <label class="form-check-label" for="enable_lsd">Enable Local Service Discovery</label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="d-flex justify-content-between mt-4">
+                            <button type="button" class="btn btn-secondary" id="reset-defaults">Reset to Defaults</button>
+                            <button type="submit" class="btn btn-primary">Save Settings</button>
+                        </div>
+                    </form>
+                </div>
             </div>
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Show/hide proxy settings based on selection
+    document.getElementById('proxy_type').addEventListener('change', function() {
+        const proxySettings = document.querySelectorAll('.proxy-settings');
+        if (this.value === 'none') {
+            proxySettings.forEach(el => el.style.display = 'none');
+        } else {
+            proxySettings.forEach(el => el.style.display = 'flex');
+        }
+    });
+    
+    // Reset to defaults confirmation
+    document.getElementById('reset-defaults').addEventListener('click', function() {
+        if (confirm('Are you sure you want to reset all settings to default values?')) {
+            window.location.href = "{{ url_for('reset_settings') }}";
+        }
+    });
+    
+    // Directory browser functionality would require integration with backend
+    // This is a placeholder that would be replaced with actual directory browsing functionality
+    document.getElementById('browse-btn').addEventListener('click', function() {
+        alert('Directory browsing would be implemented via a modal dialog or native file picker');
+    });
+    
+    document.getElementById('browse-incomplete-btn').addEventListener('click', function() {
+        alert('Directory browsing would be implemented via a modal dialog or native file picker');
+    });
+</script>
 {% endblock %}
