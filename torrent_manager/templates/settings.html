@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block title %}Torrent Manager - Settings{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">Settings</h5>
+            </div>
+            <div class="card-body">
+                <form action="{{ url_for('settings') }}" method="post">
+                    <div class="mb-3">
+                        <label for="download_dir" class="form-label">Download Directory</label>
+                        <input type="text" class="form-control" id="download_dir" name="download_dir" value="{{ download_dir }}">
+                        <div class="form-text">This is where downloaded files will be saved.</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="max_connections" class="form-label">Maximum Connections</label>
+                        <input type="number" class="form-control" id="max_connections" name="max_connections" value="200" min="1" max="500">
+                        <div class="form-text">Maximum number of connections per torrent.</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="max_upload_speed" class="form-label">Maximum Upload Speed (KB/s)</label>
+                        <input type="number" class="form-control" id="max_upload_speed" name="max_upload_speed" value="0" min="0">
+                        <div class="form-text">0 means unlimited. Set a value to limit upload bandwidth.</div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="max_download_speed" class="form-label">Maximum Download Speed (KB/s)</label>
+                        <input type="number" class="form-control" id="max_download_speed" name="max_download_speed" value="0" min="0">
+                        <div class="form-text">0 means unlimited. Set a value to limit download bandwidth.</div>
+                    </div>
+                    
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" id="start_paused" name="start_paused">
+                        <label class="form-check-label" for="start_paused">Start torrents in paused state</label>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary">Save Settings</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
