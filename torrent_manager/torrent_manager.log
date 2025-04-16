@@ -3,3 +3,8 @@
 2025-04-16 15:03:02,503 [INFO] Using download directory: /Users/anthonypdibenedetto/Downloads/torrents
 2025-04-16 15:03:02,506 [INFO] Access Torrent Manager at http://192.168.8.166:8060
 2025-04-16 15:03:02,508 [INFO] Serving on http://0.0.0.0:8060
+2025-04-16 15:09:27,407 [INFO] Starting Torrent Manager on 0.0.0.0:8060
+2025-04-16 15:09:27,407 [INFO] Worker threads: 4
+2025-04-16 15:09:27,407 [INFO] Using download directory: /Users/anthonypdibenedetto/Downloads/torrents
+2025-04-16 15:09:27,409 [INFO] Access Torrent Manager at http://192.168.8.166:8060
+2025-04-16 15:09:27,411 [INFO] Serving on http://0.0.0.0:8060
