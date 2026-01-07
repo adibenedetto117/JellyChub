@@ -33,6 +33,7 @@ interface PlayerActions {
   // Queue management
   setQueue: (items: QueueItem[], startIndex?: number) => void;
   addToQueue: (item: QueueItem) => void;
+  addToPlayNext: (item: QueueItem) => void;
   removeFromQueue: (index: number) => void;
   clearQueue: () => void;
   playNext: () => void;
@@ -183,6 +184,24 @@ export const usePlayerStore = create<PlayerStore>()(
       set((state) => ({
         queue: [...state.queue, item],
       })),
+
+    addToPlayNext: (item) =>
+      set((state) => {
+        const insertIndex = state.currentQueueIndex + 1;
+        const newQueue = [
+          ...state.queue.slice(0, insertIndex),
+          item,
+          ...state.queue.slice(insertIndex),
+        ];
+        // Re-index all items after insertion
+        const reindexedQueue = newQueue.map((queueItem, idx) => ({
+          ...queueItem,
+          index: idx,
+        }));
+        return {
+          queue: reindexedQueue,
+        };
+      }),
 
     removeFromQueue: (index) =>
       set((state) => {

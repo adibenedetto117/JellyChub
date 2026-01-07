@@ -18,6 +18,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { useVideoPlayer, VideoView } from 'expo-video';
+import * as Haptics from 'expo-haptics';
 import { useAuthStore, usePlayerStore, useSettingsStore, useDownloadStore } from '@/stores';
 import {
   getItem,
@@ -35,169 +36,25 @@ import {
 } from '@/api';
 import { downloadManager } from '@/services';
 import { formatPlayerTime, ticksToMs, msToTicks, getSubtitleStreams, getAudioStreams } from '@/utils';
+import { Ionicons } from '@expo/vector-icons';
 import { AudioTrackSelector } from '@/components/player/AudioTrackSelector';
 import { SubtitleSelector } from '@/components/player/SubtitleSelector';
 import type { MediaSource } from '@/types/jellyfin';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-function PlayIcon({ size = 32, color = '#fff' }: { size?: number; color?: string }) {
-  return (
-    <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
-      <View
-        style={{
-          width: 0,
-          height: 0,
-          borderLeftWidth: size * 0.8,
-          borderTopWidth: size * 0.5,
-          borderBottomWidth: size * 0.5,
-          borderLeftColor: color,
-          borderTopColor: 'transparent',
-          borderBottomColor: 'transparent',
-          marginLeft: size * 0.15,
-        }}
-      />
-    </View>
-  );
-}
-
-function PauseIcon({ size = 32, color = '#fff' }: { size?: number; color?: string }) {
-  return (
-    <View style={{ width: size, height: size, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: size * 0.2 }}>
-      <View style={{ width: size * 0.25, height: size * 0.7, backgroundColor: color, borderRadius: 2 }} />
-      <View style={{ width: size * 0.25, height: size * 0.7, backgroundColor: color, borderRadius: 2 }} />
-    </View>
-  );
-}
-
+// Custom SkipIcon component - kept because it displays the seconds text overlay on the refresh icon
 function SkipIcon({ size = 24, seconds = 10, direction = 'forward', color = '#fff' }: { size?: number; seconds?: number; direction?: 'forward' | 'back'; color?: string }) {
   const isBack = direction === 'back';
   return (
-    <View style={{ alignItems: 'center' }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-        {isBack && (
-          <View
-            style={{
-              width: 0,
-              height: 0,
-              borderRightWidth: size * 0.5,
-              borderTopWidth: size * 0.35,
-              borderBottomWidth: size * 0.35,
-              borderRightColor: color,
-              borderTopColor: 'transparent',
-              borderBottomColor: 'transparent',
-            }}
-          />
-        )}
-        <View
-          style={{
-            width: size * 0.8,
-            height: size * 0.8,
-            borderWidth: 2.5,
-            borderColor: color,
-            borderRadius: size * 0.4,
-            borderLeftColor: isBack ? color : 'transparent',
-            borderRightColor: isBack ? 'transparent' : color,
-            transform: [{ rotate: isBack ? '45deg' : '-45deg' }],
-          }}
-        />
-        {!isBack && (
-          <View
-            style={{
-              width: 0,
-              height: 0,
-              borderLeftWidth: size * 0.5,
-              borderTopWidth: size * 0.35,
-              borderBottomWidth: size * 0.35,
-              borderLeftColor: color,
-              borderTopColor: 'transparent',
-              borderBottomColor: 'transparent',
-            }}
-          />
-        )}
-      </View>
-      <Text style={{ color: color, fontSize: size * 0.5, fontWeight: '700', marginTop: 2 }}>{seconds}</Text>
-    </View>
-  );
-}
-
-function CloseIcon({ size = 24 }: { size?: number }) {
-  return (
-    <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
-      <View style={{ position: 'absolute', width: size * 0.7, height: 2.5, backgroundColor: '#fff', transform: [{ rotate: '45deg' }], borderRadius: 2 }} />
-      <View style={{ position: 'absolute', width: size * 0.7, height: 2.5, backgroundColor: '#fff', transform: [{ rotate: '-45deg' }], borderRadius: 2 }} />
-    </View>
-  );
-}
-
-function SettingsIcon({ size = 20 }: { size?: number }) {
-  return (
-    <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
-      <View style={{ width: size * 0.6, height: size * 0.6, borderWidth: 2, borderColor: '#fff', borderRadius: size * 0.3 }} />
-      {[0, 60, 120, 180, 240, 300].map((deg) => (
-        <View
-          key={deg}
-          style={{
-            position: 'absolute',
-            width: 3,
-            height: size * 0.25,
-            backgroundColor: '#fff',
-            transform: [{ rotate: `${deg}deg` }, { translateY: -size * 0.4 }],
-            borderRadius: 1,
-          }}
-        />
-      ))}
-    </View>
-  );
-}
-
-function PipIcon({ size = 20 }: { size?: number }) {
-  return (
-    <View style={{ width: size, height: size * 0.7, borderWidth: 2, borderColor: '#fff', borderRadius: 3 }}>
-      <View style={{ position: 'absolute', right: 2, bottom: 2, width: size * 0.4, height: size * 0.3, backgroundColor: '#fff', borderRadius: 2 }} />
-    </View>
-  );
-}
-
-function LockIcon({ size = 18, locked = false }: { size?: number; locked?: boolean }) {
-  return (
-    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
-      <View style={{ width: size * 0.6, height: size * 0.35, borderWidth: 2, borderColor: '#fff', borderTopLeftRadius: size * 0.3, borderTopRightRadius: size * 0.3, borderBottomWidth: 0, marginBottom: -1 }} />
-      <View style={{ width: size * 0.8, height: size * 0.5, backgroundColor: locked ? '#fff' : 'transparent', borderWidth: 2, borderColor: '#fff', borderRadius: 3 }} />
-    </View>
-  );
-}
-
-function RotateIcon({ size = 18 }: { size?: number }) {
-  return (
-    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
-      <View
-        style={{
-          width: size * 0.7,
-          height: size * 0.7,
-          borderWidth: 2,
-          borderColor: '#fff',
-          borderRadius: size * 0.35,
-          borderRightColor: 'transparent',
-          transform: [{ rotate: '45deg' }],
-        }}
+    <View style={{ alignItems: 'center', justifyContent: 'center' }}>
+      <Ionicons
+        name="refresh"
+        size={size}
+        color={color}
+        style={{ transform: [{ scaleX: isBack ? -1 : 1 }] }}
       />
-      <View
-        style={{
-          position: 'absolute',
-          top: size * 0.05,
-          right: size * 0.2,
-          width: 0,
-          height: 0,
-          borderLeftWidth: size * 0.15,
-          borderRightWidth: size * 0.15,
-          borderBottomWidth: size * 0.2,
-          borderLeftColor: 'transparent',
-          borderRightColor: 'transparent',
-          borderBottomColor: '#fff',
-          transform: [{ rotate: '-45deg' }],
-        }}
-      />
+      <Text style={{ color: color, fontSize: size * 0.4, fontWeight: '700', position: 'absolute', top: size * 0.28 }}>{seconds}</Text>
     </View>
   );
 }
@@ -242,10 +99,12 @@ export default function VideoPlayerScreen() {
   const [jellyfinSubtitleTracks, setJellyfinSubtitleTracks] = useState<any[]>([]);
   const [jellyfinAudioTracks, setJellyfinAudioTracks] = useState<any[]>([]);
   const [showSkipIntro, setShowSkipIntro] = useState(false);
+  const [isIntroPreview, setIsIntroPreview] = useState(false);
   const [introStart, setIntroStart] = useState<number | null>(null);
   const [introEnd, setIntroEnd] = useState<number | null>(null);
   const [showSkipCredits, setShowSkipCredits] = useState(false);
   const [creditsStart, setCreditsStart] = useState<number | null>(null);
+  const [creditsEnd, setCreditsEnd] = useState<number | null>(null);
   const [showNextUpCard, setShowNextUpCard] = useState(false);
   const [nextEpisode, setNextEpisode] = useState<any>(null);
   const [subtitleCues, setSubtitleCues] = useState<Array<{ start: number; end: number; text: string }>>([]);
@@ -343,6 +202,10 @@ export default function VideoPlayerScreen() {
       }
       if (outro && outro.StartTicks !== undefined) {
         setCreditsStart(ticksToMs(outro.StartTicks));
+        // Use EndTicks if available for credits end
+        if (outro.EndTicks !== undefined) {
+          setCreditsEnd(ticksToMs(outro.EndTicks));
+        }
       }
     }
   }, [mediaSegments]);
@@ -802,16 +665,20 @@ export default function VideoPlayerScreen() {
         if (duration > 0) {
           setProgress(currentPosition, duration, 0);
 
-          // Check intro
+          // Check intro (show button 3 seconds before intro starts as preview)
           if (introEnd) {
-            const startThreshold = introStart ?? 5000;
-            const inIntro = currentPosition >= startThreshold && currentPosition < introEnd;
-            setShowSkipIntro(inIntro);
+            const introStartTime = introStart ?? 5000;
+            const previewStartTime = Math.max(0, introStartTime - 3000);
+            const isPreview = currentPosition >= previewStartTime && currentPosition < introStartTime;
+            const inIntro = currentPosition >= introStartTime && currentPosition < introEnd;
+            setShowSkipIntro(isPreview || inIntro);
+            setIsIntroPreview(isPreview);
           }
 
-          // Check credits
+          // Check credits (use EndTicks if available, otherwise duration - 5000)
           if (creditsStart) {
-            const inCredits = currentPosition >= creditsStart && currentPosition < duration - 5000;
+            const creditsEndTime = creditsEnd ?? duration - 5000;
+            const inCredits = currentPosition >= creditsStart && currentPosition < creditsEndTime;
             setShowSkipCredits(inCredits);
           }
 
@@ -841,7 +708,7 @@ export default function VideoPlayerScreen() {
     return () => {
       if (progressInterval.current) clearInterval(progressInterval.current);
     };
-  }, [mediaSource, player, subtitleCues, introStart, introEnd, creditsStart, nextEpisode, showNextUpCard, selectedSubtitleIndex]);
+  }, [mediaSource, player, subtitleCues, introStart, introEnd, creditsStart, creditsEnd, nextEpisode, showNextUpCard, selectedSubtitleIndex]);
 
   useEffect(() => {
     if (!mediaSource || !player) return;
@@ -942,13 +809,23 @@ export default function VideoPlayerScreen() {
   const handleSkipIntro = useCallback(() => {
     if (!player || !introEnd) return;
     try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       player.currentTime = introEnd / 1000;
       setShowSkipIntro(false);
+      setIsIntroPreview(false);
     } catch (e) {}
   }, [player, introEnd]);
 
+  const handleSkipCredits = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setShowSkipCredits(false);
+  }, []);
+
   const handlePlayNextEpisode = useCallback(() => {
     if (!nextEpisode || !mediaSource) return;
+
+    // Haptic feedback when skipping to next episode
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
     // Mark that we're navigating to prevent orientation unlock
     isNavigatingRef.current = true;
@@ -1204,20 +1081,47 @@ export default function VideoPlayerScreen() {
                 position: 'absolute',
                 right: 32,
                 bottom: 120,
-                backgroundColor: 'rgba(255,255,255,0.95)',
+                backgroundColor: isIntroPreview ? 'rgba(255,255,255,0.75)' : 'rgba(255,255,255,0.95)',
                 paddingHorizontal: 20,
                 paddingVertical: 12,
                 borderRadius: 8,
                 flexDirection: 'row',
                 alignItems: 'center',
+                borderWidth: isIntroPreview ? 1 : 0,
+                borderColor: 'rgba(255,255,255,0.3)',
               }}
             >
-              <Text style={{ color: '#000', fontSize: 15, fontWeight: '600' }}>Skip Intro</Text>
-              <Text style={{ color: '#666', fontSize: 13, marginLeft: 8 }}>▶▶</Text>
+              <Text style={{ color: '#000', fontSize: 15, fontWeight: '600' }}>
+                {isIntroPreview ? 'Skip Intro' : 'Skip Intro'}
+              </Text>
+              <Text style={{ color: '#666', fontSize: 13, marginLeft: 8 }}>
+                {isIntroPreview ? '\u2192' : '\u25B6\u25B6'}
+              </Text>
             </Pressable>
           )}
 
-          {/* Skip Credits / Next Episode Button */}
+          {/* Skip Credits Button (when no next episode) */}
+          {showSkipCredits && !nextEpisode && (
+            <Pressable
+              onPress={handleSkipCredits}
+              style={{
+                position: 'absolute',
+                right: 24,
+                bottom: 100,
+                backgroundColor: 'rgba(255,255,255,0.85)',
+                paddingHorizontal: 16,
+                paddingVertical: 10,
+                borderRadius: 6,
+                flexDirection: 'row',
+                alignItems: 'center',
+              }}
+            >
+              <Text style={{ color: '#000', fontSize: 14, fontWeight: '600' }}>Skip Credits</Text>
+              <Text style={{ color: '#666', fontSize: 14, marginLeft: 8 }}>{'\u25B6\u25B6'}</Text>
+            </Pressable>
+          )}
+
+          {/* Next Episode Button (during credits or end of video) */}
           {(showSkipCredits || showNextUpCard) && nextEpisode && (
             <Pressable
               onPress={handlePlayNextEpisode}
@@ -1234,9 +1138,9 @@ export default function VideoPlayerScreen() {
               }}
             >
               <Text style={{ color: '#000', fontSize: 14, fontWeight: '600' }}>
-                Next: E{nextEpisode.IndexNumber}
+                {showSkipCredits ? 'Next Episode' : 'Next'}: E{nextEpisode.IndexNumber}
               </Text>
-              <Text style={{ color: '#666', fontSize: 14, marginLeft: 8 }}>▶</Text>
+              <Text style={{ color: '#666', fontSize: 14, marginLeft: 8 }}>{'\u25B6'}</Text>
             </Pressable>
           )}
 
@@ -1257,7 +1161,7 @@ export default function VideoPlayerScreen() {
                   hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                   className="w-11 h-11 rounded-full bg-white/15 items-center justify-center mr-3 active:bg-white/30"
                 >
-                  <CloseIcon size={22} />
+                  <Ionicons name="close" size={22} color="#fff" />
                 </Pressable>
 
                 <View className="flex-1 mr-2">
@@ -1293,7 +1197,7 @@ export default function VideoPlayerScreen() {
                       className="w-9 h-9 rounded-full items-center justify-center active:bg-white/20"
                       style={{ backgroundColor: isRotationLocked ? accentColor + '40' : 'rgba(255,255,255,0.1)' }}
                     >
-                      <LockIcon size={16} locked={isRotationLocked} />
+                      <Ionicons name={isRotationLocked ? "lock-closed" : "lock-open-outline"} size={16} color="#fff" />
                     </Pressable>
 
                     <Pressable

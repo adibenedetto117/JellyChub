@@ -12,8 +12,11 @@ import Animated, {
   withSequence,
   withTiming,
   runOnJS,
+  interpolate,
 } from 'react-native-reanimated';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
+import * as Brightness from 'expo-brightness';
+import { VolumeManager } from 'react-native-volume-manager';
 import { useAuthStore, usePlayerStore, useSettingsStore } from '@/stores';
 import { audioService } from '@/services';
 import {
@@ -26,7 +29,8 @@ import {
 } from '@/api';
 import { formatPlayerTime, ticksToMs } from '@/utils';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const EDGE_ZONE_WIDTH = 80; // Width of the edge zones for brightness/volume gestures
 
 interface LyricLine {
   start: number;
@@ -49,6 +53,7 @@ export default function MusicPlayerScreen() {
     cycleRepeatMode,
     setShowLyrics,
     setProgress,
+    addToPlayNext,
   } = usePlayerStore();
 
   const [isFavorite, setIsFavorite] = useState(false);
@@ -59,6 +64,8 @@ export default function MusicPlayerScreen() {
   const [lyricsLoading, setLyricsLoading] = useState(false);
   const [isSeeking, setIsSeeking] = useState(false);
   const [localProgress, setLocalProgress] = useState({ position: 0, duration: 0 });
+  const [currentLyricIndex, setCurrentLyricIndex] = useState(-1);
+  const lyricsScrollRef = useRef<ScrollView>(null);
 
   const { data: playlists } = useQuery({
     queryKey: ['playlists', userId],
@@ -96,6 +103,17 @@ export default function MusicPlayerScreen() {
   const modalTranslateY = useSharedValue(0);
   const seekProgress = useSharedValue(0);
 
+  // Brightness and volume gesture state
+  const [currentBrightness, setCurrentBrightness] = useState(0.5);
+  const [currentVolume, setCurrentVolume] = useState(0.5);
+  const [showBrightnessIndicator, setShowBrightnessIndicator] = useState(false);
+  const [showVolumeIndicator, setShowVolumeIndicator] = useState(false);
+  const brightnessIndicatorOpacity = useSharedValue(0);
+  const volumeIndicatorOpacity = useSharedValue(0);
+  const brightnessStartValue = useRef(0.5);
+  const volumeStartValue = useRef(0.5);
+  const gestureStartY = useRef(0);
+
   useEffect(() => {
     translateY.value = 0;
     hasStartedPlayback.current = false;
@@ -112,6 +130,39 @@ export default function MusicPlayerScreen() {
       playlistPickerTranslateY.value = 0;
     }
   }, [showPlaylistPicker]);
+
+  // Initialize brightness and volume values
+  useEffect(() => {
+    const initBrightnessAndVolume = async () => {
+      try {
+        const brightness = await Brightness.getBrightnessAsync();
+        setCurrentBrightness(brightness);
+        brightnessStartValue.current = brightness;
+      } catch (e) {
+        console.log('Could not get brightness:', e);
+      }
+
+      try {
+        const volume = await VolumeManager.getVolume();
+        const vol = typeof volume === 'number' ? volume : volume?.volume ?? 0.5;
+        setCurrentVolume(vol);
+        volumeStartValue.current = vol;
+      } catch (e) {
+        console.log('Could not get volume:', e);
+      }
+    };
+
+    initBrightnessAndVolume();
+
+    // Listen for volume changes
+    const volumeListener = VolumeManager.addVolumeListener((result) => {
+      setCurrentVolume(result.volume);
+    });
+
+    return () => {
+      volumeListener?.remove();
+    };
+  }, []);
 
   const { data: item, isLoading } = useQuery({
     queryKey: ['item', userId, itemId],
@@ -199,6 +250,39 @@ export default function MusicPlayerScreen() {
     return unsubscribe;
   }, []);
 
+  // Update current lyric index based on playback position
+  useEffect(() => {
+    if (!lyrics || lyrics.length === 0 || isSeeking) return;
+
+    const position = localProgress.position;
+    let newIndex = -1;
+
+    for (let i = 0; i < lyrics.length; i++) {
+      const lineStart = lyrics[i].start;
+      const nextLineStart = i < lyrics.length - 1 ? lyrics[i + 1].start : Infinity;
+
+      if (position >= lineStart && position < nextLineStart) {
+        newIndex = i;
+        break;
+      }
+    }
+
+    if (newIndex !== currentLyricIndex) {
+      setCurrentLyricIndex(newIndex);
+    }
+  }, [localProgress.position, lyrics, isSeeking, currentLyricIndex]);
+
+  // Scroll to current lyric when it changes
+  useEffect(() => {
+    if (currentLyricIndex < 0 || !lyricsScrollRef.current) return;
+
+    const LINE_HEIGHT = 56; // Approximate height per lyric line including margin
+    const SCROLL_VIEW_HEIGHT = SCREEN_HEIGHT * 0.5; // Approximate visible area
+    const offset = Math.max(0, currentLyricIndex * LINE_HEIGHT - SCROLL_VIEW_HEIGHT / 2 + LINE_HEIGHT / 2);
+
+    lyricsScrollRef.current.scrollTo({ y: offset, animated: true });
+  }, [currentLyricIndex]);
+
   const handleClose = () => {
     router.back();
   };
@@ -258,6 +342,18 @@ export default function MusicPlayerScreen() {
   const handleAddToPlaylist = () => {
     setShowOptions(false);
     setShowPlaylistPicker(true);
+  };
+
+  const handlePlayNext = () => {
+    if (!item) return;
+    addToPlayNext({
+      id: item.Id,
+      item: item,
+      index: 0, // Will be re-indexed by the store
+    });
+    setShowOptions(false);
+    setAddedToast('Play Next');
+    setTimeout(() => setAddedToast(null), 2500);
   };
 
   const handleSelectPlaylist = (playlistId: string) => {
@@ -336,6 +432,107 @@ export default function MusicPlayerScreen() {
       runOnJS(finishSeeking)();
     }), [startSeeking, updateSeekPosition, finishSeeking]);
 
+  // Brightness gesture handlers
+  const handleBrightnessStart = useCallback(async (y: number) => {
+    gestureStartY.current = y;
+    try {
+      const brightness = await Brightness.getBrightnessAsync();
+      brightnessStartValue.current = brightness;
+      setCurrentBrightness(brightness);
+    } catch (e) {
+      console.log('Could not get brightness:', e);
+    }
+    setShowBrightnessIndicator(true);
+    brightnessIndicatorOpacity.value = withTiming(1, { duration: 150 });
+  }, [brightnessIndicatorOpacity]);
+
+  const handleBrightnessUpdate = useCallback(async (y: number) => {
+    const deltaY = gestureStartY.current - y;
+    const sensitivity = SCREEN_HEIGHT * 0.7;
+    const change = deltaY / sensitivity;
+    const newBrightness = Math.max(0, Math.min(1, brightnessStartValue.current + change));
+    setCurrentBrightness(newBrightness);
+    try {
+      await Brightness.setBrightnessAsync(newBrightness);
+    } catch (e) {
+      console.log('Could not set brightness:', e);
+    }
+  }, []);
+
+  const handleBrightnessEnd = useCallback(() => {
+    brightnessIndicatorOpacity.value = withTiming(0, { duration: 300 });
+    setTimeout(() => setShowBrightnessIndicator(false), 300);
+  }, [brightnessIndicatorOpacity]);
+
+  // Volume gesture handlers
+  const handleVolumeStart = useCallback(async (y: number) => {
+    gestureStartY.current = y;
+    try {
+      const volume = await VolumeManager.getVolume();
+      const vol = typeof volume === 'number' ? volume : volume?.volume ?? 0.5;
+      volumeStartValue.current = vol;
+      setCurrentVolume(vol);
+    } catch (e) {
+      console.log('Could not get volume:', e);
+    }
+    setShowVolumeIndicator(true);
+    volumeIndicatorOpacity.value = withTiming(1, { duration: 150 });
+  }, [volumeIndicatorOpacity]);
+
+  const handleVolumeUpdate = useCallback(async (y: number) => {
+    const deltaY = gestureStartY.current - y;
+    const sensitivity = SCREEN_HEIGHT * 0.7;
+    const change = deltaY / sensitivity;
+    const newVolume = Math.max(0, Math.min(1, volumeStartValue.current + change));
+    setCurrentVolume(newVolume);
+    try {
+      await VolumeManager.setVolume(newVolume, { showUI: false });
+    } catch (e) {
+      console.log('Could not set volume:', e);
+    }
+  }, []);
+
+  const handleVolumeEnd = useCallback(() => {
+    volumeIndicatorOpacity.value = withTiming(0, { duration: 300 });
+    setTimeout(() => setShowVolumeIndicator(false), 300);
+  }, [volumeIndicatorOpacity]);
+
+  // Brightness gesture (left edge)
+  const brightnessGesture = useMemo(() => Gesture.Pan()
+    .activeOffsetY([-10, 10])
+    .failOffsetX([-20, 20])
+    .onStart((e) => {
+      if (e.x <= EDGE_ZONE_WIDTH) {
+        runOnJS(handleBrightnessStart)(e.absoluteY);
+      }
+    })
+    .onUpdate((e) => {
+      if (e.x <= EDGE_ZONE_WIDTH || showBrightnessIndicator) {
+        runOnJS(handleBrightnessUpdate)(e.absoluteY);
+      }
+    })
+    .onEnd(() => {
+      runOnJS(handleBrightnessEnd)();
+    }), [handleBrightnessStart, handleBrightnessUpdate, handleBrightnessEnd, showBrightnessIndicator]);
+
+  // Volume gesture (right edge)
+  const volumeGesture = useMemo(() => Gesture.Pan()
+    .activeOffsetY([-10, 10])
+    .failOffsetX([-20, 20])
+    .onStart((e) => {
+      if (e.x >= SCREEN_WIDTH - EDGE_ZONE_WIDTH) {
+        runOnJS(handleVolumeStart)(e.absoluteY);
+      }
+    })
+    .onUpdate((e) => {
+      if (e.x >= SCREEN_WIDTH - EDGE_ZONE_WIDTH || showVolumeIndicator) {
+        runOnJS(handleVolumeUpdate)(e.absoluteY);
+      }
+    })
+    .onEnd(() => {
+      runOnJS(handleVolumeEnd)();
+    }), [handleVolumeStart, handleVolumeUpdate, handleVolumeEnd, showVolumeIndicator]);
+
   const dismissGesture = Gesture.Pan()
     .activeOffsetY(10)
     .failOffsetX([-20, 20])
@@ -355,6 +552,14 @@ export default function MusicPlayerScreen() {
 
   const containerStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: translateY.value }],
+  }));
+
+  const brightnessIndicatorStyle = useAnimatedStyle(() => ({
+    opacity: brightnessIndicatorOpacity.value,
+  }));
+
+  const volumeIndicatorStyle = useAnimatedStyle(() => ({
+    opacity: volumeIndicatorOpacity.value,
   }));
 
   const modalSheetStyle = useAnimatedStyle(() => ({
@@ -398,8 +603,11 @@ export default function MusicPlayerScreen() {
   const showLoading = isLoading || playerState === 'loading' || playerState === 'buffering';
   const showLyricsView = music.showLyrics;
 
+  // Compose gestures: brightness/volume gestures take priority on edges, dismiss gesture otherwise
+  const composedGesture = Gesture.Race(brightnessGesture, volumeGesture, dismissGesture);
+
   return (
-    <GestureDetector gesture={dismissGesture}>
+    <GestureDetector gesture={composedGesture}>
       <Animated.View style={[{ flex: 1, backgroundColor: '#000' }, containerStyle]}>
         {albumArtUrl && (
           <Image
@@ -414,6 +622,130 @@ export default function MusicPlayerScreen() {
           locations={[0, 0.5, 1]}
           style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
         />
+
+        {/* Brightness Indicator (Left Side) */}
+        {showBrightnessIndicator && (
+          <Animated.View
+            style={[
+              brightnessIndicatorStyle,
+              {
+                position: 'absolute',
+                left: 24,
+                top: '50%',
+                marginTop: -100,
+                width: 48,
+                height: 200,
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 100,
+              },
+            ]}
+            pointerEvents="none"
+          >
+            <View
+              style={{
+                backgroundColor: 'rgba(0,0,0,0.7)',
+                borderRadius: 24,
+                padding: 12,
+                alignItems: 'center',
+                width: 48,
+              }}
+            >
+              <Ionicons
+                name={currentBrightness > 0.5 ? 'sunny' : 'sunny-outline'}
+                size={24}
+                color="#fff"
+              />
+              <View
+                style={{
+                  width: 4,
+                  height: 120,
+                  backgroundColor: 'rgba(255,255,255,0.3)',
+                  borderRadius: 2,
+                  marginTop: 12,
+                  overflow: 'hidden',
+                }}
+              >
+                <View
+                  style={{
+                    position: 'absolute',
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
+                    height: `${currentBrightness * 100}%`,
+                    backgroundColor: '#fff',
+                    borderRadius: 2,
+                  }}
+                />
+              </View>
+              <Text style={{ color: '#fff', fontSize: 12, marginTop: 8, fontWeight: '600' }}>
+                {Math.round(currentBrightness * 100)}%
+              </Text>
+            </View>
+          </Animated.View>
+        )}
+
+        {/* Volume Indicator (Right Side) */}
+        {showVolumeIndicator && (
+          <Animated.View
+            style={[
+              volumeIndicatorStyle,
+              {
+                position: 'absolute',
+                right: 24,
+                top: '50%',
+                marginTop: -100,
+                width: 48,
+                height: 200,
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 100,
+              },
+            ]}
+            pointerEvents="none"
+          >
+            <View
+              style={{
+                backgroundColor: 'rgba(0,0,0,0.7)',
+                borderRadius: 24,
+                padding: 12,
+                alignItems: 'center',
+                width: 48,
+              }}
+            >
+              <Ionicons
+                name={currentVolume === 0 ? 'volume-mute' : currentVolume < 0.5 ? 'volume-low' : 'volume-high'}
+                size={24}
+                color="#fff"
+              />
+              <View
+                style={{
+                  width: 4,
+                  height: 120,
+                  backgroundColor: 'rgba(255,255,255,0.3)',
+                  borderRadius: 2,
+                  marginTop: 12,
+                  overflow: 'hidden',
+                }}
+              >
+                <View
+                  style={{
+                    position: 'absolute',
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
+                    height: `${currentVolume * 100}%`,
+                    backgroundColor: accentColor,
+                    borderRadius: 2,
+                  }}
+                />
+              </View>
+              <Text style={{ color: '#fff', fontSize: 12, marginTop: 8, fontWeight: '600' }}>
+                {Math.round(currentVolume * 100)}%
+              </Text>
+            </View>
+          </Animated.View>
+        )}
 
         <SafeAreaView style={{ flex: 1 }}>
           <View style={{ alignItems: 'center', paddingTop: 8, paddingBottom: 4 }}>
@@ -442,26 +774,35 @@ export default function MusicPlayerScreen() {
         </View>
 
         {showLyricsView ? (
-          <ScrollView style={{ flex: 1, paddingHorizontal: 24 }} showsVerticalScrollIndicator={false}>
+          <ScrollView
+            ref={lyricsScrollRef}
+            style={{ flex: 1, paddingHorizontal: 24 }}
+            showsVerticalScrollIndicator={false}
+          >
             <View style={{ paddingVertical: 48, alignItems: 'center' }}>
               {lyricsLoading ? (
                 <ActivityIndicator color={accentColor} size="large" />
               ) : lyrics && lyrics.length > 0 ? (
-                lyrics.map((line, index) => (
-                  <Text
-                    key={index}
-                    style={{
-                      color: 'rgba(255,255,255,0.8)',
-                      fontSize: 20,
-                      fontWeight: '600',
-                      textAlign: 'center',
-                      lineHeight: 40,
-                      marginBottom: 16,
-                    }}
-                  >
-                    {line.text}
-                  </Text>
-                ))
+                lyrics.map((line, index) => {
+                  const isCurrent = index === currentLyricIndex;
+                  const isPast = index < currentLyricIndex;
+
+                  return (
+                    <Text
+                      key={index}
+                      style={{
+                        color: isCurrent ? accentColor : isPast ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.8)',
+                        fontSize: isCurrent ? 24 : 20,
+                        fontWeight: isCurrent ? '700' : '600',
+                        textAlign: 'center',
+                        lineHeight: 40,
+                        marginBottom: 16,
+                      }}
+                    >
+                      {line.text}
+                    </Text>
+                  );
+                })
               ) : (
                 <View style={{ alignItems: 'center', paddingVertical: 80 }}>
                   <Ionicons name="text" size={48} color="rgba(255,255,255,0.3)" />
@@ -722,6 +1063,14 @@ export default function MusicPlayerScreen() {
                   >
                     <Ionicons name="add" size={24} color="#fff" />
                     <Text style={{ color: '#fff', fontSize: 16, marginLeft: 16 }}>Add to Playlist</Text>
+                  </Pressable>
+
+                  <Pressable
+                    style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.1)' }}
+                    onPress={handlePlayNext}
+                  >
+                    <Ionicons name="play-forward" size={24} color="#fff" />
+                    <Text style={{ color: '#fff', fontSize: 16, marginLeft: 16 }}>Play Next</Text>
                   </Pressable>
 
                   <Pressable

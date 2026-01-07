@@ -12,6 +12,7 @@
     "test": "jest"
   },
   "dependencies": {
+    "@expo/vector-icons": "^15.0.3",
     "@react-native-community/slider": "^5.1.1",
     "@tanstack/query-sync-storage-persister": "^5.90.18",
     "@tanstack/react-query": "^5.62.0",
@@ -22,8 +23,10 @@
     "epubjs": "^0.3.93",
     "expo": "~54.0.30",
     "expo-audio": "^1.1.1",
+    "expo-brightness": "~14.0.8",
     "expo-constants": "~18.0.0",
     "expo-file-system": "~19.0.0",
+    "expo-haptics": "^15.0.8",
     "expo-image": "^3.0.11",
     "expo-keep-awake": "~14.0.0",
     "expo-linear-gradient": "^15.0.8",
@@ -45,6 +48,7 @@
     "react-native-reanimated": "^4.2.1",
     "react-native-safe-area-context": "^5.6.2",
     "react-native-screens": "^4.19.0",
+    "react-native-volume-manager": "^2.0.8",
     "react-native-webview": "^13.16.0",
     "tailwindcss": "^3.4.17",
     "zustand": "^5.0.2"

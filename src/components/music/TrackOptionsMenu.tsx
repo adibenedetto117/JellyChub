@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
-import { useAuthStore, useSettingsStore } from '@/stores';
+import { useAuthStore, useSettingsStore, usePlayerStore } from '@/stores';
 import { markAsFavorite, getPlaylists, addToPlaylist } from '@/api';
 import type { BaseItem } from '@/types/jellyfin';
 
@@ -26,6 +26,7 @@ export function TrackOptionsMenu({ track, visible, onClose }: TrackOptionsMenuPr
 
   const currentUser = useAuthStore((state) => state.currentUser);
   const accentColor = useSettingsStore((s) => s.accentColor);
+  const addToPlayNext = usePlayerStore((state) => state.addToPlayNext);
   const queryClient = useQueryClient();
   const userId = currentUser?.Id ?? '';
 
@@ -71,6 +72,16 @@ export function TrackOptionsMenu({ track, visible, onClose }: TrackOptionsMenuPr
 
   const handleAddToPlaylist = () => {
     setShowPlaylistPicker(true);
+  };
+
+  const handlePlayNext = () => {
+    addToPlayNext({
+      id: track.Id,
+      item: track,
+      index: 0, // Will be re-indexed by the store
+    });
+    onClose();
+    Alert.alert('Added', 'Track will play next');
   };
 
   const handleSelectPlaylist = (playlistId: string) => {
@@ -193,6 +204,14 @@ export function TrackOptionsMenu({ track, visible, onClose }: TrackOptionsMenuPr
             >
               <Ionicons name="add" size={24} color="#fff" />
               <Text className="text-white text-base ml-4">Add to Playlist</Text>
+            </Pressable>
+
+            <Pressable
+              className="flex-row items-center py-4 border-b border-white/10"
+              onPress={handlePlayNext}
+            >
+              <Ionicons name="play-forward" size={24} color="#fff" />
+              <Text className="text-white text-base ml-4">Play Next</Text>
             </Pressable>
           </View>
         </View>
