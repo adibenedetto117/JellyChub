@@ -1,5 +1,6 @@
-import { View, Text, Pressable } from 'react-native';
+import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { memo, useCallback } from 'react';
+import { Ionicons } from '@expo/vector-icons';
 import Animated, { useSharedValue, useAnimatedStyle, withSpring } from 'react-native-reanimated';
 import { useRouter, usePathname } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -11,16 +12,18 @@ import { colors } from '@/theme';
 import { platformSelect, isTV } from '@/utils/platform';
 import type { Library } from '@/types/jellyfin';
 
+type IconName = keyof typeof Ionicons.glyphMap;
+
 interface NavTabProps {
-  icon: string;
+  icon: IconName;
+  iconFilled: IconName;
   name: string;
   isActive: boolean;
-  isLandingPage: boolean;
   accentColor: string;
   onPress: () => void;
 }
 
-const NavTab = memo(function NavTab({ icon, name, isActive, isLandingPage, accentColor, onPress }: NavTabProps) {
+const NavTab = memo(function NavTab({ icon, iconFilled, name, isActive, accentColor, onPress }: NavTabProps) {
   const scale = useSharedValue(1);
 
   const animatedStyle = useAnimatedStyle(() => ({
@@ -28,7 +31,7 @@ const NavTab = memo(function NavTab({ icon, name, isActive, isLandingPage, accen
   }));
 
   const handlePressIn = useCallback(() => {
-    scale.value = withSpring(0.85, { damping: 15, stiffness: 400 });
+    scale.value = withSpring(0.9, { damping: 15, stiffness: 400 });
   }, [scale]);
 
   const handlePressOut = useCallback(() => {
@@ -40,45 +43,24 @@ const NavTab = memo(function NavTab({ icon, name, isActive, isLandingPage, accen
       onPress={onPress}
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
-      style={{
-        flex: 1,
-        alignItems: 'center',
-        justifyContent: 'center',
-        paddingTop: 2,
-      }}
+      style={styles.tab}
     >
-      <Animated.View style={[{ alignItems: 'center' }, animatedStyle]}>
-        <View style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center' }}>
-          <Text
-            style={{
-              fontSize: 20,
-              color: isActive ? accentColor : colors.text.tertiary,
-              opacity: isActive ? 1 : 0.6,
-              textAlign: 'center',
-            }}
-          >
-            {icon}
-          </Text>
-          {isLandingPage && !isActive && (
-            <View
-              style={{
-                position: 'absolute',
-                bottom: 0,
-                width: 4,
-                height: 4,
-                borderRadius: 2,
-                backgroundColor: accentColor,
-              }}
-            />
+      <Animated.View style={[styles.tabContent, animatedStyle]}>
+        <View style={styles.iconContainer}>
+          <Ionicons
+            name={isActive ? iconFilled : icon}
+            size={22}
+            color={isActive ? accentColor : 'rgba(255,255,255,0.5)'}
+          />
+          {isActive && (
+            <View style={[styles.activeIndicator, { backgroundColor: accentColor }]} />
           )}
         </View>
         <Text
-          style={{
-            fontSize: 10,
-            fontWeight: '500',
-            marginTop: 4,
-            color: isActive ? accentColor : colors.text.tertiary,
-          }}
+          style={[
+            styles.tabLabel,
+            { color: isActive ? accentColor : 'rgba(255,255,255,0.5)' }
+          ]}
         >
           {name}
         </Text>
@@ -87,26 +69,26 @@ const NavTab = memo(function NavTab({ icon, name, isActive, isLandingPage, accen
   );
 });
 
-const TAB_ICONS: Record<string, string> = {
-  home: '\u2302',
-  search: '\u26B2',
-  library: '\u25A6',
-  movies: '\u25B6',
-  shows: '\u25A4',
-  music: '\u266B',
-  books: '\u25AF',
-  downloads: '\u2193',
-  requests: '\u2606',
-  admin: '\u2318',
-  settings: '\u2699',
+const TAB_ICONS: Record<string, { outline: IconName; filled: IconName }> = {
+  home: { outline: 'home-outline', filled: 'home' },
+  search: { outline: 'search-outline', filled: 'search' },
+  library: { outline: 'grid-outline', filled: 'grid' },
+  movies: { outline: 'film-outline', filled: 'film' },
+  shows: { outline: 'tv-outline', filled: 'tv' },
+  music: { outline: 'musical-notes-outline', filled: 'musical-notes' },
+  books: { outline: 'book-outline', filled: 'book' },
+  downloads: { outline: 'cloud-download-outline', filled: 'cloud-download' },
+  requests: { outline: 'add-circle-outline', filled: 'add-circle' },
+  admin: { outline: 'shield-outline', filled: 'shield' },
+  settings: { outline: 'settings-outline', filled: 'settings' },
 };
 
 const HIDDEN_PATHS = [
   '/player/',
   '/reader/',
-  '/(auth)',
-  '/login',
-  '/server-select',
+  '(auth)',
+  'login',
+  'server-select',
 ];
 
 function getLibraryScreenName(collectionType: Library['CollectionType']): string {
@@ -157,54 +139,57 @@ export function BottomNav() {
   interface TabConfig {
     id: string;
     name: string;
-    icon: string;
+    icon: IconName;
+    iconFilled: IconName;
     route: string;
-    isLandingPage: boolean;
   }
 
   const getTabConfig = (tabId: TabId): TabConfig | null => {
+    const icons = TAB_ICONS;
+
     if (offlineMode) {
       if (tabId === 'downloads') {
-        return { id: 'downloads', name: 'Downloads', icon: TAB_ICONS.downloads, route: '/(tabs)/downloads', isLandingPage: true };
+        return { id: 'downloads', name: 'Downloads', icon: icons.downloads.outline, iconFilled: icons.downloads.filled, route: '/(tabs)/downloads' };
       }
       if (tabId === 'settings') {
-        return { id: 'settings', name: 'Settings', icon: TAB_ICONS.settings, route: '/(tabs)/settings', isLandingPage: false };
+        return { id: 'settings', name: 'Settings', icon: icons.settings.outline, iconFilled: icons.settings.filled, route: '/(tabs)/settings' };
       }
       return null;
     }
 
     if (tabId === 'home') {
       return bottomBarConfig.showHome
-        ? { id: 'home', name: 'Home', icon: TAB_ICONS.home, route: '/(tabs)/home', isLandingPage: landingPage === 'home' }
+        ? { id: 'home', name: 'Home', icon: icons.home.outline, iconFilled: icons.home.filled, route: '/(tabs)/home' }
         : null;
     }
     if (tabId === 'library') {
-      return { id: 'library', name: 'Library', icon: TAB_ICONS.library, route: '/(tabs)/library', isLandingPage: landingPage === 'library' };
+      return { id: 'library', name: 'Library', icon: icons.library.outline, iconFilled: icons.library.filled, route: '/(tabs)/library' };
     }
     if (tabId === 'downloads') {
       return bottomBarConfig.showDownloads
-        ? { id: 'downloads', name: 'Downloads', icon: TAB_ICONS.downloads, route: '/(tabs)/downloads', isLandingPage: landingPage === 'downloads' }
+        ? { id: 'downloads', name: 'Downloads', icon: icons.downloads.outline, iconFilled: icons.downloads.filled, route: '/(tabs)/downloads' }
         : null;
     }
     if (tabId === 'requests') {
       return hasJellyseerr && bottomBarConfig.showRequests
-        ? { id: 'requests', name: 'Requests', icon: TAB_ICONS.requests, route: '/(tabs)/requests', isLandingPage: landingPage === 'requests' }
+        ? { id: 'requests', name: 'Requests', icon: icons.requests.outline, iconFilled: icons.requests.filled, route: '/(tabs)/requests' }
         : null;
     }
     if (tabId === 'admin') {
       return isAdmin && bottomBarConfig.showAdmin
-        ? { id: 'admin', name: 'Admin', icon: TAB_ICONS.admin, route: '/(tabs)/admin', isLandingPage: landingPage === 'admin' }
+        ? { id: 'admin', name: 'Admin', icon: icons.admin.outline, iconFilled: icons.admin.filled, route: '/(tabs)/admin' }
         : null;
     }
     if (tabId === 'settings') {
-      return { id: 'settings', name: 'Settings', icon: TAB_ICONS.settings, route: '/(tabs)/settings', isLandingPage: landingPage === 'settings' };
+      return { id: 'settings', name: 'Settings', icon: icons.settings.outline, iconFilled: icons.settings.filled, route: '/(tabs)/settings' };
     }
 
     const library = libraries?.find((l) => l.Id === tabId);
     if (library) {
       const screenName = getLibraryScreenName(library.CollectionType);
+      const screenIcons = icons[screenName] || icons.library;
       return bottomBarConfig.selectedLibraryIds.includes(tabId)
-        ? { id: screenName, name: library.Name, icon: TAB_ICONS[screenName] || TAB_ICONS.library, route: `/(tabs)/${screenName}`, isLandingPage: landingPage === screenName }
+        ? { id: screenName, name: library.Name, icon: screenIcons.outline, iconFilled: screenIcons.filled, route: `/(tabs)/${screenName}` }
         : null;
     }
 
@@ -229,36 +214,67 @@ export function BottomNav() {
   };
 
   return (
-    <View
-      style={{
-        position: 'absolute',
-        bottom: 0,
-        left: 0,
-        right: 0,
-        height,
-        backgroundColor: colors.background.primary,
-        borderTopColor: 'rgba(255, 255, 255, 0.08)',
-        borderTopWidth: 0.5,
-        flexDirection: 'row',
-        paddingBottom: insets.bottom + 6,
-        paddingTop: 6,
-      }}
-    >
-      {tabs.map((tab) => {
-        const isActive = isTabActive(tab.route, tab.id);
+    <View style={[styles.container, { height, paddingBottom: insets.bottom }]}>
+      <View style={styles.tabsContainer}>
+        {tabs.map((tab) => {
+          const isActive = isTabActive(tab.route, tab.id);
 
-        return (
-          <NavTab
-            key={tab.id}
-            icon={tab.icon}
-            name={tab.name}
-            isActive={isActive}
-            isLandingPage={tab.isLandingPage}
-            accentColor={accentColor}
-            onPress={() => router.replace(tab.route as any)}
-          />
-        );
-      })}
+          return (
+            <NavTab
+              key={tab.id}
+              icon={tab.icon}
+              iconFilled={tab.iconFilled}
+              name={tab.name}
+              isActive={isActive}
+              accentColor={accentColor}
+              onPress={() => router.replace(tab.route as any)}
+            />
+          );
+        })}
+      </View>
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#0a0a0a',
+    borderTopColor: 'rgba(255, 255, 255, 0.08)',
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  tabsContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    paddingTop: 8,
+  },
+  tab: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tabContent: {
+    alignItems: 'center',
+  },
+  iconContainer: {
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  activeIndicator: {
+    position: 'absolute',
+    bottom: -4,
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+  },
+  tabLabel: {
+    fontSize: 10,
+    fontWeight: '500',
+    marginTop: 2,
+  },
+});

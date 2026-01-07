@@ -19,17 +19,25 @@ Requires Android 8.0 (API 26) or higher.
 ## Features
 
 ### Video & TV Shows
-- Stream movies and TV shows
+- Stream movies and TV shows from Jellyfin
 - Subtitle formats: VTT, SRT, ASS, SSA
-- Subtitle customization: size, color, background color, opacity
-- Multiple audio track selection with 30+ language support
+- Subtitle size options: small, medium, large
+- Subtitle text colors: white, yellow, cyan, green
+- Subtitle background colors: black, gray, navy
+- Subtitle background opacity slider
+- Force subtitles option
+- Default subtitle language setting
+- Multiple audio track selection with 30+ languages
+- Default audio language setting
 - Picture-in-Picture mode
 - Skip intro button (uses Jellyfin media segments)
 - Skip credits button
-- Auto-play next episode
+- Auto-play next episode (configurable)
 - Continue watching with resume support
-- Gesture controls: swipe for volume/brightness, double-tap to seek
-- Orientation lock toggle
+- Gesture controls: swipe up/down for volume and brightness
+- Gesture controls: double-tap left/right to seek 10 seconds
+- Orientation lock toggle (landscape left/right)
+- Hardware acceleration option
 - Offline playback for downloaded content
 
 ### Music
@@ -37,65 +45,131 @@ Requires Android 8.0 (API 26) or higher.
 - Queue management with drag-to-reorder
 - Shuffle mode
 - Repeat modes: off, repeat all, repeat one
-- Synced lyrics display
+- Synced lyrics display with auto-scroll
 - Add to playlist
 - Add to favorites
-- Artist, album, and genre browsing
+- Create new playlists
+- Artist browsing
+- Album browsing
+- Genre browsing
+- Track list views
+- Mini player with quick controls
 - Gapless playback
+- Album art display
 
 ### Audiobooks
 - Chapter navigation with visual timeline
-- Sleep timer: 5min, 10min, 15min, 30min, 45min, 1hr, 1.5hr, 2hr
-- Bookmarks with labels
+- Chapter list with durations
+- Sleep timer options: 5, 10, 15, 30, 45 minutes, 1, 1.5, 2 hours
+- Bookmarks with custom labels
+- Bookmark list with jump-to
 - Variable playback speed: 0.5x, 0.75x, 1x, 1.25x, 1.5x, 1.75x, 2x
 - M4B chapter parsing
 - Background playback
 - Resume from last position
+- Cover art display
+- Progress bar with chapter markers
+
+### Books Library
+- Ebooks and audiobooks tabs
+- Alphabetical index sidebar for quick navigation
+- Continue reading section
+- Bookmarks view across all books
+- Progress percentage display
+- Author display
+- Grid and list views
 
 ### EPUB Reader
-- Full EPUB rendering
+- Full EPUB rendering with epub.js
 - Table of contents navigation
 - Three themes: Dark, Light, Sepia
 - Adjustable font size
-- Bookmarks
-- Reading progress tracking
-- Swipe to turn pages
+- Add bookmarks at any position
+- Bookmark list with jump-to
+- Reading progress percentage
+- Progress sync with Jellyfin server
+- Swipe left/right to turn pages
+- Tap edges to turn pages
+- Resume from last position
 
 ### PDF Reader
 - Native PDF rendering
-- Page navigation
+- Page navigation controls
+- Current page / total pages display
 - Reading progress tracking
 
 ### Downloads
 - Download video, music, and audiobooks
+- Download quality options: original, high, medium, low
 - Pause and resume downloads
 - Background download queue
-- Storage usage stats
-- Delete downloads
-- Offline playback
+- WiFi-only download option
+- Storage usage statistics
+- Delete individual downloads
+- Offline playback mode
+- Download progress indicators
 
 ### Jellyseerr Integration
-- Browse trending and popular content
-- Request movies and TV shows
-- View request status
-- Genre browsing
+- Browse trending movies and TV shows
+- Browse popular content
+- Request movies
+- Request TV shows (full series or specific seasons)
+- View request status and history
+- Genre browsing with dedicated pages
 - Search Jellyseerr catalog
+- View media details and ratings
 
-### Server Features
-- Multi-server support
-- Quick Connect authentication
-- Server administration panel
+### Server Administration
+- Server overview with system info
+- Library item counts (movies, series, episodes, etc.)
+- Active sessions view
+- Remote control: play, pause, stop active sessions
+- Scheduled tasks list
+- Run or stop scheduled tasks
 - User management
+- Create new users
+- Delete users
+- Enable/disable users
+- Reset user passwords
+- Edit user permissions and policies
+- Library refresh controls
 - Activity logs
-- Scheduled tasks
+- Restart server
+- Shutdown server
 
-### Other
-- Favorites collection
-- Global search
-- Accent color themes
+### Settings
+- Multi-server support with server switching
+- Quick Connect authentication
+- Switch between users on same server
+- Sign out
+- Offline mode toggle (downloads only)
+- Accent color themes: blue, purple, pink, red, orange, green, teal
+- Customize bottom navigation bar
+- Choose visible tabs
+- Reorder tabs
+- Set landing page
+- Auto-play next episode toggle
+- Hardware acceleration toggle
+- Default audio language (20+ languages)
+- Default subtitle language (20+ languages)
+- Download quality setting
+- WiFi-only downloads toggle
+- Storage and cache management
+- Clear image cache
+- Jellyseerr server configuration
+
+### Home & Navigation
+- Home screen with media rows
 - Continue watching row
-- Next up episodes
+- Next up episodes row
 - Recently added content
+- Library browsing
+- Movies section
+- TV Shows section
+- Music section
+- Favorites collection
+- Global search across all libraries
+- Bottom navigation bar
 
 ## Tech Stack
 

@@ -45,7 +45,7 @@ class MediaSessionService {
       this.unsubscribe = MediaControl.addListener(this.handleMediaControlEvent.bind(this));
       this.isEnabled = true;
     } catch (error) {
-      console.error('Failed to initialize media controls:', error);
+      // Silently fail - media controls are optional and the app should work without them
     }
   }
 
@@ -137,7 +137,7 @@ class MediaSessionService {
     try {
       await MediaControl.updateMetadata(metadata);
     } catch (error) {
-      console.error('Failed to update metadata:', error);
+      // Silently fail - media controls are optional
     }
   }
 
@@ -175,7 +175,7 @@ class MediaSessionService {
         state === 'playing' ? playbackRate : 0
       );
     } catch (error) {
-      console.error('Failed to update playback state:', error);
+      // Silently fail - media controls are optional
     }
   }
 
@@ -185,7 +185,7 @@ class MediaSessionService {
     try {
       await MediaControl.resetControls();
     } catch (error) {
-      console.error('Failed to reset controls:', error);
+      // Silently fail - media controls are optional
     }
   }
 
@@ -198,7 +198,7 @@ class MediaSessionService {
     try {
       await MediaControl.disableMediaControls();
     } catch (error) {
-      console.error('Failed to disable media controls:', error);
+      // Silently fail - media controls are optional
     }
 
     this.isEnabled = false;

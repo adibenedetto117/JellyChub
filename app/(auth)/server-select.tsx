@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { View, Text, TextInput, Pressable, ActivityIndicator, ScrollView } from 'react-native';
+import { View, Text, TextInput, Pressable, ActivityIndicator, ScrollView, Image } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, {
@@ -229,9 +229,10 @@ export default function ServerSelectScreen() {
       >
         {/* Header */}
         <Animated.View entering={FadeIn.duration(600)} className="pt-12 pb-8 items-center">
-          <View className="w-20 h-20 rounded-3xl bg-accent/20 items-center justify-center mb-4">
-            <Text className="text-4xl text-accent">J</Text>
-          </View>
+          <Image
+            source={require('../../assets/icon.png')}
+            className="w-20 h-20 rounded-2xl mb-4"
+          />
           <Text className="text-3xl font-bold text-white tracking-tight">
             JellyChub
           </Text>
@@ -358,7 +359,7 @@ export default function ServerSelectScreen() {
         {/* Footer */}
         <View className="mt-8 items-center">
           <Text className="text-text-muted text-xs">
-            Jellyfin client for mobile and TV
+            Jellyfin Client
           </Text>
         </View>
       </ScrollView>

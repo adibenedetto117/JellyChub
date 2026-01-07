@@ -132,13 +132,6 @@ const LibrarySection = memo(function LibrarySection({ library, userId, accentCol
     refetchOnMount: false,
   });
 
-  const items = data?.Items ?? [];
-  const totalCount = data?.TotalRecordCount ?? 0;
-
-  if (isLoading && !data) {
-    return <SkeletonRow cardWidth={cardWidth} cardHeight={cardHeight} count={4} isSquare={isSquare} />;
-  }
-
   const handleSeeAll = useCallback(() => {
     if (library.CollectionType === 'movies') {
       router.push('/(tabs)/movies');
@@ -156,6 +149,13 @@ const LibrarySection = memo(function LibrarySection({ library, userId, accentCol
   const handleItemPress = useCallback((item: BaseItem) => {
     router.push(getDetailRoute(item) as never);
   }, []);
+
+  const items = data?.Items ?? [];
+  const totalCount = data?.TotalRecordCount ?? 0;
+
+  if (isLoading && !data) {
+    return <SkeletonRow cardWidth={cardWidth} cardHeight={cardHeight} count={4} isSquare={isSquare} />;
+  }
 
   return (
     <View style={{ marginBottom: isTablet ? 32 : 24 }}>
