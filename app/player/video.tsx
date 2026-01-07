@@ -234,7 +234,7 @@ export default function VideoPlayerScreen() {
   const [playSessionId] = useState(() => generatePlaySessionId());
   const [mediaSource, setMediaSource] = useState<MediaSource | null>(null);
   const [streamUrl, setStreamUrl] = useState<string | null>(null);
-  const [orientationLocked, setOrientationLocked] = useState<'landscape' | 'landscape-left' | 'landscape-right'>('landscape');
+  const [orientationLocked, setOrientationLocked] = useState<'landscape-left' | 'landscape-right'>('landscape-left');
   const [isRotationLocked, setIsRotationLocked] = useState(false);
   const [isPortrait, setIsPortrait] = useState(false);
   const [selectedSubtitleIndex, setSelectedSubtitleIndex] = useState<number | undefined>(undefined);
@@ -355,22 +355,15 @@ export default function VideoPlayerScreen() {
         ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT);
         return;
       }
-      switch (orientationLocked) {
-        case 'landscape':
-          ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
-          break;
-        case 'landscape-left':
-          ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE_LEFT);
-          break;
-        case 'landscape-right':
-          ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE_RIGHT);
-          break;
+      if (orientationLocked === 'landscape-left') {
+        ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE_LEFT);
+      } else {
+        ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE_RIGHT);
       }
     };
     lockOrientation();
     activateKeepAwakeAsync();
     return () => {
-      // Don't unlock orientation if navigating to next episode
       if (!isNavigatingRef.current) {
         ScreenOrientation.unlockAsync();
       }
@@ -379,14 +372,9 @@ export default function VideoPlayerScreen() {
   }, [orientationLocked, isPortrait]);
 
   const cycleOrientationLock = useCallback(() => {
-    setOrientationLocked((current) => {
-      switch (current) {
-        case 'landscape': return 'landscape-left';
-        case 'landscape-left': return 'landscape-right';
-        case 'landscape-right': return 'landscape';
-        default: return 'landscape';
-      }
-    });
+    setOrientationLocked((current) =>
+      current === 'landscape-left' ? 'landscape-right' : 'landscape-left'
+    );
   }, []);
 
   const toggleOrientation = useCallback(() => {
@@ -772,10 +760,11 @@ export default function VideoPlayerScreen() {
           }
         }
 
-        if (subtitleCues.length > 0) {
-          const subtitleDelay = 200;
-          const activeCue = subtitleCues.find(cue => currentPosition >= cue.start + subtitleDelay && currentPosition <= cue.end + subtitleDelay);
+        if (selectedSubtitleIndex !== undefined && subtitleCues.length > 0) {
+          const activeCue = subtitleCues.find(cue => currentPosition >= cue.start && currentPosition <= cue.end);
           setCurrentSubtitle(activeCue?.text || '');
+        } else {
+          setCurrentSubtitle('');
         }
       } catch (e) {}
     };
@@ -785,7 +774,7 @@ export default function VideoPlayerScreen() {
     return () => {
       if (progressInterval.current) clearInterval(progressInterval.current);
     };
-  }, [mediaSource, player, subtitleCues, introStart, introEnd, creditsStart, nextEpisode, showNextUpCard]);
+  }, [mediaSource, player, subtitleCues, introStart, introEnd, creditsStart, nextEpisode, showNextUpCard, selectedSubtitleIndex]);
 
   useEffect(() => {
     if (!mediaSource || !player) return;
