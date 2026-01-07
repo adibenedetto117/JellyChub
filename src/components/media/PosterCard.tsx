@@ -2,9 +2,10 @@ import { View, Text, Pressable } from 'react-native';
 import { memo, useMemo, useCallback } from 'react';
 import Animated, { FadeIn, useSharedValue, useAnimatedStyle, withSpring } from 'react-native-reanimated';
 import { getImageUrl } from '@/api';
-import { getWatchProgress, formatEpisodeNumber } from '@/utils';
+import { getWatchProgress, formatEpisodeNumber, getDisplayName, getDisplayImageUrl, getDisplayYear } from '@/utils';
 import { CachedImage } from '@/components/ui/CachedImage';
 import { useResponsive } from '@/hooks';
+import { useSettingsStore } from '@/stores';
 import type { BaseItem } from '@/types/jellyfin';
 
 interface Props {
@@ -65,6 +66,7 @@ export const PosterCard = memo(function PosterCard({
   customHeight,
 }: Props) {
   const { isTablet, isTV, fontSize } = useResponsive();
+  const hideMedia = useSettingsStore((s) => s.hideMedia);
   const sizes = useMemo(() => getScaledSizes(isTablet, isTV), [isTablet, isTV]);
   const baseDimensions = sizes[variant][size];
   const dimensions = {
@@ -88,25 +90,31 @@ export const PosterCard = memo(function PosterCard({
     scale.value = withSpring(1, springConfig);
   }, [scale]);
 
-  const imageType = variant === 'backdrop' ? 'Backdrop' : 'Primary';
-  const imageTag = variant === 'backdrop'
-    ? item.BackdropImageTags?.[0]
-    : item.ImageTags?.Primary;
+  const { imageUrl, displayName, subtitle } = useMemo(() => {
+    const imageType = variant === 'backdrop' ? 'Backdrop' : 'Primary';
+    const imageTag = variant === 'backdrop'
+      ? item.BackdropImageTags?.[0]
+      : item.ImageTags?.Primary;
 
-  const imageUrl = imageTag
-    ? getImageUrl(item.Id, imageType, {
-        maxWidth: dimensions.width * 2,
-        maxHeight: dimensions.height * 2,
-        tag: imageTag,
-      })
-    : null;
+    const rawImageUrl = imageTag
+      ? getImageUrl(item.Id, imageType, {
+          maxWidth: dimensions.width * 2,
+          maxHeight: dimensions.height * 2,
+          tag: imageTag,
+        })
+      : null;
 
-  const subtitle = item.Type === 'Episode'
-    ? formatEpisodeNumber(
-        (item as { ParentIndexNumber?: number }).ParentIndexNumber,
-        (item as { IndexNumber?: number }).IndexNumber
-      )
-    : item.ProductionYear?.toString();
+    return {
+      imageUrl: getDisplayImageUrl(item.Id, rawImageUrl, hideMedia, imageType),
+      displayName: getDisplayName(item, hideMedia),
+      subtitle: item.Type === 'Episode'
+        ? formatEpisodeNumber(
+            (item as { ParentIndexNumber?: number }).ParentIndexNumber,
+            (item as { IndexNumber?: number }).IndexNumber
+          )
+        : getDisplayYear(item.ProductionYear, hideMedia)?.toString(),
+    };
+  }, [item.Id, item.ImageTags, item.BackdropImageTags, item.Name, item.Type, item.ProductionYear, variant, dimensions.width, dimensions.height, hideMedia]);
 
   return (
     <Pressable onPress={onPress} onPressIn={handlePressIn} onPressOut={handlePressOut} className="mr-3">
@@ -139,7 +147,7 @@ export const PosterCard = memo(function PosterCard({
               style={{ fontSize: fontSize.sm, fontWeight: '500', color: '#fff' }}
               numberOfLines={1}
             >
-              {item.Name}
+              {displayName}
             </Text>
             {subtitle && (
               <Text style={{ fontSize: fontSize.xs, color: 'rgba(255,255,255,0.5)' }} numberOfLines={1}>

@@ -6,6 +6,7 @@ import Animated, { useSharedValue, useAnimatedStyle, withSpring, withTiming, run
 import { usePlayerStore, useSettingsStore } from '@/stores';
 import { audioService } from '@/services';
 import { getImageUrl } from '@/api';
+import { getDisplayName, getDisplayImageUrl } from '@/utils';
 import { CachedImage } from '@/components/ui/CachedImage';
 import { useCallback, useMemo, useState, useEffect } from 'react';
 
@@ -16,6 +17,7 @@ export function MiniPlayer() {
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
   const accentColor = useSettingsStore((s) => s.accentColor);
+  const hideMedia = useSettingsStore((s) => s.hideMedia);
 
   const currentItem = usePlayerStore((state) => state.currentItem);
   const playerState = usePlayerStore((state) => state.playerState);
@@ -46,19 +48,25 @@ export function MiniPlayer() {
 
   const albumArtUrl = useMemo(() => {
     if (!item) return null;
+    let rawUrl: string | null = null;
     if (item.ImageTags?.Primary) {
-      return getImageUrl(item.Id, 'Primary', { maxWidth: 200, tag: item.ImageTags.Primary });
+      rawUrl = getImageUrl(item.Id, 'Primary', { maxWidth: 200, tag: item.ImageTags.Primary });
+    } else {
+      const albumId = (item as any)?.AlbumId;
+      const albumArtTag = (item as any)?.AlbumPrimaryImageTag;
+      if (albumId && albumArtTag) {
+        rawUrl = getImageUrl(albumId, 'Primary', { maxWidth: 200, tag: albumArtTag });
+      } else if (albumId) {
+        rawUrl = getImageUrl(albumId, 'Primary', { maxWidth: 200 });
+      }
     }
-    const albumId = (item as any)?.AlbumId;
-    const albumArtTag = (item as any)?.AlbumPrimaryImageTag;
-    if (albumId && albumArtTag) {
-      return getImageUrl(albumId, 'Primary', { maxWidth: 200, tag: albumArtTag });
-    }
-    if (albumId) {
-      return getImageUrl(albumId, 'Primary', { maxWidth: 200 });
-    }
-    return null;
-  }, [item]);
+    return getDisplayImageUrl(item.Id, rawUrl, hideMedia, 'Primary');
+  }, [item, hideMedia]);
+
+  const displayName = useMemo(() => {
+    if (!item) return 'Unknown';
+    return getDisplayName(item, hideMedia);
+  }, [item, hideMedia]);
 
   const progressPercent = useMemo(() => {
     return progress.duration > 0 ? (progress.position / progress.duration) * 100 : 0;
@@ -163,7 +171,7 @@ export function MiniPlayer() {
 
       <View style={{ flex: 1, marginLeft: 6, marginRight: 2 }}>
         <Text style={{ color: '#fff', fontSize: 10, fontWeight: '600' }} numberOfLines={1}>
-          {item?.Name ?? 'Unknown'}
+          {displayName}
         </Text>
       </View>
 
