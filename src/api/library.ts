@@ -555,11 +555,15 @@ export async function getPersonItems(
 
 export async function getSuggestions(
   userId: string,
-  limit: number = 12
+  limit: number = 12,
+  itemTypes: string[] = ['Movie', 'Series']
 ): Promise<BaseItem[]> {
   const params = new URLSearchParams();
   params.set('Limit', limit.toString());
   params.set('Fields', DEFAULT_FIELDS.join(','));
+  if (itemTypes.length > 0) {
+    params.set('IncludeItemTypes', itemTypes.join(','));
+  }
 
   const response = await jellyfinClient.api.get<{ Items: BaseItem[] }>(
     `/Users/${userId}/Suggestions?${params.toString()}`
