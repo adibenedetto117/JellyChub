@@ -137,17 +137,20 @@ Requires Android 8.0 (API 26) or higher.
 - Restart server
 - Shutdown server
 
+### Customizable Interface
+- Fully customizable bottom navigation bar
+- Choose which tabs to show (Home, Movies, Shows, Music, Books, etc.)
+- Reorder tabs to your preference
+- Set any tab as your landing page
+- Make JellyChub your dedicated music app, video app, or all-in-one media app
+- Accent color themes: blue, purple, pink, red, orange, green, teal
+
 ### Settings
 - Multi-server support with server switching
 - Quick Connect authentication
 - Switch between users on same server
 - Sign out
 - Offline mode toggle (downloads only)
-- Accent color themes: blue, purple, pink, red, orange, green, teal
-- Customize bottom navigation bar
-- Choose visible tabs
-- Reorder tabs
-- Set landing page
 - Auto-play next episode toggle
 - Hardware acceleration toggle
 - Default audio language (20+ languages)
@@ -227,6 +230,8 @@ npx expo run:android
 - [ ] Enhanced image caching
 
 ### Planned
+- [ ] iOS release
+- [ ] Live TV support
 - [ ] Chromecast support
 - [ ] SyncPlay (watch together)
 - [ ] Android TV optimization
@@ -237,6 +242,7 @@ npx expo run:android
 - [ ] CarPlay / Android Auto
 
 ### Under Consideration
+- [ ] Comic/manga reader
 - [ ] Intro/credits detection improvements
 - [ ] Custom server plugins support
 - [ ] Parental controls
