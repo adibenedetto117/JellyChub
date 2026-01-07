@@ -23,6 +23,7 @@ Requires Android 8.0 (API 26) or higher.
 - Multiple audio track selection (30+ languages)
 - Picture-in-Picture mode
 - Skip intro/credits buttons (Jellyfin media segments)
+- Volume/brightness swipe gestures
 - Auto-play next episode
 - Offline playback for downloads
 - Hardware acceleration
@@ -51,7 +52,8 @@ Requires Android 8.0 (API 26) or higher.
 - Native PDF rendering with progress tracking
 
 ### Downloads
-- Download video, music, and audiobooks
+- Download movies, TV shows, music, and audiobooks
+- Organized by content type with collapsible groups
 - Quality options: original, high, medium, low
 - Background download queue
 - WiFi-only option
@@ -137,7 +139,6 @@ npx expo run:android
 - [ ] Audio quality improvements
 
 ### Planned
-- [ ] Volume/brightness swipe gestures
 - [ ] Queue view and management
 - [ ] iOS release
 - [ ] Live TV support

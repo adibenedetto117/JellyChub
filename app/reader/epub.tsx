@@ -25,7 +25,7 @@ import Animated, {
   runOnJS,
 } from 'react-native-reanimated';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
-import { useAuthStore, useSettingsStore } from '@/stores';
+import { useAuthStore, useSettingsStore, useDownloadStore } from '@/stores';
 import { useReadingProgressStore } from '@/stores/readingProgressStore';
 import { getItem, getBookDownloadUrl } from '@/api';
 
@@ -52,6 +52,7 @@ export default function EpubReaderScreen() {
 
   const currentUser = useAuthStore((state) => state.currentUser);
   const accentColor = useSettingsStore((s) => s.accentColor);
+  const getDownloadedItem = useDownloadStore((s) => s.getDownloadedItem);
   const userId = currentUser?.Id ?? '';
 
   // Get saved reader settings
@@ -104,32 +105,58 @@ export default function EpubReaderScreen() {
       try {
         setStatus('downloading');
         setDownloadProgress(0);
-        const downloadUrl = getBookDownloadUrl(itemId);
-        const localUri = `${FileSystem.cacheDirectory}book_${itemId}`;
 
-        const fileInfo = await FileSystem.getInfoAsync(localUri);
-        if (!fileInfo.exists) {
-          setLoadingStage('Downloading...');
-          console.log('Downloading book from:', downloadUrl);
+        let localUri: string;
 
-          const downloadResumable = FileSystem.createDownloadResumable(
-            downloadUrl,
-            localUri,
-            {},
-            (progress) => {
-              const pct = progress.totalBytesWritten / progress.totalBytesExpectedToWrite;
-              setDownloadProgress(pct);
-            }
-          );
-
-          const result = await downloadResumable.downloadAsync();
-          if (!result || result.status !== 200) {
-            throw new Error(`Download failed: ${result?.status}`);
+        // Check if book is already downloaded persistently
+        const downloaded = getDownloadedItem(itemId);
+        if (downloaded?.localPath) {
+          const fileInfo = await FileSystem.getInfoAsync(downloaded.localPath);
+          if (fileInfo.exists) {
+            setLoadingStage('Loading downloaded book...');
+            setDownloadProgress(1);
+            console.log('Using persistently downloaded book:', downloaded.localPath);
+            localUri = downloaded.localPath;
+          } else {
+            // File missing, fall back to cache download
+            console.log('Downloaded file missing, falling back to cache');
+            localUri = await downloadToCache();
           }
         } else {
-          setLoadingStage('Loading from cache...');
-          setDownloadProgress(1);
-          console.log('Using cached book');
+          // Not downloaded, use cache
+          localUri = await downloadToCache();
+        }
+
+        async function downloadToCache(): Promise<string> {
+          const downloadUrl = getBookDownloadUrl(itemId);
+          const cacheUri = `${FileSystem.cacheDirectory}book_${itemId}`;
+
+          const fileInfo = await FileSystem.getInfoAsync(cacheUri);
+          if (!fileInfo.exists) {
+            setLoadingStage('Downloading...');
+            console.log('Downloading book from:', downloadUrl);
+
+            const downloadResumable = FileSystem.createDownloadResumable(
+              downloadUrl,
+              cacheUri,
+              {},
+              (progress) => {
+                const pct = progress.totalBytesWritten / progress.totalBytesExpectedToWrite;
+                setDownloadProgress(pct);
+              }
+            );
+
+            const result = await downloadResumable.downloadAsync();
+            if (!result || result.status !== 200) {
+              throw new Error(`Download failed: ${result?.status}`);
+            }
+          } else {
+            setLoadingStage('Loading from cache...');
+            setDownloadProgress(1);
+            console.log('Using cached book');
+          }
+
+          return cacheUri;
         }
 
         if (cancelled) return;
@@ -163,7 +190,7 @@ export default function EpubReaderScreen() {
 
     download();
     return () => { cancelled = true; };
-  }, [itemId]);
+  }, [itemId, getDownloadedItem]);
 
   // Load saved progress or bookmark position
   const [savedPercent, setSavedPercent] = useState<number | null>(null);

@@ -1,5 +1,7 @@
 import { createAudioPlayer, setAudioModeAsync, AudioPlayer, AudioStatus } from 'expo-audio';
+import * as FileSystem from 'expo-file-system/legacy';
 import { usePlayerStore } from '@/stores';
+import { useDownloadStore } from '@/stores/downloadStore';
 import { getAudioStreamUrl, reportPlaybackStart, reportPlaybackStopped, generatePlaySessionId } from '@/api';
 import { ticksToMs, msToTicks } from '@/utils';
 import { mediaSessionService } from './mediaSessionService';
@@ -225,9 +227,30 @@ class AudioService {
       const useDirectStream = isAudiobook && (container === 'm4b' || container === 'm4a' || container === 'mp4');
       console.log(`Audio loading: container=${container}, isAudiobook=${isAudiobook}, useDirectStream=${useDirectStream}`);
 
-      const streamUrl = getAudioStreamUrl(item.Id, { directStream: useDirectStream });
-      console.log(`Audio stream URL: ${streamUrl}`);
-      this.player = createAudioPlayer({ uri: streamUrl });
+      // Check if the track is downloaded for offline playback
+      let playbackUrl: string;
+      let isLocalPlayback = false;
+      const downloadStore = useDownloadStore.getState();
+      const downloadedItem = downloadStore.getDownloadedItem(item.Id);
+
+      if (downloadedItem?.localPath) {
+        // Verify the local file actually exists
+        const fileInfo = await FileSystem.getInfoAsync(downloadedItem.localPath);
+        if (fileInfo.exists) {
+          playbackUrl = downloadedItem.localPath;
+          isLocalPlayback = true;
+          console.log(`Audio using downloaded file: ${playbackUrl}`);
+        } else {
+          // Downloaded record exists but file is missing, fall back to streaming
+          console.log(`Downloaded file missing, falling back to stream: ${downloadedItem.localPath}`);
+          playbackUrl = getAudioStreamUrl(item.Id, { directStream: useDirectStream });
+        }
+      } else {
+        playbackUrl = getAudioStreamUrl(item.Id, { directStream: useDirectStream });
+        console.log(`Audio stream URL: ${playbackUrl}`);
+      }
+
+      this.player = createAudioPlayer({ uri: playbackUrl });
 
       this.statusSubscription = this.player.addListener('playbackStatusUpdate', (status) => {
         this.onPlaybackStatusUpdate(status);
@@ -243,7 +266,7 @@ class AudioService {
         ItemId: item.Id,
         MediaSourceId: item.Id,
         PlaySessionId: this.playSessionId,
-        PlayMethod: 'DirectPlay',
+        PlayMethod: isLocalPlayback ? 'DirectPlay' : 'DirectStream',
       });
 
       const durationMs = ticksToMs(item.RunTimeTicks ?? 0);

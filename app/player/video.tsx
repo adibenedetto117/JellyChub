@@ -19,6 +19,8 @@ import * as ScreenOrientation from 'expo-screen-orientation';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import * as Haptics from 'expo-haptics';
+import * as Brightness from 'expo-brightness';
+import { VolumeManager } from 'react-native-volume-manager';
 import { useAuthStore, usePlayerStore, useSettingsStore, useDownloadStore } from '@/stores';
 import {
   getItem,
@@ -108,6 +110,15 @@ export default function VideoPlayerScreen() {
   const [nextEpisode, setNextEpisode] = useState<any>(null);
   const [subtitleCues, setSubtitleCues] = useState<Array<{ start: number; end: number; text: string }>>([]);
   const [currentSubtitle, setCurrentSubtitle] = useState<string>('');
+
+  // Brightness/Volume gesture state
+  const [currentBrightness, setCurrentBrightness] = useState(0.5);
+  const [currentVolume, setCurrentVolume] = useState(0.5);
+  const [showBrightnessIndicator, setShowBrightnessIndicator] = useState(false);
+  const [showVolumeIndicator, setShowVolumeIndicator] = useState(false);
+  const [gestureStartValue, setGestureStartValue] = useState(0);
+  const brightnessIndicatorTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const volumeIndicatorTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const controlsTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const progressInterval = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -210,6 +221,25 @@ export default function VideoPlayerScreen() {
   }, [mediaSegments]);
 
   const isNavigatingRef = useRef(false);
+
+  // Initialize brightness and volume values on mount
+  useEffect(() => {
+    const initBrightnessAndVolume = async () => {
+      try {
+        const brightness = await Brightness.getBrightnessAsync();
+        setCurrentBrightness(brightness);
+      } catch (e) {
+        // Fallback to 0.5 if we can't get brightness
+      }
+      try {
+        const volume = await VolumeManager.getVolume();
+        setCurrentVolume(typeof volume === 'number' ? volume : volume.volume);
+      } catch (e) {
+        // Fallback to 0.5 if we can't get volume
+      }
+    };
+    initBrightnessAndVolume();
+  }, []);
 
   useEffect(() => {
     if (isPortrait) {
@@ -926,6 +956,99 @@ export default function VideoPlayerScreen() {
     showSkipAnimation(direction);
   }, [progress, handleSeek, showSkipAnimation]);
 
+  // Brightness/Volume gesture handlers
+  const handleBrightnessChange = useCallback(async (value: number) => {
+    const clampedValue = Math.max(0, Math.min(1, value));
+    setCurrentBrightness(clampedValue);
+    try {
+      await Brightness.setBrightnessAsync(clampedValue);
+    } catch (e) {
+      // Ignore brightness errors
+    }
+  }, []);
+
+  const handleVolumeChange = useCallback(async (value: number) => {
+    const clampedValue = Math.max(0, Math.min(1, value));
+    setCurrentVolume(clampedValue);
+    try {
+      await VolumeManager.setVolume(clampedValue, { showUI: false });
+    } catch (e) {
+      // Ignore volume errors
+    }
+  }, []);
+
+  const showBrightnessIndicatorWithTimeout = useCallback(() => {
+    setShowBrightnessIndicator(true);
+    if (brightnessIndicatorTimeout.current) {
+      clearTimeout(brightnessIndicatorTimeout.current);
+    }
+    brightnessIndicatorTimeout.current = setTimeout(() => {
+      setShowBrightnessIndicator(false);
+    }, 1500);
+  }, []);
+
+  const showVolumeIndicatorWithTimeout = useCallback(() => {
+    setShowVolumeIndicator(true);
+    if (volumeIndicatorTimeout.current) {
+      clearTimeout(volumeIndicatorTimeout.current);
+    }
+    volumeIndicatorTimeout.current = setTimeout(() => {
+      setShowVolumeIndicator(false);
+    }, 1500);
+  }, []);
+
+  // Get screen width for gesture zones (needs to account for landscape)
+  const screenWidth = isPortrait ? SCREEN_WIDTH : SCREEN_HEIGHT;
+  const gestureZoneWidth = 80; // Width of the edge zones for brightness/volume
+
+  // Brightness gesture (left edge, landscape only)
+  const brightnessGesture = Gesture.Pan()
+    .enabled(!isPortrait)
+    .onStart((e) => {
+      if (e.x < gestureZoneWidth) {
+        runOnJS(setGestureStartValue)(currentBrightness);
+        runOnJS(showBrightnessIndicatorWithTimeout)();
+        runOnJS(Haptics.impactAsync)(Haptics.ImpactFeedbackStyle.Light);
+      }
+    })
+    .onUpdate((e) => {
+      if (e.x < gestureZoneWidth) {
+        // Calculate brightness change based on vertical swipe (swipe up = brighter)
+        const deltaY = -e.translationY;
+        const sensitivity = 0.003; // Adjust sensitivity
+        const newValue = gestureStartValue + (deltaY * sensitivity);
+        runOnJS(handleBrightnessChange)(newValue);
+        runOnJS(showBrightnessIndicatorWithTimeout)();
+      }
+    })
+    .onEnd(() => {
+      // Indicator will hide via timeout
+    });
+
+  // Volume gesture (right edge, landscape only)
+  const volumeGesture = Gesture.Pan()
+    .enabled(!isPortrait)
+    .onStart((e) => {
+      if (e.x > screenWidth - gestureZoneWidth) {
+        runOnJS(setGestureStartValue)(currentVolume);
+        runOnJS(showVolumeIndicatorWithTimeout)();
+        runOnJS(Haptics.impactAsync)(Haptics.ImpactFeedbackStyle.Light);
+      }
+    })
+    .onUpdate((e) => {
+      if (e.x > screenWidth - gestureZoneWidth) {
+        // Calculate volume change based on vertical swipe (swipe up = louder)
+        const deltaY = -e.translationY;
+        const sensitivity = 0.003; // Adjust sensitivity
+        const newValue = gestureStartValue + (deltaY * sensitivity);
+        runOnJS(handleVolumeChange)(newValue);
+        runOnJS(showVolumeIndicatorWithTimeout)();
+      }
+    })
+    .onEnd(() => {
+      // Indicator will hide via timeout
+    });
+
   const tapGesture = Gesture.Tap().onEnd(() => {
     runOnJS(toggleControls)();
   });
@@ -948,9 +1071,14 @@ export default function VideoPlayerScreen() {
       }
     });
 
-  const gesture = Gesture.Exclusive(
-    Gesture.Simultaneous(doubleTapLeftGesture, doubleTapRightGesture),
-    tapGesture
+  // Combine brightness/volume pan gestures with tap gestures
+  // Pan gestures for brightness/volume take priority on edges, then double-tap for seeking, then single tap for controls
+  const gesture = Gesture.Race(
+    Gesture.Simultaneous(brightnessGesture, volumeGesture),
+    Gesture.Exclusive(
+      Gesture.Simultaneous(doubleTapLeftGesture, doubleTapRightGesture),
+      tapGesture
+    )
   );
 
   const controlsStyle = useAnimatedStyle(() => ({
@@ -1002,6 +1130,86 @@ export default function VideoPlayerScreen() {
               nativeControls={false}
               allowsPictureInPicture={true}
             />
+          )}
+
+          {/* Subtle edge indicators for brightness/volume (landscape only, when controls visible) */}
+          {!isPortrait && showControls && !showBrightnessIndicator && !showVolumeIndicator && (
+            <>
+              {/* Left edge indicator (brightness) - shows current level */}
+              <View
+                style={{
+                  position: 'absolute',
+                  left: 60,
+                  top: '30%',
+                  height: '40%',
+                  alignItems: 'center',
+                }}
+                pointerEvents="none"
+              >
+                <Ionicons name="sunny-outline" size={16} color="rgba(255,255,255,0.35)" style={{ marginBottom: 6 }} />
+                <View
+                  style={{
+                    flex: 1,
+                    width: 4,
+                    backgroundColor: 'rgba(255,255,255,0.15)',
+                    borderRadius: 2,
+                    overflow: 'hidden',
+                  }}
+                >
+                  <View
+                    style={{
+                      position: 'absolute',
+                      bottom: 0,
+                      left: 0,
+                      right: 0,
+                      height: `${currentBrightness * 100}%`,
+                      backgroundColor: 'rgba(255,255,255,0.4)',
+                      borderRadius: 2,
+                    }}
+                  />
+                </View>
+              </View>
+
+              {/* Right edge indicator (volume) - shows current level */}
+              <View
+                style={{
+                  position: 'absolute',
+                  right: 60,
+                  top: '30%',
+                  height: '40%',
+                  alignItems: 'center',
+                }}
+                pointerEvents="none"
+              >
+                <Ionicons
+                  name={currentVolume === 0 ? "volume-mute-outline" : currentVolume < 0.5 ? "volume-low-outline" : "volume-medium-outline"}
+                  size={16}
+                  color="rgba(255,255,255,0.35)"
+                  style={{ marginBottom: 6 }}
+                />
+                <View
+                  style={{
+                    flex: 1,
+                    width: 4,
+                    backgroundColor: 'rgba(255,255,255,0.15)',
+                    borderRadius: 2,
+                    overflow: 'hidden',
+                  }}
+                >
+                  <View
+                    style={{
+                      position: 'absolute',
+                      bottom: 0,
+                      left: 0,
+                      right: 0,
+                      height: `${currentVolume * 100}%`,
+                      backgroundColor: 'rgba(255,255,255,0.4)',
+                      borderRadius: 2,
+                    }}
+                  />
+                </View>
+              </View>
+            </>
           )}
 
           {currentSubtitle !== '' && (() => {
@@ -1071,6 +1279,100 @@ export default function VideoPlayerScreen() {
               <SkipIcon size={28} seconds={10} direction="forward" color={accentColor} />
             </View>
           </Animated.View>
+
+          {/* Brightness Indicator (left side) */}
+          {showBrightnessIndicator && !isPortrait && (
+            <View
+              style={{
+                position: 'absolute',
+                left: 40,
+                top: '50%',
+                marginTop: -80,
+                alignItems: 'center',
+                backgroundColor: 'rgba(0,0,0,0.7)',
+                borderRadius: 12,
+                padding: 16,
+                minWidth: 60,
+              }}
+              pointerEvents="none"
+            >
+              <Ionicons name="sunny" size={28} color="#fff" />
+              <View
+                style={{
+                  width: 6,
+                  height: 100,
+                  backgroundColor: 'rgba(255,255,255,0.3)',
+                  borderRadius: 3,
+                  marginTop: 12,
+                  overflow: 'hidden',
+                }}
+              >
+                <View
+                  style={{
+                    position: 'absolute',
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
+                    height: `${currentBrightness * 100}%`,
+                    backgroundColor: accentColor,
+                    borderRadius: 3,
+                  }}
+                />
+              </View>
+              <Text style={{ color: '#fff', fontSize: 14, fontWeight: '600', marginTop: 8 }}>
+                {Math.round(currentBrightness * 100)}%
+              </Text>
+            </View>
+          )}
+
+          {/* Volume Indicator (right side) */}
+          {showVolumeIndicator && !isPortrait && (
+            <View
+              style={{
+                position: 'absolute',
+                right: 40,
+                top: '50%',
+                marginTop: -80,
+                alignItems: 'center',
+                backgroundColor: 'rgba(0,0,0,0.7)',
+                borderRadius: 12,
+                padding: 16,
+                minWidth: 60,
+              }}
+              pointerEvents="none"
+            >
+              <Ionicons
+                name={currentVolume === 0 ? "volume-mute" : currentVolume < 0.5 ? "volume-low" : "volume-high"}
+                size={28}
+                color="#fff"
+              />
+              <View
+                style={{
+                  width: 6,
+                  height: 100,
+                  backgroundColor: 'rgba(255,255,255,0.3)',
+                  borderRadius: 3,
+                  marginTop: 12,
+                  overflow: 'hidden',
+                }}
+              >
+                <View
+                  style={{
+                    position: 'absolute',
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
+                    height: `${currentVolume * 100}%`,
+                    backgroundColor: accentColor,
+                    borderRadius: 3,
+                  }}
+                />
+              </View>
+              <Text style={{ color: '#fff', fontSize: 14, fontWeight: '600', marginTop: 8 }}>
+                {Math.round(currentVolume * 100)}%
+              </Text>
+            </View>
+          )}
 
           {/* Skip Intro Button */}
           {showSkipIntro && (

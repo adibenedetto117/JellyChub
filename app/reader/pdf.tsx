@@ -13,7 +13,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as FileSystem from 'expo-file-system/legacy';
-import { useAuthStore, useSettingsStore } from '@/stores';
+import { useAuthStore, useSettingsStore, useDownloadStore } from '@/stores';
 import { useReadingProgressStore } from '@/stores/readingProgressStore';
 import { getItem, getBookDownloadUrl } from '@/api';
 
@@ -24,6 +24,7 @@ export default function PdfReaderScreen() {
 
   const currentUser = useAuthStore((state) => state.currentUser);
   const accentColor = useSettingsStore((s) => s.accentColor);
+  const getDownloadedItem = useDownloadStore((s) => s.getDownloadedItem);
   const userId = currentUser?.Id ?? '';
 
   const [status, setStatus] = useState<'downloading' | 'ready' | 'error'>('downloading');
@@ -57,18 +58,43 @@ export default function PdfReaderScreen() {
       try {
         setStatus('downloading');
         setDebugInfo('Getting download URL...');
-        const downloadUrl = getBookDownloadUrl(itemId);
-        const localUri = `${FileSystem.cacheDirectory}book_${itemId}.pdf`;
 
-        const fileInfo = await FileSystem.getInfoAsync(localUri);
-        if (!fileInfo.exists) {
-          setDebugInfo('Downloading PDF...');
-          const result = await FileSystem.downloadAsync(downloadUrl, localUri);
-          if (result.status !== 200) {
-            throw new Error(`Download failed with status ${result.status}`);
+        let localUri: string;
+
+        // Check if PDF is already downloaded persistently
+        const downloaded = getDownloadedItem(itemId);
+        if (downloaded?.localPath) {
+          const fileInfo = await FileSystem.getInfoAsync(downloaded.localPath);
+          if (fileInfo.exists) {
+            setDebugInfo('Loading downloaded PDF...');
+            console.log('Using persistently downloaded PDF:', downloaded.localPath);
+            localUri = downloaded.localPath;
+          } else {
+            // File missing, fall back to cache download
+            console.log('Downloaded file missing, falling back to cache');
+            localUri = await downloadToCache();
           }
         } else {
-          setDebugInfo('Using cached PDF...');
+          // Not downloaded, use cache
+          localUri = await downloadToCache();
+        }
+
+        async function downloadToCache(): Promise<string> {
+          const downloadUrl = getBookDownloadUrl(itemId);
+          const cacheUri = `${FileSystem.cacheDirectory}book_${itemId}.pdf`;
+
+          const fileInfo = await FileSystem.getInfoAsync(cacheUri);
+          if (!fileInfo.exists) {
+            setDebugInfo('Downloading PDF...');
+            const result = await FileSystem.downloadAsync(downloadUrl, cacheUri);
+            if (result.status !== 200) {
+              throw new Error(`Download failed with status ${result.status}`);
+            }
+          } else {
+            setDebugInfo('Using cached PDF...');
+          }
+
+          return cacheUri;
         }
 
         if (cancelled) return;
@@ -93,7 +119,7 @@ export default function PdfReaderScreen() {
 
     download();
     return () => { cancelled = true; };
-  }, [itemId]);
+  }, [itemId, getDownloadedItem]);
 
   useEffect(() => {
     if (!item || !currentPage || totalPages === 0) return;

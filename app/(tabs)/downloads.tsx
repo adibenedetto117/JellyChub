@@ -1,75 +1,164 @@
-import { useState, useEffect, useMemo } from 'react';
-import { View, Text, FlatList, Pressable, Alert, StyleSheet, RefreshControl } from 'react-native';
+import { useState, useEffect, useMemo, useCallback, memo } from 'react';
+import { View, Text, FlatList, Pressable, Alert, StyleSheet, RefreshControl, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import Animated, { FadeIn, FadeOut, Layout } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeOut, Layout, useSharedValue, useAnimatedStyle, withSpring } from 'react-native-reanimated';
+import { Ionicons } from '@expo/vector-icons';
 import { useDownloadStore, useSettingsStore } from '@/stores';
 import { downloadManager } from '@/services';
 import { formatBytes, ticksToMs, formatDuration } from '@/utils';
 import { CachedImage } from '@/components/ui/CachedImage';
 import { SearchButton, HomeButton } from '@/components/ui';
 import { getImageUrl } from '@/api';
+import { colors } from '@/theme';
 import type { DownloadItem } from '@/types';
 
-function DownloadIcon({ size = 20 }: { size?: number }) {
-  return (
-    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
-      <View style={{ width: size * 0.6, height: size * 0.4, borderWidth: 2, borderColor: '#fff', borderTopWidth: 0, borderBottomLeftRadius: 4, borderBottomRightRadius: 4 }} />
-      <View style={{ position: 'absolute', top: 0, width: 2, height: size * 0.5, backgroundColor: '#fff' }} />
-      <View style={{ position: 'absolute', top: size * 0.35, width: 0, height: 0, borderLeftWidth: size * 0.15, borderRightWidth: size * 0.15, borderTopWidth: size * 0.15, borderLeftColor: 'transparent', borderRightColor: 'transparent', borderTopColor: '#fff' }} />
-    </View>
-  );
+// Content type tabs
+type ContentTab = 'movies' | 'tvshows' | 'music' | 'books';
+
+// Grouped data structures
+interface SeriesGroup {
+  seriesId: string;
+  seriesName: string;
+  seasons: SeasonGroup[];
+  totalSize: number;
+  episodeCount: number;
 }
 
-function PlayIcon({ size = 16 }: { size?: number }) {
-  return (
-    <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
-      <View style={{ width: 0, height: 0, borderLeftWidth: size * 0.8, borderTopWidth: size * 0.5, borderBottomWidth: size * 0.5, borderLeftColor: '#fff', borderTopColor: 'transparent', borderBottomColor: 'transparent', marginLeft: size * 0.1 }} />
-    </View>
-  );
+interface SeasonGroup {
+  seasonNumber: number;
+  episodes: DownloadItem[];
+  totalSize: number;
 }
 
-function PauseIcon({ size = 16 }: { size?: number }) {
-  return (
-    <View style={{ width: size, height: size, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 2 }}>
-      <View style={{ width: size * 0.25, height: size * 0.6, backgroundColor: '#fff', borderRadius: 1 }} />
-      <View style={{ width: size * 0.25, height: size * 0.6, backgroundColor: '#fff', borderRadius: 1 }} />
-    </View>
-  );
+interface ArtistGroup {
+  artistName: string;
+  albums: AlbumGroup[];
+  totalSize: number;
+  trackCount: number;
 }
 
-function TrashIcon({ size = 18 }: { size?: number }) {
-  return (
-    <View style={{ width: size, height: size, alignItems: 'center' }}>
-      <View style={{ width: size * 0.7, height: 2, backgroundColor: '#ff4444', borderRadius: 1 }} />
-      <View style={{ width: size * 0.55, height: size * 0.7, borderWidth: 1.5, borderColor: '#ff4444', borderTopWidth: 0, borderBottomLeftRadius: 3, borderBottomRightRadius: 3, marginTop: 1 }} />
-    </View>
-  );
+interface AlbumGroup {
+  albumId: string;
+  albumName: string;
+  tracks: DownloadItem[];
+  totalSize: number;
 }
 
-function CheckIcon({ size = 16, color = '#22c55e' }: { size?: number; color?: string }) {
-  return (
-    <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
-      <View style={{ width: size * 0.35, height: size * 0.6, borderRightWidth: 2, borderBottomWidth: 2, borderColor: color, transform: [{ rotate: '45deg' }], marginTop: -size * 0.1 }} />
-    </View>
-  );
-}
+// Tab Button Component
+const TabButton = memo(function TabButton({
+  label,
+  icon,
+  active,
+  count,
+  onPress,
+  accentColor,
+}: {
+  label: string;
+  icon: string;
+  active: boolean;
+  count: number;
+  onPress: () => void;
+  accentColor: string;
+}) {
+  const scale = useSharedValue(1);
 
-interface DownloadCardProps {
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  const handlePressIn = useCallback(() => {
+    scale.value = withSpring(0.95, { damping: 15, stiffness: 400 });
+  }, [scale]);
+
+  const handlePressOut = useCallback(() => {
+    scale.value = withSpring(1, { damping: 15, stiffness: 400 });
+  }, [scale]);
+
+  return (
+    <Pressable onPress={onPress} onPressIn={handlePressIn} onPressOut={handlePressOut}>
+      <Animated.View
+        style={[
+          styles.tabButton,
+          { backgroundColor: active ? accentColor : 'rgba(255,255,255,0.08)' },
+          animatedStyle,
+        ]}
+      >
+        <Ionicons name={icon as any} size={16} color={active ? '#fff' : 'rgba(255,255,255,0.6)'} />
+        <Text style={[styles.tabButtonText, { color: active ? '#fff' : 'rgba(255,255,255,0.6)' }]}>
+          {label}
+        </Text>
+        {count > 0 && (
+          <View style={[styles.tabBadge, { backgroundColor: active ? 'rgba(255,255,255,0.25)' : accentColor + '40' }]}>
+            <Text style={[styles.tabBadgeText, { color: active ? '#fff' : accentColor }]}>{count}</Text>
+          </View>
+        )}
+      </Animated.View>
+    </Pressable>
+  );
+});
+
+// Collapsible Header Component
+const CollapsibleHeader = memo(function CollapsibleHeader({
+  title,
+  subtitle,
+  count,
+  size,
+  expanded,
+  onToggle,
+  accentColor,
+  level = 0,
+}: {
+  title: string;
+  subtitle?: string;
+  count: number;
+  size: number;
+  expanded: boolean;
+  onToggle: () => void;
+  accentColor: string;
+  level?: number;
+}) {
+  return (
+    <Pressable onPress={onToggle} style={[styles.collapsibleHeader, { paddingLeft: 16 + level * 16 }]}>
+      <Ionicons
+        name={expanded ? 'chevron-down' : 'chevron-forward'}
+        size={18}
+        color={accentColor}
+        style={styles.chevronIcon}
+      />
+      <View style={styles.headerInfo}>
+        <Text style={styles.headerTitle} numberOfLines={1}>{title}</Text>
+        {subtitle && <Text style={styles.headerSubtitle} numberOfLines={1}>{subtitle}</Text>}
+      </View>
+      <View style={styles.headerMeta}>
+        <Text style={styles.headerCount}>{count} {count === 1 ? 'item' : 'items'}</Text>
+        <Text style={styles.headerSize}>{formatBytes(size)}</Text>
+      </View>
+    </Pressable>
+  );
+});
+
+// Download Card for individual items
+const DownloadCard = memo(function DownloadCard({
+  item,
+  accentColor,
+  onPlay,
+  onDelete,
+  onPauseResume,
+  compact = false,
+}: {
   item: DownloadItem;
   accentColor: string;
   onPlay: () => void;
   onDelete: () => void;
   onPauseResume: () => void;
-}
-
-function DownloadCard({ item, accentColor, onPlay, onDelete, onPauseResume }: DownloadCardProps) {
+  compact?: boolean;
+}) {
   const isActive = item.status === 'downloading' || item.status === 'pending' || item.status === 'paused';
   const isCompleted = item.status === 'completed';
   const isFailed = item.status === 'failed';
 
   const imageUrl = getImageUrl(item.itemId, 'Primary', { maxWidth: 200 });
-  const backdropUrl = getImageUrl(item.itemId, 'Backdrop', { maxWidth: 400 });
 
   const getStatusColor = () => {
     switch (item.status) {
@@ -84,48 +173,82 @@ function DownloadCard({ item, accentColor, onPlay, onDelete, onPauseResume }: Do
 
   const getStatusText = () => {
     switch (item.status) {
-      case 'downloading': return `Downloading ${item.progress}%`;
-      case 'pending': return 'Waiting...';
+      case 'downloading': return `${item.progress}%`;
+      case 'pending': return 'Waiting';
       case 'paused': return 'Paused';
-      case 'completed': return 'Ready to play';
+      case 'completed': return 'Ready';
       case 'failed': return item.error || 'Failed';
       default: return '';
     }
   };
 
-  const getTypeLabel = () => {
-    switch (item.item.Type) {
-      case 'Movie': return 'Movie';
-      case 'Episode': return `S${item.item.ParentIndexNumber || 1} E${item.item.IndexNumber || 1}`;
-      case 'Audio': return 'Song';
-      case 'AudioBook': return 'Audiobook';
-      default: return item.item.Type;
+  const getDisplayInfo = () => {
+    const type = item.item.Type;
+    if (type === 'Episode') {
+      const season = item.item.ParentIndexNumber ?? 1;
+      const episode = item.item.IndexNumber ?? 1;
+      return `S${season}E${episode}`;
     }
+    if (type === 'Audio') {
+      const track = item.item.IndexNumber;
+      return track ? `Track ${track}` : 'Track';
+    }
+    return null;
   };
 
+  const displayInfo = getDisplayInfo();
   const duration = item.item.RunTimeTicks ? formatDuration(ticksToMs(item.item.RunTimeTicks)) : null;
 
+  if (compact) {
+    return (
+      <Animated.View entering={FadeIn.duration(200)} layout={Layout.springify()} style={styles.compactCard}>
+        <Pressable onPress={isCompleted ? onPlay : undefined} style={styles.compactCardContent}>
+          <View style={styles.compactThumbnail}>
+            <CachedImage uri={imageUrl} style={styles.compactImage} borderRadius={6} fallbackText={item.item.Name.charAt(0)} />
+            {isActive && (
+              <View style={styles.compactProgress}>
+                <View style={[styles.compactProgressBar, { width: `${item.progress}%`, backgroundColor: accentColor }]} />
+              </View>
+            )}
+          </View>
+          <View style={styles.compactInfo}>
+            <View style={styles.compactTitleRow}>
+              {displayInfo && (
+                <Text style={[styles.compactBadge, { color: accentColor }]}>{displayInfo}</Text>
+              )}
+              <Text style={styles.compactTitle} numberOfLines={1}>{item.item.Name}</Text>
+            </View>
+            <View style={styles.compactMetaRow}>
+              <Text style={styles.compactMeta}>{formatBytes(item.totalBytes)}</Text>
+              {duration && <Text style={styles.compactMeta}>{duration}</Text>}
+              {!isCompleted && (
+                <Text style={[styles.compactStatus, { color: getStatusColor() }]}>{getStatusText()}</Text>
+              )}
+            </View>
+          </View>
+          <View style={styles.compactActions}>
+            {isActive && !isFailed && (
+              <Pressable onPress={onPauseResume} style={[styles.compactAction, { backgroundColor: accentColor + '20' }]}>
+                <Ionicons name={item.status === 'paused' ? 'play' : 'pause'} size={14} color={accentColor} />
+              </Pressable>
+            )}
+            <Pressable onPress={onDelete} style={[styles.compactAction, styles.deleteAction]}>
+              <Ionicons name="trash-outline" size={14} color="#ef4444" />
+            </Pressable>
+          </View>
+        </Pressable>
+      </Animated.View>
+    );
+  }
+
   return (
-    <Animated.View
-      entering={FadeIn.duration(300)}
-      layout={Layout.springify()}
-      style={styles.card}
-    >
-      <Pressable
-        onPress={isCompleted ? onPlay : undefined}
-        style={styles.cardContent}
-      >
-        {/* Thumbnail */}
+    <Animated.View entering={FadeIn.duration(300)} layout={Layout.springify()} style={styles.card}>
+      <Pressable onPress={isCompleted ? onPlay : undefined} style={styles.cardContent}>
         <View style={styles.thumbnailContainer}>
-          <CachedImage
-            uri={imageUrl}
-            style={styles.thumbnail}
-            borderRadius={8}
-            fallbackText={item.item.Name.charAt(0).toUpperCase()}
-          />
+          <CachedImage uri={imageUrl} style={styles.thumbnail} borderRadius={8} fallbackText={item.item.Name.charAt(0).toUpperCase()} />
           {isCompleted && (
             <View style={[styles.playOverlay, { backgroundColor: accentColor }]}>
-              <PlayIcon size={14} />
+              <Ionicons name="play" size={14} color="#fff" />
             </View>
           )}
           {isActive && (
@@ -134,8 +257,6 @@ function DownloadCard({ item, accentColor, onPlay, onDelete, onPauseResume }: Do
             </View>
           )}
         </View>
-
-        {/* Info */}
         <View style={styles.infoContainer}>
           <View style={styles.titleRow}>
             <Text style={styles.title} numberOfLines={1}>{item.item.Name}</Text>
@@ -143,19 +264,19 @@ function DownloadCard({ item, accentColor, onPlay, onDelete, onPauseResume }: Do
               <Text style={styles.seriesName} numberOfLines={1}>{item.item.SeriesName}</Text>
             )}
           </View>
-
           <View style={styles.metaRow}>
             <View style={[styles.typeBadge, { backgroundColor: getStatusColor() + '20' }]}>
-              <Text style={[styles.typeText, { color: getStatusColor() }]}>{getTypeLabel()}</Text>
+              <Text style={[styles.typeText, { color: getStatusColor() }]}>
+                {displayInfo || item.item.Type}
+              </Text>
             </View>
             <Text style={styles.sizeText}>{formatBytes(item.totalBytes)}</Text>
             {duration && <Text style={styles.durationText}>{duration}</Text>}
           </View>
-
           <View style={styles.statusRow}>
             {isCompleted ? (
               <View style={styles.statusBadge}>
-                <CheckIcon size={12} />
+                <Ionicons name="checkmark-circle" size={14} color="#22c55e" />
                 <Text style={[styles.statusText, { color: '#22c55e' }]}>Downloaded</Text>
               </View>
             ) : (
@@ -163,31 +284,347 @@ function DownloadCard({ item, accentColor, onPlay, onDelete, onPauseResume }: Do
             )}
           </View>
         </View>
-
-        {/* Actions */}
         <View style={styles.actionsContainer}>
           {isActive && !isFailed && (
-            <Pressable
-              onPress={onPauseResume}
-              style={[styles.actionButton, { backgroundColor: accentColor + '20' }]}
-            >
-              {item.status === 'paused' ? <PlayIcon size={14} /> : <PauseIcon size={14} />}
+            <Pressable onPress={onPauseResume} style={[styles.actionButton, { backgroundColor: accentColor + '20' }]}>
+              <Ionicons name={item.status === 'paused' ? 'play' : 'pause'} size={16} color="#fff" />
             </Pressable>
           )}
-          <Pressable
-            onPress={onDelete}
-            style={[styles.actionButton, styles.deleteButton]}
-          >
-            <TrashIcon size={16} />
+          <Pressable onPress={onDelete} style={[styles.actionButton, styles.deleteButton]}>
+            <Ionicons name="trash-outline" size={16} color="#ef4444" />
           </Pressable>
         </View>
       </Pressable>
     </Animated.View>
   );
-}
+});
+
+// Active Downloads Section
+const ActiveDownloadsSection = memo(function ActiveDownloadsSection({
+  downloads,
+  accentColor,
+  onPlay,
+  onDelete,
+  onPauseResume,
+}: {
+  downloads: DownloadItem[];
+  accentColor: string;
+  onPlay: (item: DownloadItem) => void;
+  onDelete: (item: DownloadItem) => void;
+  onPauseResume: (item: DownloadItem) => void;
+}) {
+  if (downloads.length === 0) return null;
+
+  return (
+    <View style={styles.activeSection}>
+      <View style={styles.activeSectionHeader}>
+        <Ionicons name="cloud-download-outline" size={18} color={accentColor} />
+        <Text style={styles.activeSectionTitle}>Downloading</Text>
+        <View style={[styles.activeBadge, { backgroundColor: accentColor + '30' }]}>
+          <Text style={[styles.activeBadgeText, { color: accentColor }]}>{downloads.length}</Text>
+        </View>
+      </View>
+      {downloads.map((item) => (
+        <DownloadCard
+          key={item.id}
+          item={item}
+          accentColor={accentColor}
+          onPlay={() => onPlay(item)}
+          onDelete={() => onDelete(item)}
+          onPauseResume={() => onPauseResume(item)}
+        />
+      ))}
+    </View>
+  );
+});
+
+// Movies Section
+const MoviesSection = memo(function MoviesSection({
+  movies,
+  accentColor,
+  onPlay,
+  onDelete,
+}: {
+  movies: DownloadItem[];
+  accentColor: string;
+  onPlay: (item: DownloadItem) => void;
+  onDelete: (item: DownloadItem) => void;
+}) {
+  if (movies.length === 0) {
+    return (
+      <View style={styles.emptySection}>
+        <Ionicons name="film-outline" size={48} color="rgba(255,255,255,0.2)" />
+        <Text style={styles.emptySectionText}>No downloaded movies</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.sectionContent}>
+      {movies.map((item) => (
+        <DownloadCard
+          key={item.id}
+          item={item}
+          accentColor={accentColor}
+          onPlay={() => onPlay(item)}
+          onDelete={() => onDelete(item)}
+          onPauseResume={() => {}}
+        />
+      ))}
+    </View>
+  );
+});
+
+// TV Shows Section with hierarchical grouping
+const TVShowsSection = memo(function TVShowsSection({
+  seriesGroups,
+  accentColor,
+  onPlay,
+  onDelete,
+}: {
+  seriesGroups: SeriesGroup[];
+  accentColor: string;
+  onPlay: (item: DownloadItem) => void;
+  onDelete: (item: DownloadItem) => void;
+}) {
+  const [expandedSeries, setExpandedSeries] = useState<Set<string>>(new Set());
+  const [expandedSeasons, setExpandedSeasons] = useState<Set<string>>(new Set());
+
+  const toggleSeries = useCallback((seriesId: string) => {
+    setExpandedSeries((prev) => {
+      const next = new Set(prev);
+      if (next.has(seriesId)) {
+        next.delete(seriesId);
+      } else {
+        next.add(seriesId);
+      }
+      return next;
+    });
+  }, []);
+
+  const toggleSeason = useCallback((key: string) => {
+    setExpandedSeasons((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  }, []);
+
+  if (seriesGroups.length === 0) {
+    return (
+      <View style={styles.emptySection}>
+        <Ionicons name="tv-outline" size={48} color="rgba(255,255,255,0.2)" />
+        <Text style={styles.emptySectionText}>No downloaded TV shows</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.sectionContent}>
+      {seriesGroups.map((series) => {
+        const isSeriesExpanded = expandedSeries.has(series.seriesId);
+        return (
+          <View key={series.seriesId} style={styles.groupContainer}>
+            <CollapsibleHeader
+              title={series.seriesName}
+              count={series.episodeCount}
+              size={series.totalSize}
+              expanded={isSeriesExpanded}
+              onToggle={() => toggleSeries(series.seriesId)}
+              accentColor={accentColor}
+            />
+            {isSeriesExpanded && (
+              <Animated.View entering={FadeIn.duration(200)}>
+                {series.seasons.map((season) => {
+                  const seasonKey = `${series.seriesId}-${season.seasonNumber}`;
+                  const isSeasonExpanded = expandedSeasons.has(seasonKey);
+                  return (
+                    <View key={seasonKey}>
+                      <CollapsibleHeader
+                        title={`Season ${season.seasonNumber}`}
+                        count={season.episodes.length}
+                        size={season.totalSize}
+                        expanded={isSeasonExpanded}
+                        onToggle={() => toggleSeason(seasonKey)}
+                        accentColor={accentColor}
+                        level={1}
+                      />
+                      {isSeasonExpanded && (
+                        <Animated.View entering={FadeIn.duration(200)} style={styles.episodesList}>
+                          {season.episodes.map((episode) => (
+                            <DownloadCard
+                              key={episode.id}
+                              item={episode}
+                              accentColor={accentColor}
+                              onPlay={() => onPlay(episode)}
+                              onDelete={() => onDelete(episode)}
+                              onPauseResume={() => {}}
+                              compact
+                            />
+                          ))}
+                        </Animated.View>
+                      )}
+                    </View>
+                  );
+                })}
+              </Animated.View>
+            )}
+          </View>
+        );
+      })}
+    </View>
+  );
+});
+
+// Music Section with hierarchical grouping
+const MusicSection = memo(function MusicSection({
+  artistGroups,
+  accentColor,
+  onPlay,
+  onDelete,
+}: {
+  artistGroups: ArtistGroup[];
+  accentColor: string;
+  onPlay: (item: DownloadItem) => void;
+  onDelete: (item: DownloadItem) => void;
+}) {
+  const [expandedArtists, setExpandedArtists] = useState<Set<string>>(new Set());
+  const [expandedAlbums, setExpandedAlbums] = useState<Set<string>>(new Set());
+
+  const toggleArtist = useCallback((artistName: string) => {
+    setExpandedArtists((prev) => {
+      const next = new Set(prev);
+      if (next.has(artistName)) {
+        next.delete(artistName);
+      } else {
+        next.add(artistName);
+      }
+      return next;
+    });
+  }, []);
+
+  const toggleAlbum = useCallback((key: string) => {
+    setExpandedAlbums((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  }, []);
+
+  if (artistGroups.length === 0) {
+    return (
+      <View style={styles.emptySection}>
+        <Ionicons name="musical-notes-outline" size={48} color="rgba(255,255,255,0.2)" />
+        <Text style={styles.emptySectionText}>No downloaded music</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.sectionContent}>
+      {artistGroups.map((artist) => {
+        const isArtistExpanded = expandedArtists.has(artist.artistName);
+        return (
+          <View key={artist.artistName} style={styles.groupContainer}>
+            <CollapsibleHeader
+              title={artist.artistName}
+              count={artist.trackCount}
+              size={artist.totalSize}
+              expanded={isArtistExpanded}
+              onToggle={() => toggleArtist(artist.artistName)}
+              accentColor={accentColor}
+            />
+            {isArtistExpanded && (
+              <Animated.View entering={FadeIn.duration(200)}>
+                {artist.albums.map((album) => {
+                  const albumKey = `${artist.artistName}-${album.albumId}`;
+                  const isAlbumExpanded = expandedAlbums.has(albumKey);
+                  return (
+                    <View key={albumKey}>
+                      <CollapsibleHeader
+                        title={album.albumName}
+                        count={album.tracks.length}
+                        size={album.totalSize}
+                        expanded={isAlbumExpanded}
+                        onToggle={() => toggleAlbum(albumKey)}
+                        accentColor={accentColor}
+                        level={1}
+                      />
+                      {isAlbumExpanded && (
+                        <Animated.View entering={FadeIn.duration(200)} style={styles.tracksList}>
+                          {album.tracks.map((track) => (
+                            <DownloadCard
+                              key={track.id}
+                              item={track}
+                              accentColor={accentColor}
+                              onPlay={() => onPlay(track)}
+                              onDelete={() => onDelete(track)}
+                              onPauseResume={() => {}}
+                              compact
+                            />
+                          ))}
+                        </Animated.View>
+                      )}
+                    </View>
+                  );
+                })}
+              </Animated.View>
+            )}
+          </View>
+        );
+      })}
+    </View>
+  );
+});
+
+// Books Section
+const BooksSection = memo(function BooksSection({
+  books,
+  accentColor,
+  onPlay,
+  onDelete,
+}: {
+  books: DownloadItem[];
+  accentColor: string;
+  onPlay: (item: DownloadItem) => void;
+  onDelete: (item: DownloadItem) => void;
+}) {
+  if (books.length === 0) {
+    return (
+      <View style={styles.emptySection}>
+        <Ionicons name="book-outline" size={48} color="rgba(255,255,255,0.2)" />
+        <Text style={styles.emptySectionText}>No downloaded books</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.sectionContent}>
+      {books.map((item) => (
+        <DownloadCard
+          key={item.id}
+          item={item}
+          accentColor={accentColor}
+          onPlay={() => onPlay(item)}
+          onDelete={() => onDelete(item)}
+          onPauseResume={() => {}}
+        />
+      ))}
+    </View>
+  );
+});
 
 export default function DownloadsScreen() {
   const [refreshing, setRefreshing] = useState(false);
+  const [activeTab, setActiveTab] = useState<ContentTab>('movies');
   const { downloads, usedStorage, maxStorage, recalculateUsedStorage } = useDownloadStore();
   const accentColor = useSettingsStore((s) => s.accentColor);
 
@@ -195,6 +632,7 @@ export default function DownloadsScreen() {
     recalculateUsedStorage();
   }, []);
 
+  // Separate active downloads from completed
   const { activeDownloads, completedDownloads } = useMemo(() => {
     const active = downloads.filter(
       (d) => d.status === 'downloading' || d.status === 'pending' || d.status === 'paused' || d.status === 'failed'
@@ -202,6 +640,119 @@ export default function DownloadsScreen() {
     const completed = downloads.filter((d) => d.status === 'completed');
     return { activeDownloads: active, completedDownloads: completed };
   }, [downloads]);
+
+  // Categorize completed downloads by type
+  const { movies, tvShows, music, books } = useMemo(() => {
+    const movieItems: DownloadItem[] = [];
+    const tvItems: DownloadItem[] = [];
+    const musicItems: DownloadItem[] = [];
+    const bookItems: DownloadItem[] = [];
+
+    completedDownloads.forEach((item) => {
+      const type = item.item.Type;
+      if (type === 'Movie') {
+        movieItems.push(item);
+      } else if (type === 'Episode') {
+        tvItems.push(item);
+      } else if (type === 'Audio') {
+        musicItems.push(item);
+      } else if (type === 'Book' || type === 'AudioBook') {
+        bookItems.push(item);
+      }
+    });
+
+    return {
+      movies: movieItems,
+      tvShows: tvItems,
+      music: musicItems,
+      books: bookItems,
+    };
+  }, [completedDownloads]);
+
+  // Group TV shows by series and season
+  const seriesGroups = useMemo((): SeriesGroup[] => {
+    const seriesMap = new Map<string, SeriesGroup>();
+
+    tvShows.forEach((item) => {
+      const seriesId = item.item.SeriesId || 'unknown';
+      const seriesName = item.item.SeriesName || 'Unknown Series';
+      const seasonNumber = item.item.ParentIndexNumber ?? 1;
+
+      if (!seriesMap.has(seriesId)) {
+        seriesMap.set(seriesId, {
+          seriesId,
+          seriesName,
+          seasons: [],
+          totalSize: 0,
+          episodeCount: 0,
+        });
+      }
+
+      const series = seriesMap.get(seriesId)!;
+      let season = series.seasons.find((s) => s.seasonNumber === seasonNumber);
+      if (!season) {
+        season = { seasonNumber, episodes: [], totalSize: 0 };
+        series.seasons.push(season);
+      }
+
+      season.episodes.push(item);
+      season.totalSize += item.totalBytes;
+      series.totalSize += item.totalBytes;
+      series.episodeCount++;
+    });
+
+    // Sort episodes within each season by episode number
+    seriesMap.forEach((series) => {
+      series.seasons.sort((a, b) => a.seasonNumber - b.seasonNumber);
+      series.seasons.forEach((season) => {
+        season.episodes.sort((a, b) => (a.item.IndexNumber ?? 0) - (b.item.IndexNumber ?? 0));
+      });
+    });
+
+    return Array.from(seriesMap.values()).sort((a, b) => a.seriesName.localeCompare(b.seriesName));
+  }, [tvShows]);
+
+  // Group music by artist and album
+  const artistGroups = useMemo((): ArtistGroup[] => {
+    const artistMap = new Map<string, ArtistGroup>();
+
+    music.forEach((item) => {
+      const artistName = (item.item as any).AlbumArtist || (item.item as any).Artists?.[0] || 'Unknown Artist';
+      const albumId = (item.item as any).AlbumId || 'unknown';
+      const albumName = (item.item as any).Album || 'Unknown Album';
+
+      if (!artistMap.has(artistName)) {
+        artistMap.set(artistName, {
+          artistName,
+          albums: [],
+          totalSize: 0,
+          trackCount: 0,
+        });
+      }
+
+      const artist = artistMap.get(artistName)!;
+      let album = artist.albums.find((a) => a.albumId === albumId);
+      if (!album) {
+        album = { albumId, albumName, tracks: [], totalSize: 0 };
+        artist.albums.push(album);
+      }
+
+      album.tracks.push(item);
+      album.totalSize += item.totalBytes;
+      artist.totalSize += item.totalBytes;
+      artist.trackCount++;
+    });
+
+    // Sort tracks within each album by track number
+    artistMap.forEach((artist) => {
+      artist.albums.sort((a, b) => a.albumName.localeCompare(b.albumName));
+      artist.albums.forEach((album) => {
+        album.tracks.sort((a, b) => (a.item.IndexNumber ?? 0) - (b.item.IndexNumber ?? 0));
+      });
+    });
+
+    return Array.from(artistMap.values()).sort((a, b) => a.artistName.localeCompare(b.artistName));
+  }, [music]);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -265,26 +816,27 @@ export default function DownloadsScreen() {
 
   const storagePercent = maxStorage > 0 ? (usedStorage / maxStorage) * 100 : 0;
 
-  const renderItem = ({ item }: { item: DownloadItem }) => (
-    <DownloadCard
-      item={item}
-      accentColor={accentColor}
-      onPlay={() => handlePlay(item)}
-      onDelete={() => handleDelete(item)}
-      onPauseResume={() => handlePauseResume(item)}
-    />
-  );
+  const tabCounts = {
+    movies: movies.length,
+    tvshows: tvShows.length,
+    music: music.length,
+    books: books.length,
+  };
 
-  const renderSectionHeader = (title: string, count: number) => (
-    <View style={styles.sectionHeader}>
-      <Text style={styles.sectionTitle}>{title}</Text>
-      <View style={[styles.countBadge, { backgroundColor: accentColor + '30' }]}>
-        <Text style={[styles.countText, { color: accentColor }]}>{count}</Text>
-      </View>
-    </View>
-  );
-
-  const allDownloads = [...activeDownloads, ...completedDownloads];
+  const renderContent = () => {
+    switch (activeTab) {
+      case 'movies':
+        return <MoviesSection movies={movies} accentColor={accentColor} onPlay={handlePlay} onDelete={handleDelete} />;
+      case 'tvshows':
+        return <TVShowsSection seriesGroups={seriesGroups} accentColor={accentColor} onPlay={handlePlay} onDelete={handleDelete} />;
+      case 'music':
+        return <MusicSection artistGroups={artistGroups} accentColor={accentColor} onPlay={handlePlay} onDelete={handleDelete} />;
+      case 'books':
+        return <BooksSection books={books} accentColor={accentColor} onPlay={handlePlay} onDelete={handleDelete} />;
+      default:
+        return null;
+    }
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -307,8 +859,8 @@ export default function DownloadsScreen() {
       {/* Storage Bar */}
       <View style={styles.storageCard}>
         <View style={styles.storageHeader}>
-          <View style={styles.storageIcon}>
-            <DownloadIcon size={18} />
+          <View style={[styles.storageIcon, { backgroundColor: accentColor + '20' }]}>
+            <Ionicons name="cloud-download-outline" size={18} color={accentColor} />
           </View>
           <View style={styles.storageInfo}>
             <Text style={styles.storageTitle}>Storage</Text>
@@ -331,11 +883,10 @@ export default function DownloadsScreen() {
         </View>
       </View>
 
-      {/* Downloads List */}
       {downloads.length === 0 ? (
         <View style={styles.emptyState}>
           <View style={[styles.emptyIcon, { backgroundColor: accentColor + '20' }]}>
-            <DownloadIcon size={40} />
+            <Ionicons name="cloud-download-outline" size={40} color={accentColor} />
           </View>
           <Text style={styles.emptyTitle}>No Downloads</Text>
           <Text style={styles.emptySubtitle}>
@@ -343,28 +894,72 @@ export default function DownloadsScreen() {
           </Text>
         </View>
       ) : (
-        <FlatList
-          data={allDownloads}
-          renderItem={renderItem}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.listContent}
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
           refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              tintColor={accentColor}
-            />
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={accentColor} />
           }
-          ListHeaderComponent={
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Active Downloads Section */}
+          <ActiveDownloadsSection
+            downloads={activeDownloads}
+            accentColor={accentColor}
+            onPlay={handlePlay}
+            onDelete={handleDelete}
+            onPauseResume={handlePauseResume}
+          />
+
+          {/* Content Type Tabs */}
+          {completedDownloads.length > 0 && (
             <>
-              {activeDownloads.length > 0 && renderSectionHeader('In Progress', activeDownloads.length)}
-              {activeDownloads.length > 0 && completedDownloads.length > 0 && activeDownloads.length === allDownloads.filter(d => d.status !== 'completed').length && (
-                <View style={{ height: 16 }} />
-              )}
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.tabsContainer}
+              >
+                <TabButton
+                  label="Movies"
+                  icon="film-outline"
+                  active={activeTab === 'movies'}
+                  count={tabCounts.movies}
+                  onPress={() => setActiveTab('movies')}
+                  accentColor={accentColor}
+                />
+                <TabButton
+                  label="TV Shows"
+                  icon="tv-outline"
+                  active={activeTab === 'tvshows'}
+                  count={tabCounts.tvshows}
+                  onPress={() => setActiveTab('tvshows')}
+                  accentColor={accentColor}
+                />
+                <TabButton
+                  label="Music"
+                  icon="musical-notes-outline"
+                  active={activeTab === 'music'}
+                  count={tabCounts.music}
+                  onPress={() => setActiveTab('music')}
+                  accentColor={accentColor}
+                />
+                <TabButton
+                  label="Books"
+                  icon="book-outline"
+                  active={activeTab === 'books'}
+                  count={tabCounts.books}
+                  onPress={() => setActiveTab('books')}
+                  accentColor={accentColor}
+                />
+              </ScrollView>
+
+              {/* Content Section */}
+              {renderContent()}
             </>
-          }
-          stickyHeaderIndices={[]}
-        />
+          )}
+
+          <View style={styles.bottomSpacer} />
+        </ScrollView>
       )}
     </SafeAreaView>
   );
@@ -373,7 +968,7 @@ export default function DownloadsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0a0a0a',
+    backgroundColor: colors.background.primary,
   },
   header: {
     flexDirection: 'row',
@@ -412,7 +1007,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginBottom: 16,
     padding: 16,
-    backgroundColor: '#1a1a1a',
+    backgroundColor: colors.surface.default,
     borderRadius: 16,
   },
   storageHeader: {
@@ -424,7 +1019,6 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 10,
-    backgroundColor: 'rgba(255,255,255,0.1)',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -457,36 +1051,132 @@ const styles = StyleSheet.create({
     height: '100%',
     borderRadius: 3,
   },
-  listContent: {
-    paddingHorizontal: 16,
-    paddingBottom: 32,
+  scrollView: {
+    flex: 1,
   },
-  sectionHeader: {
+  scrollContent: {
+    paddingHorizontal: 16,
+  },
+  // Active Downloads Section
+  activeSection: {
+    marginBottom: 20,
+  },
+  activeSectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 12,
-    marginTop: 8,
+    gap: 8,
   },
-  sectionTitle: {
-    color: 'rgba(255,255,255,0.6)',
-    fontSize: 13,
+  activeSectionTitle: {
+    color: '#fff',
+    fontSize: 16,
     fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    flex: 1,
   },
-  countBadge: {
-    marginLeft: 8,
+  activeBadge: {
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 10,
   },
-  countText: {
+  activeBadgeText: {
     fontSize: 12,
     fontWeight: '600',
   },
+  // Tabs
+  tabsContainer: {
+    paddingVertical: 12,
+    gap: 8,
+  },
+  tabButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 20,
+    gap: 6,
+  },
+  tabButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  tabBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+    minWidth: 20,
+    alignItems: 'center',
+  },
+  tabBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  // Section Content
+  sectionContent: {
+    marginTop: 8,
+  },
+  emptySection: {
+    alignItems: 'center',
+    paddingVertical: 60,
+  },
+  emptySectionText: {
+    color: 'rgba(255,255,255,0.4)',
+    fontSize: 14,
+    marginTop: 12,
+  },
+  // Collapsible Groups
+  groupContainer: {
+    marginBottom: 4,
+  },
+  collapsibleHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingRight: 16,
+    backgroundColor: colors.surface.default,
+    borderRadius: 12,
+    marginBottom: 4,
+  },
+  chevronIcon: {
+    marginRight: 10,
+  },
+  headerInfo: {
+    flex: 1,
+    marginRight: 12,
+  },
+  headerTitle: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  headerSubtitle: {
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: 12,
+    marginTop: 2,
+  },
+  headerMeta: {
+    alignItems: 'flex-end',
+  },
+  headerCount: {
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: 12,
+  },
+  headerSize: {
+    color: 'rgba(255,255,255,0.4)',
+    fontSize: 11,
+    marginTop: 2,
+  },
+  episodesList: {
+    paddingLeft: 16,
+    marginBottom: 8,
+  },
+  tracksList: {
+    paddingLeft: 16,
+    marginBottom: 8,
+  },
+  // Download Card Styles
   card: {
     marginBottom: 12,
-    backgroundColor: '#1a1a1a',
+    backgroundColor: colors.surface.default,
     borderRadius: 16,
     overflow: 'hidden',
   },
@@ -596,6 +1286,89 @@ const styles = StyleSheet.create({
   deleteButton: {
     backgroundColor: 'rgba(239, 68, 68, 0.15)',
   },
+  // Compact Card Styles
+  compactCard: {
+    marginBottom: 6,
+    backgroundColor: colors.surface.elevated,
+    borderRadius: 10,
+    overflow: 'hidden',
+  },
+  compactCardContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10,
+  },
+  compactThumbnail: {
+    width: 48,
+    height: 48,
+    borderRadius: 6,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  compactImage: {
+    width: '100%',
+    height: '100%',
+  },
+  compactProgress: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 3,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  compactProgressBar: {
+    height: '100%',
+  },
+  compactInfo: {
+    flex: 1,
+    marginLeft: 10,
+  },
+  compactTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  compactBadge: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  compactTitle: {
+    flex: 1,
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  compactMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 4,
+  },
+  compactMeta: {
+    color: 'rgba(255,255,255,0.4)',
+    fontSize: 11,
+  },
+  compactStatus: {
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  compactActions: {
+    flexDirection: 'row',
+    gap: 6,
+    marginLeft: 8,
+  },
+  compactAction: {
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deleteAction: {
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+  },
+  // Empty State
   emptyState: {
     flex: 1,
     alignItems: 'center',
@@ -621,5 +1394,8 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: 'center',
     lineHeight: 20,
+  },
+  bottomSpacer: {
+    height: 100,
   },
 });

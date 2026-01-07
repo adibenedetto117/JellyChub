@@ -1,7 +1,7 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import { useDownloadStore } from '@/stores/downloadStore';
 import { useAuthStore } from '@/stores/authStore';
-import { getStreamUrl, getAudioStreamUrl } from '@/api';
+import { getStreamUrl, getAudioStreamUrl, getBookDownloadUrl } from '@/api';
 import type { BaseItem } from '@/types/jellyfin';
 
 const DOWNLOAD_DIR = `${FileSystem.documentDirectory}jellychub/downloads/`;
@@ -32,7 +32,8 @@ class DownloadManager {
     await this.ensureDownloadDirectory();
 
     const isAudio = item.Type === 'Audio' || item.Type === 'AudioBook';
-    const extension = isAudio ? 'mp3' : 'mp4';
+    const isBook = item.Type === 'Book';
+    const extension = isAudio ? 'mp3' : isBook ? (item.Container?.toLowerCase() || 'epub') : 'mp4';
     const localPath = `${DOWNLOAD_DIR}${item.Id}.${extension}`;
 
     const existingDownload = store.getDownloadByItemId(item.Id);
@@ -53,6 +54,15 @@ class DownloadManager {
     this.processQueue();
 
     return downloadId;
+  }
+
+  async startBatchDownload(items: BaseItem[], serverId: string): Promise<string[]> {
+    const downloadIds: string[] = [];
+    for (const item of items) {
+      const id = await this.startDownload(item, serverId);
+      if (id) downloadIds.push(id);
+    }
+    return downloadIds;
   }
 
   async processQueue(): Promise<void> {
@@ -93,11 +103,14 @@ class DownloadManager {
 
     const item = download.item;
     const isAudio = item.Type === 'Audio' || item.Type === 'AudioBook';
-    const extension = isAudio ? 'mp3' : 'mp4';
+    const isBook = item.Type === 'Book';
+    const extension = isAudio ? 'mp3' : isBook ? (item.Container?.toLowerCase() || 'epub') : 'mp4';
     const localPath = `${DOWNLOAD_DIR}${item.Id}.${extension}`;
 
     let downloadUrl: string;
-    if (isAudio) {
+    if (isBook) {
+      downloadUrl = getBookDownloadUrl(item.Id);
+    } else if (isAudio) {
       downloadUrl = getAudioStreamUrl(item.Id);
     } else {
       const mediaSourceId = item.MediaSources?.[0]?.Id ?? item.Id;

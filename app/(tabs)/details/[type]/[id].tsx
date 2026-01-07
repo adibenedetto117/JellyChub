@@ -92,6 +92,7 @@ export default function DetailScreen() {
   const [selectedEpisodeForDownload, setSelectedEpisodeForDownload] = useState<BaseItem | null>(null);
   const [selectedPerson, setSelectedPerson] = useState<{ id: string; name: string; imageTag?: string } | null>(null);
   const [isFavorite, setIsFavorite] = useState<boolean | null>(null);
+  const [isBatchDownloading, setIsBatchDownloading] = useState(false);
 
   // Check download status
   const downloadItem = getDownloadByItemId(id);
@@ -371,6 +372,66 @@ export default function DetailScreen() {
     setShowDownloadOptions(true);
   };
 
+  const handleSeasonDownload = async () => {
+    if (!activeServerId || !episodes?.Items?.length) return;
+
+    // Check how many episodes are not yet downloaded
+    const notDownloaded = episodes.Items.filter((ep) => {
+      const epDownload = getDownloadByItemId(ep.Id);
+      const epIsDownloaded = isItemDownloaded(ep.Id);
+      const epIsInProgress = epDownload?.status === 'downloading' || epDownload?.status === 'pending';
+      return !epIsDownloaded && !epIsInProgress;
+    });
+
+    if (notDownloaded.length === 0) {
+      Alert.alert('Already Downloaded', 'All episodes in this season are already downloaded or in progress.');
+      return;
+    }
+
+    setIsBatchDownloading(true);
+    try {
+      const downloadIds = await downloadManager.startBatchDownload(notDownloaded, activeServerId);
+      Alert.alert(
+        'Downloads Started',
+        `${downloadIds.length} episode${downloadIds.length !== 1 ? 's' : ''} added to download queue.`
+      );
+    } catch (error) {
+      Alert.alert('Download Failed', 'Could not start batch download. Please try again.');
+    } finally {
+      setIsBatchDownloading(false);
+    }
+  };
+
+  const handleDownloadAlbum = async () => {
+    if (!activeServerId || !tracks?.Items?.length) return;
+
+    // Check how many tracks are not yet downloaded
+    const notDownloaded = tracks.Items.filter((track) => {
+      const trackDownload = getDownloadByItemId(track.Id);
+      const trackIsDownloaded = isItemDownloaded(track.Id);
+      const trackIsInProgress = trackDownload?.status === 'downloading' || trackDownload?.status === 'pending';
+      return !trackIsDownloaded && !trackIsInProgress;
+    });
+
+    if (notDownloaded.length === 0) {
+      Alert.alert('Already Downloaded', 'All tracks in this album are already downloaded or in progress.');
+      return;
+    }
+
+    setIsBatchDownloading(true);
+    try {
+      const downloadIds = await downloadManager.startBatchDownload(notDownloaded, activeServerId);
+      Alert.alert(
+        'Downloads Started',
+        `${downloadIds.length} track${downloadIds.length !== 1 ? 's' : ''} added to download queue.`
+      );
+    } catch (error) {
+      Alert.alert('Download Failed', 'Could not start batch download. Please try again.');
+    } finally {
+      setIsBatchDownloading(false);
+    }
+  };
+
   const handleItemPress = (pressedItem: BaseItem) => {
     router.push(`/details/${pressedItem.Type.toLowerCase()}/${pressedItem.Id}`);
   };
@@ -509,7 +570,7 @@ export default function DetailScreen() {
                 </Pressable>
               )}
               {/* Download button for downloadable content */}
-              {(type === 'movie' || type === 'episode') && (
+              {(type === 'movie' || type === 'episode' || type === 'book') && (
                 <Pressable
                   onPress={handleDownload}
                   disabled={isDownloading}
@@ -692,9 +753,30 @@ export default function DetailScreen() {
 
           {type === 'season' && (
             <View className="mt-6">
-              <Text className="text-white text-lg font-semibold mb-3">
-                {episodes ? `${episodes.Items.length} ${episodes.Items.length === 1 ? 'Episode' : 'Episodes'}` : 'Episodes'}
-              </Text>
+              <View className="flex-row items-center justify-between mb-3">
+                <Text className="text-white text-lg font-semibold">
+                  {episodes ? `${episodes.Items.length} ${episodes.Items.length === 1 ? 'Episode' : 'Episodes'}` : 'Episodes'}
+                </Text>
+                {episodes && episodes.Items.length > 0 && (
+                  <Pressable
+                    onPress={handleSeasonDownload}
+                    disabled={isBatchDownloading}
+                    className="flex-row items-center px-3 py-2 rounded-lg"
+                    style={{ backgroundColor: accentColor + '20' }}
+                  >
+                    {isBatchDownloading ? (
+                      <ActivityIndicator size="small" color={accentColor} />
+                    ) : (
+                      <>
+                        <DownloadIcon size={16} color={accentColor} />
+                        <Text style={{ color: accentColor }} className="text-sm font-medium ml-2">
+                          Download Season
+                        </Text>
+                      </>
+                    )}
+                  </Pressable>
+                )}
+              </View>
               {isLoadingEpisodes ? (
                 <View className="py-8 items-center">
                   <ActivityIndicator color={accentColor} size="large" />
@@ -808,9 +890,30 @@ export default function DetailScreen() {
 
           {type === 'album' && (
             <View className="mt-6">
-              <Text className="text-white text-lg font-semibold mb-3">
-                {tracks ? `${tracks.Items.length} ${tracks.Items.length === 1 ? 'Track' : 'Tracks'}` : 'Tracks'}
-              </Text>
+              <View className="flex-row items-center justify-between mb-3">
+                <Text className="text-white text-lg font-semibold">
+                  {tracks ? `${tracks.Items.length} ${tracks.Items.length === 1 ? 'Track' : 'Tracks'}` : 'Tracks'}
+                </Text>
+                {tracks && tracks.Items.length > 0 && (
+                  <Pressable
+                    onPress={handleDownloadAlbum}
+                    disabled={isBatchDownloading}
+                    className="flex-row items-center px-3 py-2 rounded-lg"
+                    style={{ backgroundColor: accentColor + '20' }}
+                  >
+                    {isBatchDownloading ? (
+                      <ActivityIndicator size="small" color={accentColor} />
+                    ) : (
+                      <>
+                        <DownloadIcon size={16} color={accentColor} />
+                        <Text style={{ color: accentColor }} className="text-sm font-medium ml-2">
+                          Download Album
+                        </Text>
+                      </>
+                    )}
+                  </Pressable>
+                )}
+              </View>
               {isLoadingTracks ? (
                 <View className="py-8 items-center">
                   <ActivityIndicator color={accentColor} size="large" />

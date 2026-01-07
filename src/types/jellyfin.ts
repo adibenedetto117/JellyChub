@@ -90,6 +90,7 @@ export interface BaseItem {
   IndexNumber?: number;
   ParentIndexNumber?: number;
   Chapters?: ChapterInfo[];
+  Container?: string;
 }
 
 export interface Movie extends BaseItem {
