@@ -18,7 +18,7 @@ export default function BottomBarSettingsScreen() {
 
       <ScrollView className="flex-1 px-4 py-4">
         <LibrarySelector />
-        <View className="h-8" />
+        <View className="h-32" />
       </ScrollView>
     </SafeAreaView>
   );
