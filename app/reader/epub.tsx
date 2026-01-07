@@ -27,6 +27,7 @@ import Animated, {
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useAuthStore, useSettingsStore, useDownloadStore } from '@/stores';
 import { useReadingProgressStore } from '@/stores/readingProgressStore';
+import { downloadManager } from '@/services';
 import { getItem, getBookDownloadUrl } from '@/api';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -51,9 +52,16 @@ export default function EpubReaderScreen() {
   const webViewRef = useRef<WebView>(null);
 
   const currentUser = useAuthStore((state) => state.currentUser);
+  const activeServerId = useAuthStore((s) => s.activeServerId);
   const accentColor = useSettingsStore((s) => s.accentColor);
   const getDownloadedItem = useDownloadStore((s) => s.getDownloadedItem);
+  const getDownloadByItemId = useDownloadStore((s) => s.getDownloadByItemId);
   const userId = currentUser?.Id ?? '';
+
+  // Download state
+  const downloaded = getDownloadedItem(itemId ?? '');
+  const downloadInProgress = getDownloadByItemId(itemId ?? '');
+  const isDownloading = downloadInProgress?.status === 'downloading' || downloadInProgress?.status === 'pending';
 
   // Get saved reader settings
   const savedSettings = useReadingProgressStore((s) => s.readerSettings);
@@ -376,6 +384,15 @@ export default function EpubReaderScreen() {
   const handleRemoveBookmark = useCallback((id: string) => {
     removeEbookBookmark(id);
   }, [removeEbookBookmark]);
+
+  const handleDownload = useCallback(async () => {
+    if (!item || !activeServerId) return;
+    try {
+      await downloadManager.startDownload(item, activeServerId);
+    } catch (error) {
+      console.error('Failed to start download:', error);
+    }
+  }, [item, activeServerId]);
 
   const themeColors = THEMES[theme];
   const progressPercent = Math.round(progress * 100);
@@ -868,6 +885,19 @@ export default function EpubReaderScreen() {
               </Pressable>
               <Pressable onPress={() => setShowSettings(true)} style={styles.headerBtn}>
                 <Ionicons name="settings-outline" size={22} color={themeColors.text} />
+              </Pressable>
+              <Pressable
+                onPress={handleDownload}
+                disabled={!!downloaded || isDownloading}
+                style={styles.headerBtn}
+              >
+                {isDownloading ? (
+                  <ActivityIndicator size="small" color={themeColors.text} />
+                ) : downloaded ? (
+                  <Ionicons name="checkmark-circle" size={22} color="#22c55e" />
+                ) : (
+                  <Ionicons name="download-outline" size={22} color={themeColors.text} />
+                )}
               </Pressable>
             </>
           )}

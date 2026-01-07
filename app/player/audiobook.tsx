@@ -14,8 +14,9 @@ import Animated, {
   runOnJS,
 } from 'react-native-reanimated';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
-import { useAuthStore, usePlayerStore, useSettingsStore } from '@/stores';
+import { useAuthStore, usePlayerStore, useSettingsStore, useDownloadStore } from '@/stores';
 import { useReadingProgressStore } from '@/stores/readingProgressStore';
+import { downloadManager } from '@/services';
 import { getItem, getImageUrl, generatePlaySessionId, getBookDownloadUrl } from '@/api';
 import { formatPlayerTime, ticksToMs } from '@/utils';
 import { audioService, parseM4BChapters } from '@/services';
@@ -48,8 +49,16 @@ export default function AudiobookPlayerScreen() {
   const { itemId, startPosition } = useLocalSearchParams<{ itemId: string; startPosition?: string }>();
   const bookmarkStartPosition = startPosition ? parseInt(startPosition, 10) : undefined;
   const currentUser = useAuthStore((state) => state.currentUser);
+  const activeServerId = useAuthStore((s) => s.activeServerId);
   const accentColor = useSettingsStore((s) => s.accentColor);
+  const getDownloadedItem = useDownloadStore((s) => s.getDownloadedItem);
+  const getDownloadByItemId = useDownloadStore((s) => s.getDownloadByItemId);
   const userId = currentUser?.Id ?? '';
+
+  // Download state
+  const downloaded = getDownloadedItem(itemId ?? '');
+  const downloadInProgress = getDownloadByItemId(itemId ?? '');
+  const isDownloading = downloadInProgress?.status === 'downloading' || downloadInProgress?.status === 'pending';
 
   const playerState = usePlayerStore((s) => s.playerState);
   const setPlayerState = usePlayerStore((s) => s.setPlayerState);
@@ -290,6 +299,15 @@ export default function AudiobookPlayerScreen() {
     await audioService.stop();
     router.back();
   };
+
+  const handleDownload = useCallback(async () => {
+    if (!item || !activeServerId || downloaded || isDownloading) return;
+    try {
+      await downloadManager.startDownload(item, activeServerId);
+    } catch (error) {
+      console.error('Failed to start download:', error);
+    }
+  }, [item, activeServerId, downloaded, isDownloading]);
 
   const handlePlayPause = () => {
     playButtonScale.value = withSequence(
@@ -681,7 +699,19 @@ export default function AudiobookPlayerScreen() {
               )}
             </View>
 
-            <View style={styles.headerButton} />
+            <Pressable
+              onPress={handleDownload}
+              disabled={!!downloaded || isDownloading}
+              style={styles.headerButton}
+            >
+              {isDownloading ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : downloaded ? (
+                <Ionicons name="checkmark-circle" size={24} color="#22c55e" />
+              ) : (
+                <Ionicons name="download-outline" size={24} color="#fff" />
+              )}
+            </Pressable>
           </View>
 
           {/* Cover Art */}

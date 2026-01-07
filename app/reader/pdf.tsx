@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useAuthStore, useSettingsStore, useDownloadStore } from '@/stores';
 import { useReadingProgressStore } from '@/stores/readingProgressStore';
+import { downloadManager } from '@/services';
 import { getItem, getBookDownloadUrl } from '@/api';
 
 export default function PdfReaderScreen() {
@@ -23,9 +24,16 @@ export default function PdfReaderScreen() {
   const webViewRef = useRef<WebView>(null);
 
   const currentUser = useAuthStore((state) => state.currentUser);
+  const activeServerId = useAuthStore((s) => s.activeServerId);
   const accentColor = useSettingsStore((s) => s.accentColor);
   const getDownloadedItem = useDownloadStore((s) => s.getDownloadedItem);
+  const getDownloadByItemId = useDownloadStore((s) => s.getDownloadByItemId);
   const userId = currentUser?.Id ?? '';
+
+  // Download state
+  const downloaded = getDownloadedItem(itemId ?? '');
+  const downloadInProgress = getDownloadByItemId(itemId ?? '');
+  const isDownloading = downloadInProgress?.status === 'downloading' || downloadInProgress?.status === 'pending';
 
   const [status, setStatus] = useState<'downloading' | 'ready' | 'error'>('downloading');
   const [errorMsg, setErrorMsg] = useState('');
@@ -188,6 +196,15 @@ export default function PdfReaderScreen() {
   const goToPage = (page: number) => {
     const target = Math.max(1, Math.min(totalPages || 1, page));
     webViewRef.current?.injectJavaScript(`goToPage(${target}); true;`);
+  };
+
+  const handleDownload = async () => {
+    if (!item || !activeServerId) return;
+    try {
+      await downloadManager.startDownload(item, activeServerId);
+    } catch (error) {
+      console.error('Failed to start download:', error);
+    }
   };
 
   const progressPercent = totalPages > 0 ? Math.round((currentPage / totalPages) * 100) : 0;
@@ -545,7 +562,19 @@ export default function PdfReaderScreen() {
         <Text style={styles.headerTitle} numberOfLines={1}>
           {item?.Name ?? 'PDF'}
         </Text>
-        <View style={styles.headerBtn} />
+        <Pressable
+          onPress={handleDownload}
+          disabled={!!downloaded || isDownloading}
+          style={styles.headerBtn}
+        >
+          {isDownloading ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : downloaded ? (
+            <Ionicons name="checkmark-circle" size={22} color="#22c55e" />
+          ) : (
+            <Ionicons name="download-outline" size={22} color="#fff" />
+          )}
+        </Pressable>
       </View>
 
       <View style={styles.readerContainer}>

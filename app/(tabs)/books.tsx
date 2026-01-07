@@ -1,15 +1,16 @@
-import { View, Text, SectionList, Pressable, RefreshControl, ScrollView, Dimensions, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, Text, SectionList, Pressable, RefreshControl, ScrollView, Dimensions, ActivityIndicator, StyleSheet, Alert } from 'react-native';
 import { Image } from 'expo-image';
 import { useState, useCallback, useMemo, useRef, memo } from 'react';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useAuthStore, useSettingsStore, useReadingProgressStore } from '@/stores';
+import { useAuthStore, useSettingsStore, useReadingProgressStore, useDownloadStore } from '@/stores';
 import { getItems, getImageUrl, getLibraries } from '@/api';
 import { SearchButton, HomeButton } from '@/components/ui';
 import { formatPlayerTime, ticksToMs } from '@/utils';
 import { colors } from '@/theme';
+import { downloadManager } from '@/services/downloadManager';
 import type { BaseItem, Book, AudioBook } from '@/types/jellyfin';
 import type { AudiobookBookmark, EbookBookmark } from '@/stores/readingProgressStore';
 
@@ -25,12 +26,13 @@ const FULL_ALPHABET = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L
 interface BookCardProps {
   item: BaseItem;
   onPress: () => void;
+  onLongPress?: () => void;
   width?: number;
   height?: number;
   progress?: number;
 }
 
-const BookCard = memo(function BookCard({ item, onPress, width = HORIZONTAL_BOOK_WIDTH, height = HORIZONTAL_BOOK_HEIGHT, progress }: BookCardProps) {
+const BookCard = memo(function BookCard({ item, onPress, onLongPress, width = HORIZONTAL_BOOK_WIDTH, height = HORIZONTAL_BOOK_HEIGHT, progress }: BookCardProps) {
   const imageUrl = useMemo(() => item.ImageTags?.Primary
     ? getImageUrl(item.Id, 'Primary', { maxWidth: 400, tag: item.ImageTags.Primary })
     : null, [item.Id, item.ImageTags?.Primary]);
@@ -38,7 +40,7 @@ const BookCard = memo(function BookCard({ item, onPress, width = HORIZONTAL_BOOK
   const accentColor = useSettingsStore((s) => s.accentColor);
 
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.bookCard, { opacity: pressed ? 0.8 : 1 }]}>
+    <Pressable onPress={onPress} onLongPress={onLongPress} style={({ pressed }) => [styles.bookCard, { opacity: pressed ? 0.8 : 1 }]}>
       <View style={[styles.bookImageContainer, { width, height }]}>
         {imageUrl ? (
           <Image source={imageUrl} style={styles.bookImage} contentFit="cover" cachePolicy="memory-disk" />
@@ -62,7 +64,7 @@ const BookCard = memo(function BookCard({ item, onPress, width = HORIZONTAL_BOOK
   );
 });
 
-const BookRow = memo(function BookRow({ item, onPress, isAudiobook = false, progress }: { item: BaseItem; onPress: () => void; isAudiobook?: boolean; progress?: number }) {
+const BookRow = memo(function BookRow({ item, onPress, onLongPress, isAudiobook = false, progress }: { item: BaseItem; onPress: () => void; onLongPress?: () => void; isAudiobook?: boolean; progress?: number }) {
   const imageUrl = useMemo(() => item.ImageTags?.Primary
     ? getImageUrl(item.Id, 'Primary', { maxWidth: 120, tag: item.ImageTags.Primary })
     : null, [item.Id, item.ImageTags?.Primary]);
@@ -71,7 +73,7 @@ const BookRow = memo(function BookRow({ item, onPress, isAudiobook = false, prog
   const accentColor = useSettingsStore((s) => s.accentColor);
 
   return (
-    <Pressable onPress={onPress} style={styles.bookRow}>
+    <Pressable onPress={onPress} onLongPress={onLongPress} style={styles.bookRow}>
       <View style={styles.bookRowImageContainer}>
         {imageUrl ? (
           <Image source={imageUrl} style={styles.bookRowImage} contentFit="cover" cachePolicy="memory-disk" />
@@ -184,6 +186,39 @@ export default function BooksScreen() {
   const ebookBookmarks = useReadingProgressStore((state) => state.ebookBookmarks);
   const removeBookmark = useReadingProgressStore((state) => state.removeBookmark);
   const removeEbookBookmark = useReadingProgressStore((state) => state.removeEbookBookmark);
+
+  const getDownloadedItem = useDownloadStore((s) => s.getDownloadedItem);
+  const activeServerId = useAuthStore((s) => s.activeServerId);
+
+  const handleDownload = useCallback(async (item: BaseItem) => {
+    if (activeServerId) {
+      await downloadManager.startDownload(item, activeServerId);
+      Alert.alert('Download Started', `${item.Name} has been added to downloads`);
+    }
+  }, [activeServerId]);
+
+  const handleDeleteDownload = useCallback(async (itemId: string) => {
+    const download = getDownloadedItem(itemId);
+    if (download) {
+      await downloadManager.deleteDownload(download.id);
+      Alert.alert('Download Removed', 'The download has been removed');
+    }
+  }, [getDownloadedItem]);
+
+  const handleLongPress = useCallback((item: BaseItem) => {
+    const downloaded = getDownloadedItem(item.Id);
+
+    Alert.alert(
+      item.Name || 'Book',
+      'What would you like to do?',
+      [
+        downloaded
+          ? { text: 'Remove Download', style: 'destructive', onPress: () => handleDeleteDownload(item.Id) }
+          : { text: 'Download for Offline', onPress: () => handleDownload(item) },
+        { text: 'Cancel', style: 'cancel' }
+      ]
+    );
+  }, [getDownloadedItem, handleDownload, handleDeleteDownload]);
 
   const recentlyReading = useMemo(() => {
     return Object.values(readingProgress)
@@ -356,7 +391,7 @@ export default function BooksScreen() {
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalScroll}>
           {latestEbooks.map((item) => (
             <View key={item.Id} style={styles.horizontalItem}>
-              <BookCard item={item} onPress={() => handleItemPress(item)} progress={getProgressForItem(item.Id)} />
+              <BookCard item={item} onPress={() => handleItemPress(item)} onLongPress={() => handleLongPress(item)} progress={getProgressForItem(item.Id)} />
             </View>
           ))}
         </ScrollView>
@@ -371,7 +406,7 @@ export default function BooksScreen() {
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalScroll}>
           {latestAudiobooks.map((item) => (
             <View key={item.Id} style={styles.horizontalItem}>
-              <BookCard item={item} onPress={() => handleItemPress(item)} progress={getProgressForItem(item.Id)} />
+              <BookCard item={item} onPress={() => handleItemPress(item)} onLongPress={() => handleLongPress(item)} progress={getProgressForItem(item.Id)} />
             </View>
           ))}
         </ScrollView>
@@ -397,7 +432,7 @@ export default function BooksScreen() {
             sections={ebooksSections}
             keyExtractor={(item) => item.Id}
             style={{ flex: 1 }}
-            renderItem={({ item }) => <BookRow item={item} onPress={() => handleItemPress(item)} progress={getProgressForItem(item.Id)} />}
+            renderItem={({ item }) => <BookRow item={item} onPress={() => handleItemPress(item)} onLongPress={() => handleLongPress(item)} progress={getProgressForItem(item.Id)} />}
             renderSectionHeader={({ section: { title } }) => (
               <View style={styles.sectionHeaderContainer}>
                 <Text style={[styles.sectionHeaderText, { color: accentColor }]}>{title}</Text>
@@ -432,7 +467,7 @@ export default function BooksScreen() {
             sections={audiobooksSections}
             keyExtractor={(item) => item.Id}
             style={{ flex: 1 }}
-            renderItem={({ item }) => <BookRow item={item} onPress={() => handleItemPress(item)} isAudiobook progress={getProgressForItem(item.Id)} />}
+            renderItem={({ item }) => <BookRow item={item} onPress={() => handleItemPress(item)} onLongPress={() => handleLongPress(item)} isAudiobook progress={getProgressForItem(item.Id)} />}
             renderSectionHeader={({ section: { title } }) => (
               <View style={styles.sectionHeaderContainer}>
                 <Text style={[styles.sectionHeaderText, { color: accentColor }]}>{title}</Text>
