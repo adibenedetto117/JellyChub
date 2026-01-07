@@ -8,8 +8,20 @@ import { CachedImage } from '@/components/ui/CachedImage';
 import { StatusBadge } from './StatusBadge';
 import { colors } from '@/theme';
 import { useSettingsStore } from '@/stores';
+import { getDisplayImageUrl } from '@/utils';
 import type { JellyseerrMediaRequest } from '@/types/jellyseerr';
 import { REQUEST_STATUS, hasPermission, JELLYSEERR_PERMISSIONS } from '@/types/jellyseerr';
+
+const PLACEHOLDER_TITLES = [
+  'The Adventure',
+  'Space Journey',
+  'Mystery Files',
+  'Drama Chronicles',
+  'Action Hero',
+  'Comedy Night',
+  'Sci-Fi Station',
+  'Romance Story',
+];
 
 interface Props {
   request: JellyseerrMediaRequest;
@@ -59,13 +71,14 @@ export const RequestCard = memo(function RequestCard({
   isOwnRequest = false,
 }: Props) {
   const accentColor = useSettingsStore((s) => s.accentColor);
+  const hideMedia = useSettingsStore((s) => s.hideMedia);
 
   const media = request.media;
   const tmdbId = media?.tmdbId;
   const mediaType = request.type;
 
   // Fetch full media details if we don't have title/poster
-  const needsDetails = !media?.title && !media?.posterPath && tmdbId;
+  const needsDetails = !media?.title && !media?.posterPath && !!tmdbId;
 
   const { data: movieDetails } = useQuery({
     queryKey: ['jellyseerr', 'movie', tmdbId],
@@ -81,20 +94,29 @@ export const RequestCard = memo(function RequestCard({
     staleTime: 60 * 60 * 1000,
   });
 
-  const details = mediaType === 'movie' ? movieDetails : tvDetails;
+  const details: { title?: string; name?: string; posterPath?: string; releaseDate?: string; firstAirDate?: string; voteAverage?: number } | undefined =
+    mediaType === 'movie' ? movieDetails : tvDetails;
 
   // Use fetched details if media object is incomplete
-  const title = media?.title || media?.originalTitle || details?.title || (details as any)?.name || 'Unknown Title';
+  const rawTitle = media?.title || media?.originalTitle || details?.title || (details as any)?.name || 'Unknown Title';
+  const titleIndex = Math.abs(request.id || 0) % PLACEHOLDER_TITLES.length;
+  const title = hideMedia ? PLACEHOLDER_TITLES[titleIndex] : rawTitle;
+
   const posterPath = media?.posterPath || details?.posterPath;
-  const imageUrl = jellyseerrClient.getImageUrl(posterPath, 'w342');
-  const year = getYear(media?.releaseDate || media?.firstAirDate || details?.releaseDate || (details as any)?.firstAirDate);
+  const rawImageUrl = jellyseerrClient.getImageUrl(posterPath, 'w342');
+  const itemId = String(request.id || '0');
+  const imageUrl = getDisplayImageUrl(itemId, rawImageUrl, hideMedia, 'Primary');
+
+  const rawYear = getYear(media?.releaseDate || media?.firstAirDate || details?.releaseDate || (details as any)?.firstAirDate);
+  const year = hideMedia ? '2024' : rawYear;
   const rating = (media?.voteAverage || details?.voteAverage) ? (media?.voteAverage || details?.voteAverage)?.toFixed(1) : null;
 
   const requester = request.requestedBy;
-  const requesterName = requester?.displayName || requester?.username || requester?.email || 'Unknown';
-  const requesterAvatar = requester?.avatar
+  const rawRequesterName = requester?.displayName || requester?.username || requester?.email || 'Unknown';
+  const requesterName = hideMedia ? 'User' : rawRequesterName;
+  const requesterAvatar = hideMedia ? null : (requester?.avatar
     ? `https://www.gravatar.com/avatar/${requester.avatar}?s=64&d=identicon`
-    : null;
+    : null);
 
   // Seasons info for TV requests
   const seasonsRequested = request.seasons?.length;

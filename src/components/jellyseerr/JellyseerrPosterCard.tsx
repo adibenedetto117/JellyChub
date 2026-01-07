@@ -4,9 +4,22 @@ import Animated, { FadeIn } from 'react-native-reanimated';
 import { jellyseerrClient } from '@/api/jellyseerr';
 import { CachedImage } from '@/components/ui/CachedImage';
 import { StatusBadge } from './StatusBadge';
+import { useSettingsStore } from '@/stores';
+import { getDisplayImageUrl, getDisplayYear } from '@/utils';
 import { colors } from '@/theme';
 import type { JellyseerrDiscoverItem } from '@/types/jellyseerr';
 import { MEDIA_STATUS } from '@/types/jellyseerr';
+
+const PLACEHOLDER_TITLES = [
+  'The Adventure',
+  'Space Journey',
+  'Mystery Files',
+  'Drama Chronicles',
+  'Action Hero',
+  'Comedy Night',
+  'Sci-Fi Station',
+  'Romance Story',
+];
 
 interface Props {
   item: JellyseerrDiscoverItem;
@@ -27,10 +40,19 @@ export const JellyseerrPosterCard = memo(function JellyseerrPosterCard({
   showTitle = true,
   size = 'medium',
 }: Props) {
+  const hideMedia = useSettingsStore((s) => s.hideMedia);
   const dimensions = sizes[size];
-  const imageUrl = jellyseerrClient.getImageUrl(item?.posterPath, 'w342');
-  const title = item?.title || item?.name || 'Unknown';
-  const year = item?.releaseDate?.split('-')[0] || item?.firstAirDate?.split('-')[0];
+
+  const rawImageUrl = jellyseerrClient.getImageUrl(item?.posterPath, 'w342');
+  const itemId = String(item?.id || '0');
+  const imageUrl = getDisplayImageUrl(itemId, rawImageUrl, hideMedia, 'Primary');
+
+  const rawTitle = item?.title || item?.name || 'Unknown';
+  const titleIndex = Math.abs(item?.id || 0) % PLACEHOLDER_TITLES.length;
+  const title = hideMedia ? PLACEHOLDER_TITLES[titleIndex] : rawTitle;
+
+  const rawYear = item?.releaseDate?.split('-')[0] || item?.firstAirDate?.split('-')[0];
+  const year = hideMedia ? '2024' : rawYear;
 
   const mediaStatus = item?.mediaInfo?.status;
   const hasStatus = mediaStatus && mediaStatus !== MEDIA_STATUS.UNKNOWN;
