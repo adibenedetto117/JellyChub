@@ -48,9 +48,14 @@ export {
   getPersonItems,
   COLLECTION_TYPE_CONFIG,
   DEFAULT_LIBRARY_CONFIG,
+  groupLibrariesByType,
+  getLibrariesByType,
+  getLibraryIdsByType,
+  getLatestMediaFromMultipleLibraries,
+  getItemsFromMultipleLibraries,
 } from './library';
 
-export type { LibraryQueryParams, LibraryConfig, Genre, CreatePlaylistResult, PersonDetails } from './library';
+export type { LibraryQueryParams, LibraryConfig, Genre, CreatePlaylistResult, PersonDetails, GroupedLibraries } from './library';
 
 export {
   getPlaybackInfo,

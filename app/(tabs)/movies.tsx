@@ -5,8 +5,9 @@ import { useQuery, useInfiniteQuery } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useAuthStore, useSettingsStore } from '@/stores';
-import { getLibraries, getItems, getImageUrl } from '@/api';
-import { SearchButton, HomeButton, AnimatedGradient } from '@/components/ui';
+import { getLibraries, getItems, getImageUrl, getLibraryIdsByType, getItemsFromMultipleLibraries } from '@/api';
+import { SearchButton, AnimatedGradient } from '@/components/ui';
+import { getDisplayName, getDisplayImageUrl } from '@/utils';
 import { colors } from '@/theme';
 import type { BaseItem, Movie } from '@/types/jellyfin';
 
@@ -22,10 +23,12 @@ type SortOption = 'DateCreated' | 'SortName' | 'PremiereDate' | 'CommunityRating
 const ITEMS_PER_PAGE = 100;
 const FULL_ALPHABET = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '#'];
 
-const MovieCard = memo(function MovieCard({ item, onPress, showRating }: { item: BaseItem; onPress: () => void; showRating?: boolean }) {
-  const imageUrl = item.ImageTags?.Primary
+const MovieCard = memo(function MovieCard({ item, onPress, showRating, hideMedia }: { item: BaseItem; onPress: () => void; showRating?: boolean; hideMedia: boolean }) {
+  const rawImageUrl = item.ImageTags?.Primary
     ? getImageUrl(item.Id, 'Primary', { maxWidth: 300, tag: item.ImageTags.Primary })
     : null;
+  const imageUrl = getDisplayImageUrl(item.Id, rawImageUrl, hideMedia, 'Primary');
+  const displayName = getDisplayName(item, hideMedia);
 
   const yearAndRating = [
     item.ProductionYear,
@@ -45,7 +48,7 @@ const MovieCard = memo(function MovieCard({ item, onPress, showRating }: { item:
           />
         ) : (
           <View style={styles.posterPlaceholder}>
-            <Text style={styles.posterPlaceholderText}>{item.Name?.charAt(0) ?? '?'}</Text>
+            <Text style={styles.posterPlaceholderText}>{displayName?.charAt(0) ?? '?'}</Text>
           </View>
         )}
         {item.UserData?.Played && (
@@ -54,16 +57,18 @@ const MovieCard = memo(function MovieCard({ item, onPress, showRating }: { item:
           </View>
         )}
       </View>
-      <Text style={styles.movieTitle} numberOfLines={1}>{item.Name}</Text>
+      <Text style={styles.movieTitle} numberOfLines={1}>{displayName}</Text>
       <Text style={styles.movieYear}>{yearAndRating}</Text>
     </Pressable>
   );
 });
 
-const MovieRow = memo(function MovieRow({ item, onPress }: { item: BaseItem; onPress: () => void }) {
-  const imageUrl = item.ImageTags?.Primary
+const MovieRow = memo(function MovieRow({ item, onPress, hideMedia }: { item: BaseItem; onPress: () => void; hideMedia: boolean }) {
+  const rawImageUrl = item.ImageTags?.Primary
     ? getImageUrl(item.Id, 'Primary', { maxWidth: 120, tag: item.ImageTags.Primary })
     : null;
+  const imageUrl = getDisplayImageUrl(item.Id, rawImageUrl, hideMedia, 'Primary');
+  const displayName = getDisplayName(item, hideMedia);
 
   return (
     <Pressable onPress={onPress} style={styles.movieRow}>
@@ -78,12 +83,12 @@ const MovieRow = memo(function MovieRow({ item, onPress }: { item: BaseItem; onP
           />
         ) : (
           <View style={styles.movieRowPlaceholder}>
-            <Text style={styles.movieRowPlaceholderText}>{item.Name?.charAt(0) ?? '?'}</Text>
+            <Text style={styles.movieRowPlaceholderText}>{displayName?.charAt(0) ?? '?'}</Text>
           </View>
         )}
       </View>
       <View style={styles.movieRowInfo}>
-        <Text style={styles.movieRowName} numberOfLines={1}>{item.Name}</Text>
+        <Text style={styles.movieRowName} numberOfLines={1}>{displayName}</Text>
         <Text style={styles.movieRowMeta} numberOfLines={1}>
           {[item.ProductionYear, item.CommunityRating ? `★ ${item.CommunityRating.toFixed(1)}` : null].filter(Boolean).join(' • ')}
         </Text>
@@ -129,6 +134,7 @@ export default function MoviesScreen() {
 
   const currentUser = useAuthStore((state) => state.currentUser);
   const accentColor = useSettingsStore((s) => s.accentColor);
+  const hideMedia = useSettingsStore((s) => s.hideMedia);
   const userId = currentUser?.Id ?? '';
 
   const { data: libraries } = useQuery({
@@ -138,9 +144,12 @@ export default function MoviesScreen() {
     staleTime: 1000 * 60 * 5,
   });
 
-  const movieLibrary = libraries?.find((l) => l.CollectionType === 'movies');
+  const movieLibraryIds = useMemo(() => {
+    if (!libraries) return [];
+    return getLibraryIdsByType(libraries, 'movies');
+  }, [libraries]);
 
-  // Fetch all movies once - sort client-side
+  // Fetch all movies from all movie libraries
   const {
     data,
     fetchNextPage,
@@ -149,59 +158,31 @@ export default function MoviesScreen() {
     isLoading,
     refetch,
   } = useInfiniteQuery({
-    queryKey: ['movies', userId, movieLibrary?.Id],
+    queryKey: ['movies', userId, movieLibraryIds.join(','), sortBy],
     queryFn: ({ pageParam = 0 }) =>
-      getItems<Movie>(userId, {
-        parentId: movieLibrary?.Id,
+      getItemsFromMultipleLibraries<Movie>(userId, movieLibraryIds, {
         includeItemTypes: ['Movie'],
-        sortBy: 'SortName',
-        sortOrder: 'Ascending',
+        sortBy: sortBy,
+        sortOrder: sortBy === 'SortName' ? 'Ascending' : 'Descending',
         startIndex: pageParam,
         limit: ITEMS_PER_PAGE,
         recursive: true,
-        fields: ['SortName'],
+        fields: ['SortName', 'DateCreated', 'CommunityRating'],
       }),
     initialPageParam: 0,
     getNextPageParam: (lastPage, pages) => {
       const totalFetched = pages.reduce((acc, p) => acc + p.Items.length, 0);
       return totalFetched < lastPage.TotalRecordCount ? totalFetched : undefined;
     },
-    enabled: !!userId && !!movieLibrary,
+    enabled: !!userId && movieLibraryIds.length > 0,
     staleTime: 1000 * 60 * 5,
   });
 
   const allMovies = data?.pages.flatMap((p) => p.Items) ?? [];
   const totalCount = data?.pages[0]?.TotalRecordCount ?? 0;
 
-  // Sort movies client-side based on sortBy
-  const sortedMovies = useMemo(() => {
-    if (allMovies.length === 0) return [];
-
-    const moviesCopy = [...allMovies];
-
-    switch (sortBy) {
-      case 'SortName':
-        return moviesCopy.sort((a, b) =>
-          (a.SortName ?? a.Name ?? '').localeCompare(b.SortName ?? b.Name ?? '')
-        );
-      case 'DateCreated':
-        return moviesCopy.sort((a, b) => {
-          const dateA = (a as any).DateCreated ?? '';
-          const dateB = (b as any).DateCreated ?? '';
-          return dateB.localeCompare(dateA);
-        });
-      case 'PremiereDate':
-        return moviesCopy.sort((a, b) =>
-          (b.ProductionYear ?? 0) - (a.ProductionYear ?? 0)
-        );
-      case 'CommunityRating':
-        return moviesCopy.sort((a, b) =>
-          (b.CommunityRating ?? 0) - (a.CommunityRating ?? 0)
-        );
-      default:
-        return moviesCopy;
-    }
-  }, [allMovies, sortBy]);
+  // Movies are now pre-sorted by the server, just use allMovies directly
+  const sortedMovies = allMovies;
 
   // Group movies by first letter for SectionList
   const { sections: movieSections, availableLetters } = useMemo(() => {
@@ -251,9 +232,9 @@ export default function MoviesScreen() {
     setRefreshing(false);
   }, [refetch]);
 
-  const handleItemPress = (item: BaseItem) => {
-    router.push(`/details/movie/${item.Id}`);
-  };
+  const handleItemPress = useCallback((item: BaseItem) => {
+    router.push(`/(tabs)/details/movie/${item.Id}`);
+  }, []);
 
   const handleSortChange = (newSort: SortOption) => {
     setSortBy(newSort);
@@ -265,7 +246,7 @@ export default function MoviesScreen() {
     }
   };
 
-  const renderFooter = () => {
+  const renderFooter = useCallback(() => {
     if (!isFetchingNextPage) return <View style={styles.bottomSpacer} />;
     return (
       <View style={styles.loadingFooter}>
@@ -273,7 +254,22 @@ export default function MoviesScreen() {
         <Text style={styles.loadingFooterText}>Loading more...</Text>
       </View>
     );
-  };
+  }, [isFetchingNextPage, accentColor]);
+
+  // Memoized renderItem callbacks to prevent re-renders
+  const renderMovieRow = useCallback(({ item }: { item: BaseItem }) => (
+    <MovieRow item={item} onPress={() => handleItemPress(item)} hideMedia={hideMedia} />
+  ), [handleItemPress, hideMedia]);
+
+  const renderMovieCard = useCallback(({ item }: { item: BaseItem }) => (
+    <MovieCard item={item} onPress={() => handleItemPress(item)} showRating={sortBy !== 'SortName'} hideMedia={hideMedia} />
+  ), [handleItemPress, sortBy, hideMedia]);
+
+  const renderSectionHeader = useCallback(({ section }: { section: { title: string; data: BaseItem[] } }) => (
+    <View style={styles.sectionHeaderContainer}>
+      <Text style={[styles.sectionHeaderText, { color: accentColor }]}>{section.title}</Text>
+    </View>
+  ), [accentColor]);
 
   const sortOptions: { label: string; value: SortOption }[] = [
     { label: 'A-Z', value: 'SortName' },
@@ -288,14 +284,8 @@ export default function MoviesScreen() {
         ref={sectionListRef}
         sections={movieSections}
         contentContainerStyle={styles.sectionListContent}
-        renderItem={({ item }) => (
-          <MovieRow item={item} onPress={() => handleItemPress(item)} />
-        )}
-        renderSectionHeader={({ section }) => (
-          <View style={styles.sectionHeaderContainer}>
-            <Text style={[styles.sectionHeaderText, { color: accentColor }]}>{section.title}</Text>
-          </View>
-        )}
+        renderItem={renderMovieRow}
+        renderSectionHeader={renderSectionHeader}
         keyExtractor={(item) => item.Id}
         stickySectionHeadersEnabled={true}
         onEndReached={() => hasNextPage && !isFetchingNextPage && fetchNextPage()}
@@ -328,9 +318,7 @@ export default function MoviesScreen() {
     <FlatList
       ref={flatListRef}
       data={sortedMovies}
-      renderItem={({ item }) => (
-        <MovieCard item={item} onPress={() => handleItemPress(item)} showRating={sortBy !== 'SortName'} />
-      )}
+      renderItem={renderMovieCard}
       keyExtractor={(item) => item.Id}
       numColumns={NUM_COLUMNS}
       columnWrapperStyle={styles.gridRow}
@@ -363,8 +351,7 @@ export default function MoviesScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <AnimatedGradient intensity="subtle" />
       <View style={styles.header}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-          <HomeButton currentScreen="movies" />
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <Text style={styles.headerTitle}>Movies</Text>
         </View>
         <SearchButton />

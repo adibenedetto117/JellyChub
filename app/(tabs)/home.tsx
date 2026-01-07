@@ -7,19 +7,22 @@ import { useAuthStore, useSettingsStore } from '@/stores';
 import { useResponsive } from '@/hooks';
 import {
   getResumeItems,
-  getLatestMedia,
   getNextUp,
   getLibraries,
   getSuggestions,
   getFavorites,
   shouldUseSquareVariant,
+  groupLibrariesByType,
+  getLatestMediaFromMultipleLibraries,
+  COLLECTION_TYPE_CONFIG,
 } from '@/api';
 import { MediaRow } from '@/components/media/MediaRow';
 import { ContinueWatching } from '@/components/media/ContinueWatching';
 import { NextUpRow } from '@/components/media/NextUpRow';
-import { SearchButton, HomeButton, AnimatedGradient } from '@/components/ui';
+import { SearchButton, AnimatedGradient } from '@/components/ui';
 import { SkeletonContinueWatching, SkeletonRow } from '@/components/ui/Skeleton';
-import type { BaseItem, Library, Episode } from '@/types/jellyfin';
+import type { BaseItem, Library, Episode, CollectionType } from '@/types/jellyfin';
+import type { GroupedLibraries } from '@/api';
 
 // Libraries that should show "Latest" sections on home
 const DISPLAYABLE_COLLECTION_TYPES = [
@@ -94,45 +97,42 @@ export default function HomeScreen() {
     };
   }, [allFavorites]);
 
-  // Filter libraries to only include displayable ones
-  const displayableLibraries = useMemo(() => {
+  // Group libraries by collection type for consolidated display
+  const groupedLibraries = useMemo(() => {
     if (!libraries) return [];
-    return libraries.filter((lib) => {
-      // Exclude boxsets, playlists
+    const filteredLibraries = libraries.filter((lib) => {
       if (lib.CollectionType && EXCLUDED_COLLECTION_TYPES.includes(lib.CollectionType)) {
         return false;
       }
       return true;
     });
+    return groupLibrariesByType(filteredLibraries);
   }, [libraries]);
 
-  // Dynamically create queries for each library's latest media
-  // Note: Jellyfin's /Users/{userId}/Items/Latest endpoint does not support batch fetching
-  // across multiple libraries in a single request. Each library requires its own API call.
-  // Optimization strategy:
-  // - staleTime: Infinity prevents unnecessary refetches during navigation
-  // - refetchOnMount: false avoids redundant requests when returning to the home screen
-  // - React Query handles parallel execution efficiently
-  // - Manual refetch is only triggered via pull-to-refresh
+  // Create queries for each grouped collection type
   const latestMediaQueries = useQueries({
-    queries: displayableLibraries.map((library) => ({
-      queryKey: ['latestMedia', userId, library.Id],
-      queryFn: () => getLatestMedia(userId, library.Id, 12),
-      enabled: !!userId && !!library.Id,
+    queries: groupedLibraries.map((group) => ({
+      queryKey: ['latestMediaGrouped', userId, group.collectionType, group.libraries.map(l => l.Id).join(',')],
+      queryFn: () => getLatestMediaFromMultipleLibraries(
+        userId,
+        group.libraries.map(l => l.Id),
+        12
+      ),
+      enabled: !!userId && group.libraries.length > 0,
       staleTime: Infinity,
       refetchOnMount: false,
     })),
   });
 
-  // Combine library info with query results for rendering
+  // Combine grouped library info with query results for rendering
   const libraryLatestMedia = useMemo(() => {
-    return displayableLibraries.map((library, index) => ({
-      library,
+    return groupedLibraries.map((group, index) => ({
+      group,
       data: latestMediaQueries[index]?.data ?? [],
       isLoading: latestMediaQueries[index]?.isLoading ?? false,
       refetch: latestMediaQueries[index]?.refetch,
     }));
-  }, [displayableLibraries, latestMediaQueries]);
+  }, [groupedLibraries, latestMediaQueries]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -150,11 +150,11 @@ export default function HomeScreen() {
   const handleItemPress = useCallback((item: BaseItem) => {
     const type = item.Type?.toLowerCase();
     if (type === 'movie') {
-      router.push(`/details/movie/${item.Id}`);
+      router.push(`/(tabs)/details/movie/${item.Id}`);
     } else if (type === 'series') {
-      router.push(`/details/series/${item.Id}`);
+      router.push(`/(tabs)/details/series/${item.Id}`);
     } else if (type === 'musicalbum') {
-      router.push(`/details/album/${item.Id}`);
+      router.push(`/(tabs)/details/album/${item.Id}`);
     } else if (type === 'audiobook') {
       router.push(`/player/audiobook?itemId=${item.Id}`);
     } else if (type === 'book') {
@@ -163,37 +163,43 @@ export default function HomeScreen() {
       const isPdf = container === 'pdf' || path.endsWith('.pdf');
       router.push(isPdf ? `/reader/pdf?itemId=${item.Id}` : `/reader/epub?itemId=${item.Id}`);
     } else {
-      router.push(`/details/${type}/${item.Id}`);
+      router.push(`/(tabs)/details/${type}/${item.Id}`);
     }
   }, []);
 
   const handleEpisodePress = useCallback((item: Episode) => {
     if (item.SeriesId) {
-      router.push(`/details/series/${item.SeriesId}`);
+      router.push(`/(tabs)/details/series/${item.SeriesId}`);
     }
   }, []);
 
-  const getLatestSectionTitle = useCallback((library: Library): string => {
-    if (!library.CollectionType) {
-      return `Latest in ${library.Name}`;
+  const getLatestSectionTitle = useCallback((group: GroupedLibraries): string => {
+    const { collectionType, libraries: libs, label } = group;
+
+    if (!collectionType || collectionType === 'mixed') {
+      if (libs.length === 1) {
+        return `Latest in ${libs[0].Name}`;
+      }
+      return 'Latest';
     }
 
-    switch (library.CollectionType) {
+    switch (collectionType) {
       case 'movies':
-        return `Latest ${library.Name}`;
+        return 'Latest Movies';
       case 'tvshows':
-        return `Latest ${library.Name}`;
+        return 'Latest TV Shows';
       case 'music':
-        return `Recently Added ${library.Name}`;
+        return 'Recently Added Music';
       case 'books':
+        return 'New Books';
       case 'audiobooks':
-        return `New in ${library.Name}`;
+        return 'New Audiobooks';
       case 'homevideos':
-        return `Recent ${library.Name}`;
+        return 'Recent Home Videos';
       case 'musicvideos':
-        return `Latest ${library.Name}`;
+        return 'Latest Music Videos';
       default:
-        return `Latest in ${library.Name}`;
+        return `Latest ${label}`;
     }
   }, []);
 
@@ -212,7 +218,6 @@ export default function HomeScreen() {
       >
         <View style={[styles.header, { paddingHorizontal: horizontalPadding, paddingTop: isTablet ? 20 : 16 }]}>
           <View style={styles.headerLeft}>
-            <HomeButton currentScreen="home" />
             <Text style={[styles.headerTitle, { fontSize: fontSize['2xl'] }]}>Home</Text>
           </View>
           <SearchButton />
@@ -267,25 +272,25 @@ export default function HomeScreen() {
           />
         ) : null}
 
-        {/* Dynamic "Latest" sections for each user library */}
+        {/* Dynamic "Latest" sections for each collection type (consolidated) */}
         {libraryLatestMedia.length === 0 && latestMediaQueries.some(q => q.isLoading) ? (
           <>
             <SkeletonRow cardWidth={130} cardHeight={195} count={4} />
             <SkeletonRow cardWidth={130} cardHeight={195} count={4} />
           </>
         ) : (
-          libraryLatestMedia.map(({ library, data, isLoading }) => {
+          libraryLatestMedia.map(({ group, data, isLoading }) => {
             if (isLoading && !data?.length) {
-              return <SkeletonRow key={library.Id} cardWidth={130} cardHeight={195} count={4} />;
+              return <SkeletonRow key={group.collectionType ?? 'mixed'} cardWidth={130} cardHeight={195} count={4} />;
             }
             if (!data || data.length === 0) return null;
 
-            const useSquare = shouldUseSquareVariant(library.CollectionType);
+            const useSquare = shouldUseSquareVariant(group.collectionType);
 
             return (
               <MediaRow
-                key={library.Id}
-                title={getLatestSectionTitle(library)}
+                key={group.collectionType ?? 'mixed'}
+                title={getLatestSectionTitle(group)}
                 items={data}
                 onItemPress={handleItemPress}
                 onSeeAllPress={() => router.push('/(tabs)/library')}

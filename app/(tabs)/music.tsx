@@ -7,8 +7,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useAuthStore, useSettingsStore } from '@/stores';
-import { getLibraries, getItems, getImageUrl, getLatestMedia, getArtists, createPlaylist, getFavoriteSongs } from '@/api';
-import { SkeletonGrid, SearchButton, HomeButton, AnimatedGradient } from '@/components/ui';
+import { getLibraries, getItems, getImageUrl, getLatestMedia, getArtists, createPlaylist, getFavoriteSongs, getLibraryIdsByType, getItemsFromMultipleLibraries, getLatestMediaFromMultipleLibraries } from '@/api';
+import { SkeletonGrid, SearchButton, AnimatedGradient } from '@/components/ui';
+import { getDisplayName, getDisplayImageUrl, getDisplayArtist } from '@/utils';
 import { colors } from '@/theme';
 import type { BaseItem, MusicAlbum } from '@/types/jellyfin';
 
@@ -18,12 +19,16 @@ const HORIZONTAL_ALBUM_SIZE = 140;
 
 type ViewMode = 'home' | 'albums' | 'artists' | 'playlists';
 
-const AlbumCard = memo(function AlbumCard({ item, onPress, size = ALBUM_SIZE }: { item: BaseItem; onPress: () => void; size?: number }) {
-  const imageUrl = item.ImageTags?.Primary
+const AlbumCard = memo(function AlbumCard({ item, onPress, size = ALBUM_SIZE, hideMedia }: { item: BaseItem; onPress: () => void; size?: number; hideMedia: boolean }) {
+  const rawImageUrl = item.ImageTags?.Primary
     ? getImageUrl(item.Id, 'Primary', { maxWidth: 400, tag: item.ImageTags.Primary })
     : null;
+  const imageUrl = getDisplayImageUrl(item.Id, rawImageUrl, hideMedia, 'Primary');
+  const displayName = getDisplayName(item, hideMedia);
 
-  const artist = (item as any)?.AlbumArtist ?? (item as any)?.Artists?.[0] ?? '';
+  const rawArtists = (item as any)?.Artists || [(item as any)?.AlbumArtist || ''];
+  const displayArtists = getDisplayArtist(rawArtists, hideMedia);
+  const artist = displayArtists[0] || '';
 
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [styles.albumCard, { opacity: pressed ? 0.8 : 1 }]}>
@@ -32,12 +37,12 @@ const AlbumCard = memo(function AlbumCard({ item, onPress, size = ALBUM_SIZE }: 
           <Image source={imageUrl} style={styles.albumImage} contentFit="cover" cachePolicy="memory-disk" />
         ) : (
           <View style={styles.albumPlaceholder}>
-            <Text style={styles.albumPlaceholderText}>{item.Name?.charAt(0) ?? '?'}</Text>
+            <Text style={styles.albumPlaceholderText}>{displayName?.charAt(0) ?? '?'}</Text>
           </View>
         )}
       </View>
       <Text style={[styles.albumTitle, { width: size }]} numberOfLines={1}>
-        {item.Name}
+        {displayName}
       </Text>
       {artist ? (
         <Text style={[styles.albumArtist, { width: size }]} numberOfLines={1}>
@@ -48,7 +53,7 @@ const AlbumCard = memo(function AlbumCard({ item, onPress, size = ALBUM_SIZE }: 
   );
 });
 
-const CompactAlbumCard = memo(function CompactAlbumCard({ item, onPress }: { item: BaseItem; onPress: () => void }) {
+const CompactAlbumCard = memo(function CompactAlbumCard({ item, onPress, hideMedia }: { item: BaseItem; onPress: () => void; hideMedia: boolean }) {
   const getItemImageUrl = () => {
     if (item.ImageTags?.Primary) {
       return getImageUrl(item.Id, 'Primary', { maxWidth: 200, tag: item.ImageTags.Primary });
@@ -64,8 +69,12 @@ const CompactAlbumCard = memo(function CompactAlbumCard({ item, onPress }: { ite
     return null;
   };
 
-  const imageUrl = getItemImageUrl();
-  const artist = (item as any)?.AlbumArtist ?? (item as any)?.Artists?.[0] ?? '';
+  const rawImageUrl = getItemImageUrl();
+  const imageUrl = getDisplayImageUrl(item.Id, rawImageUrl, hideMedia, 'Primary');
+  const displayName = getDisplayName(item, hideMedia);
+  const rawArtists = (item as any)?.Artists || [(item as any)?.AlbumArtist || ''];
+  const displayArtists = getDisplayArtist(rawArtists, hideMedia);
+  const artist = displayArtists[0] || '';
 
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [styles.compactCard, { backgroundColor: pressed ? colors.surface.default : 'rgba(255,255,255,0.05)' }]}>
@@ -74,22 +83,24 @@ const CompactAlbumCard = memo(function CompactAlbumCard({ item, onPress }: { ite
           <Image source={imageUrl} style={styles.compactImage} contentFit="cover" cachePolicy="memory-disk" />
         ) : (
           <View style={styles.compactPlaceholder}>
-            <Text style={styles.compactPlaceholderText}>{item.Name?.charAt(0) ?? '?'}</Text>
+            <Text style={styles.compactPlaceholderText}>{displayName?.charAt(0) ?? '?'}</Text>
           </View>
         )}
       </View>
       <View style={styles.compactInfo}>
-        <Text style={styles.compactTitle} numberOfLines={1}>{item.Name}</Text>
+        <Text style={styles.compactTitle} numberOfLines={1}>{displayName}</Text>
         {artist ? <Text style={styles.compactArtist} numberOfLines={1}>{artist}</Text> : null}
       </View>
     </Pressable>
   );
 });
 
-const ArtistRow = memo(function ArtistRow({ item, onPress }: { item: BaseItem; onPress: () => void }) {
-  const imageUrl = item.ImageTags?.Primary
+const ArtistRow = memo(function ArtistRow({ item, onPress, hideMedia }: { item: BaseItem; onPress: () => void; hideMedia: boolean }) {
+  const rawImageUrl = item.ImageTags?.Primary
     ? getImageUrl(item.Id, 'Primary', { maxWidth: 120, tag: item.ImageTags.Primary })
     : null;
+  const imageUrl = getDisplayImageUrl(item.Id, rawImageUrl, hideMedia, 'Primary');
+  const displayName = getDisplayName(item, hideMedia);
 
   return (
     <Pressable onPress={onPress} style={styles.artistRow}>
@@ -98,23 +109,27 @@ const ArtistRow = memo(function ArtistRow({ item, onPress }: { item: BaseItem; o
           <Image source={imageUrl} style={styles.artistRowImage} contentFit="cover" cachePolicy="memory-disk" />
         ) : (
           <View style={styles.artistRowPlaceholder}>
-            <Text style={styles.artistRowPlaceholderText}>{item.Name?.charAt(0) ?? '?'}</Text>
+            <Text style={styles.artistRowPlaceholderText}>{displayName?.charAt(0) ?? '?'}</Text>
           </View>
         )}
       </View>
       <Text style={styles.artistRowName} numberOfLines={1}>
-        {item.Name}
+        {displayName}
       </Text>
     </Pressable>
   );
 });
 
-const AlbumRow = memo(function AlbumRow({ item, onPress }: { item: BaseItem; onPress: () => void }) {
-  const imageUrl = item.ImageTags?.Primary
+const AlbumRow = memo(function AlbumRow({ item, onPress, hideMedia }: { item: BaseItem; onPress: () => void; hideMedia: boolean }) {
+  const rawImageUrl = item.ImageTags?.Primary
     ? getImageUrl(item.Id, 'Primary', { maxWidth: 120, tag: item.ImageTags.Primary })
     : null;
+  const imageUrl = getDisplayImageUrl(item.Id, rawImageUrl, hideMedia, 'Primary');
+  const displayName = getDisplayName(item, hideMedia);
 
-  const artist = (item as any)?.AlbumArtist ?? (item as any)?.Artists?.[0] ?? '';
+  const rawArtists = (item as any)?.Artists || [(item as any)?.AlbumArtist || ''];
+  const displayArtists = getDisplayArtist(rawArtists, hideMedia);
+  const artist = displayArtists[0] || '';
 
   return (
     <Pressable onPress={onPress} style={styles.albumRow}>
@@ -123,13 +138,13 @@ const AlbumRow = memo(function AlbumRow({ item, onPress }: { item: BaseItem; onP
           <Image source={imageUrl} style={styles.albumRowImage} contentFit="cover" cachePolicy="memory-disk" />
         ) : (
           <View style={styles.albumRowPlaceholder}>
-            <Text style={styles.albumRowPlaceholderText}>{item.Name?.charAt(0) ?? '?'}</Text>
+            <Text style={styles.albumRowPlaceholderText}>{displayName?.charAt(0) ?? '?'}</Text>
           </View>
         )}
       </View>
       <View style={styles.albumRowInfo}>
         <Text style={styles.albumRowName} numberOfLines={1}>
-          {item.Name}
+          {displayName}
         </Text>
         {artist ? (
           <Text style={styles.albumRowArtist} numberOfLines={1}>
@@ -167,10 +182,12 @@ const AlphabetScroller = memo(function AlphabetScroller({ availableLetters, onLe
   );
 });
 
-const PlaylistRow = memo(function PlaylistRow({ item, onPress }: { item: BaseItem; onPress: () => void }) {
-  const imageUrl = item.ImageTags?.Primary
+const PlaylistRow = memo(function PlaylistRow({ item, onPress, hideMedia }: { item: BaseItem; onPress: () => void; hideMedia: boolean }) {
+  const rawImageUrl = item.ImageTags?.Primary
     ? getImageUrl(item.Id, 'Primary', { maxWidth: 120, tag: item.ImageTags.Primary })
     : null;
+  const imageUrl = getDisplayImageUrl(item.Id, rawImageUrl, hideMedia, 'Primary');
+  const displayName = getDisplayName(item, hideMedia);
 
   return (
     <Pressable onPress={onPress} style={styles.playlistRow}>
@@ -179,12 +196,12 @@ const PlaylistRow = memo(function PlaylistRow({ item, onPress }: { item: BaseIte
           <Image source={imageUrl} style={styles.playlistRowImage} contentFit="cover" cachePolicy="memory-disk" />
         ) : (
           <View style={styles.playlistRowPlaceholder}>
-            <Text style={styles.playlistRowPlaceholderText}>{item.Name?.charAt(0) ?? '?'}</Text>
+            <Text style={styles.playlistRowPlaceholderText}>{displayName?.charAt(0) ?? '?'}</Text>
           </View>
         )}
       </View>
       <Text style={styles.playlistRowName} numberOfLines={1}>
-        {item.Name}
+        {displayName}
       </Text>
     </Pressable>
   );
@@ -241,6 +258,7 @@ export default function MusicScreen() {
   const queryClient = useQueryClient();
   const currentUser = useAuthStore((state) => state.currentUser);
   const accentColor = useSettingsStore((s) => s.accentColor);
+  const hideMedia = useSettingsStore((s) => s.hideMedia);
   const userId = currentUser?.Id ?? '';
 
   const { data: libraries } = useQuery({
@@ -249,25 +267,29 @@ export default function MusicScreen() {
     enabled: !!userId,
   });
 
-  const musicLibrary = libraries?.find((l) => l.CollectionType === 'music');
+  const musicLibraryIds = useMemo(() => {
+    if (!libraries) return [];
+    return getLibraryIdsByType(libraries, 'music');
+  }, [libraries]);
+
+  const hasMusicLibraries = musicLibraryIds.length > 0;
 
   const { data: recentlyPlayed, refetch: refetchRecent } = useQuery({
-    queryKey: ['recentMusic', userId, musicLibrary?.Id],
-    queryFn: () => getItems<MusicAlbum>(userId, {
-      parentId: musicLibrary?.Id,
+    queryKey: ['recentMusic', userId, musicLibraryIds.join(',')],
+    queryFn: () => getItemsFromMultipleLibraries<MusicAlbum>(userId, musicLibraryIds, {
       includeItemTypes: ['MusicAlbum'],
       sortBy: 'DatePlayed',
       sortOrder: 'Descending',
       limit: 10,
       recursive: true,
     }),
-    enabled: !!userId && !!musicLibrary,
+    enabled: !!userId && hasMusicLibraries,
   });
 
   const { data: recentlyAdded, refetch: refetchAdded } = useQuery({
-    queryKey: ['latestMusic', userId, musicLibrary?.Id],
-    queryFn: () => getLatestMedia(userId, musicLibrary?.Id, 10),
-    enabled: !!userId && !!musicLibrary,
+    queryKey: ['latestMusic', userId, musicLibraryIds.join(',')],
+    queryFn: () => getLatestMediaFromMultipleLibraries(userId, musicLibraryIds, 10),
+    enabled: !!userId && hasMusicLibraries,
   });
 
   const { data: favorites, refetch: refetchFavorites } = useQuery({
@@ -278,10 +300,9 @@ export default function MusicScreen() {
   });
 
   const { data: allAlbums, isLoading: albumsLoading, refetch: refetchAlbums, fetchNextPage: fetchNextAlbums, hasNextPage: hasNextAlbums, isFetchingNextPage: isFetchingNextAlbums } = useInfiniteQuery({
-    queryKey: ['musicAlbums', userId, musicLibrary?.Id],
+    queryKey: ['musicAlbums', userId, musicLibraryIds.join(',')],
     queryFn: ({ pageParam = 0 }) =>
-      getItems<MusicAlbum>(userId, {
-        parentId: musicLibrary?.Id,
+      getItemsFromMultipleLibraries<MusicAlbum>(userId, musicLibraryIds, {
         includeItemTypes: ['MusicAlbum'],
         sortBy: 'SortName',
         sortOrder: 'Ascending',
@@ -294,24 +315,41 @@ export default function MusicScreen() {
       const totalFetched = pages.reduce((acc, p) => acc + p.Items.length, 0);
       return totalFetched < lastPage.TotalRecordCount ? totalFetched : undefined;
     },
-    enabled: !!userId && !!musicLibrary && viewMode === 'albums',
-    staleTime: 1000 * 60 * 30, // 30 minutes - albums don't change often
+    enabled: !!userId && hasMusicLibraries && viewMode === 'albums',
+    staleTime: 1000 * 60 * 30,
   });
 
   const { data: allArtists, isLoading: artistsLoading, refetch: refetchArtists, fetchNextPage: fetchNextArtists, hasNextPage: hasNextArtists, isFetchingNextPage: isFetchingNextArtists } = useInfiniteQuery({
-    queryKey: ['musicArtists', userId, musicLibrary?.Id],
-    queryFn: ({ pageParam = 0 }) =>
-      getArtists(userId, musicLibrary?.Id, {
-        startIndex: pageParam,
-        limit: 30,
-      }),
+    queryKey: ['musicArtists', userId, musicLibraryIds.join(',')],
+    queryFn: async ({ pageParam = 0 }) => {
+      if (musicLibraryIds.length === 0) {
+        return { Items: [], TotalRecordCount: 0, StartIndex: 0 };
+      }
+      const results = await Promise.all(
+        musicLibraryIds.map(libId => getArtists(userId, libId, {
+          startIndex: pageParam,
+          limit: 30,
+        }))
+      );
+      const allItems = results.flatMap(r => r.Items);
+      const totalCount = results.reduce((sum, r) => sum + r.TotalRecordCount, 0);
+      const uniqueArtists = Array.from(
+        new Map(allItems.map(item => [item.Id, item])).values()
+      );
+      uniqueArtists.sort((a, b) => (a.Name ?? '').localeCompare(b.Name ?? ''));
+      return {
+        Items: uniqueArtists,
+        TotalRecordCount: totalCount,
+        StartIndex: pageParam,
+      };
+    },
     initialPageParam: 0,
     getNextPageParam: (lastPage, pages) => {
       const totalFetched = pages.reduce((acc, p) => acc + p.Items.length, 0);
       return totalFetched < lastPage.TotalRecordCount ? totalFetched : undefined;
     },
-    enabled: !!userId && !!musicLibrary && viewMode === 'artists',
-    staleTime: 1000 * 60 * 60, // 1 hour - artists don't change often
+    enabled: !!userId && hasMusicLibraries && viewMode === 'artists',
+    staleTime: 1000 * 60 * 60,
   });
 
   const { data: playlists, isLoading: playlistsLoading, refetch: refetchPlaylists } = useQuery({
@@ -462,15 +500,15 @@ export default function MusicScreen() {
   }, [refetchRecent, refetchAdded, refetchFavorites, refetchAlbums, refetchArtists, refetchPlaylists]);
 
   const handleAlbumPress = useCallback((item: BaseItem) => {
-    router.push(`/details/album/${item.Id}`);
+    router.push(`/(tabs)/details/album/${item.Id}`);
   }, []);
 
   const handleArtistPress = useCallback((item: BaseItem) => {
-    router.push(`/details/artist/${item.Id}`);
+    router.push(`/(tabs)/details/artist/${item.Id}`);
   }, []);
 
   const handlePlaylistPress = useCallback((item: BaseItem) => {
-    router.push(`/playlist/${item.Id}`);
+    router.push(`/(tabs)/playlist/${item.Id}`);
   }, []);
 
   const createPlaylistMutation = useMutation({
@@ -479,7 +517,7 @@ export default function MusicScreen() {
       queryClient.invalidateQueries({ queryKey: ['playlists'] });
       setShowCreatePlaylist(false);
       setNewPlaylistName('');
-      router.push(`/playlist/${data.Id}`);
+      router.push(`/(tabs)/playlist/${data.Id}`);
     },
     onError: () => {
       Alert.alert('Error', 'Failed to create playlist');
@@ -504,6 +542,25 @@ export default function MusicScreen() {
   const setViewModeArtists = useCallback(() => setViewMode('artists'), []);
   const setViewModePlaylists = useCallback(() => setViewMode('playlists'), []);
 
+  // Memoized renderItem callbacks to prevent re-renders
+  const renderAlbumRow = useCallback(({ item }: { item: BaseItem }) => (
+    <AlbumRow item={item} onPress={() => handleAlbumPress(item)} hideMedia={hideMedia} />
+  ), [handleAlbumPress, hideMedia]);
+
+  const renderArtistRow = useCallback(({ item }: { item: BaseItem }) => (
+    <ArtistRow item={item} onPress={() => handleArtistPress(item)} hideMedia={hideMedia} />
+  ), [handleArtistPress, hideMedia]);
+
+  const renderPlaylistRow = useCallback(({ item }: { item: BaseItem }) => (
+    <PlaylistRow item={item} onPress={() => handlePlaylistPress(item)} hideMedia={hideMedia} />
+  ), [handlePlaylistPress, hideMedia]);
+
+  const renderSectionHeader = useCallback(({ section }: { section: { title: string; data: BaseItem[] } }) => (
+    <View style={styles.sectionHeaderContainer}>
+      <Text style={[styles.sectionHeaderText, { color: accentColor }]}>{section.title}</Text>
+    </View>
+  ), [accentColor]);
+
   const renderHomeView = () => (
     <ScrollView
       showsVerticalScrollIndicator={false}
@@ -517,7 +574,7 @@ export default function MusicScreen() {
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalScroll}>
             {recentlyPlayed.Items.map((item) => (
               <View key={item.Id} style={styles.horizontalItem}>
-                <AlbumCard item={item} onPress={() => handleAlbumPress(item)} size={HORIZONTAL_ALBUM_SIZE} />
+                <AlbumCard item={item} onPress={() => handleAlbumPress(item)} size={HORIZONTAL_ALBUM_SIZE} hideMedia={hideMedia} />
               </View>
             ))}
           </ScrollView>
@@ -530,7 +587,7 @@ export default function MusicScreen() {
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalScroll}>
             {recentlyAdded.map((item) => (
               <View key={item.Id} style={styles.horizontalItem}>
-                <AlbumCard item={item} onPress={() => handleAlbumPress(item)} size={HORIZONTAL_ALBUM_SIZE} />
+                <AlbumCard item={item} onPress={() => handleAlbumPress(item)} size={HORIZONTAL_ALBUM_SIZE} hideMedia={hideMedia} />
               </View>
             ))}
           </ScrollView>
@@ -547,14 +604,8 @@ export default function MusicScreen() {
         ref={albumsSectionListRef}
         sections={albumSections}
         contentContainerStyle={styles.albumsListContainer}
-        renderItem={({ item }) => (
-          <AlbumRow item={item} onPress={() => handleAlbumPress(item)} />
-        )}
-        renderSectionHeader={({ section }) => (
-          <View style={styles.sectionHeaderContainer}>
-            <Text style={[styles.sectionHeaderText, { color: accentColor }]}>{section.title}</Text>
-          </View>
-        )}
+        renderItem={renderAlbumRow}
+        renderSectionHeader={renderSectionHeader}
         keyExtractor={(item) => item.Id}
         stickySectionHeadersEnabled={true}
         onEndReached={() => hasNextAlbums && !isFetchingNextAlbums && fetchNextAlbums()}
@@ -601,14 +652,8 @@ export default function MusicScreen() {
         ref={artistsSectionListRef}
         sections={artistSections}
         contentContainerStyle={styles.artistsListContainer}
-        renderItem={({ item }) => (
-          <ArtistRow item={item} onPress={() => handleArtistPress(item)} />
-        )}
-        renderSectionHeader={({ section }) => (
-          <View style={styles.sectionHeaderContainer}>
-            <Text style={[styles.sectionHeaderText, { color: accentColor }]}>{section.title}</Text>
-          </View>
-        )}
+        renderItem={renderArtistRow}
+        renderSectionHeader={renderSectionHeader}
         keyExtractor={(item) => item.Id}
         stickySectionHeadersEnabled={true}
         onEndReached={() => hasNextArtists && !isFetchingNextArtists && fetchNextArtists()}
@@ -657,14 +702,8 @@ export default function MusicScreen() {
         ref={playlistsSectionListRef}
         sections={playlistSections}
         contentContainerStyle={styles.playlistsListContainer}
-        renderItem={({ item }) => (
-          <PlaylistRow item={item} onPress={() => handlePlaylistPress(item)} />
-        )}
-        renderSectionHeader={({ section }) => (
-          <View style={styles.sectionHeaderContainer}>
-            <Text style={[styles.sectionHeaderText, { color: accentColor }]}>{section.title}</Text>
-          </View>
-        )}
+        renderItem={renderPlaylistRow}
+        renderSectionHeader={renderSectionHeader}
         keyExtractor={(item) => item.Id}
         stickySectionHeadersEnabled={true}
         refreshControl={
@@ -722,7 +761,7 @@ export default function MusicScreen() {
     </View>
   );
 
-  if (!musicLibrary) {
+  if (!hasMusicLibraries) {
     return (
       <SafeAreaView style={styles.noLibraryContainer} edges={['top']}>
         <Text style={styles.noLibraryTitle}>No music library found</Text>
@@ -735,8 +774,7 @@ export default function MusicScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <AnimatedGradient intensity="subtle" />
       <View style={styles.header}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-          <HomeButton currentScreen="music" />
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <Text style={styles.headerTitle}>Music</Text>
         </View>
         <SearchButton />

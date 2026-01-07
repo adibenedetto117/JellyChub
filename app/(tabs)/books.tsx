@@ -6,9 +6,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore, useSettingsStore, useReadingProgressStore, useDownloadStore } from '@/stores';
-import { getItems, getImageUrl, getLibraries } from '@/api';
-import { SearchButton, HomeButton } from '@/components/ui';
-import { formatPlayerTime, ticksToMs } from '@/utils';
+import { getItems, getImageUrl, getLibraries, getLibraryIdsByType, getItemsFromMultipleLibraries } from '@/api';
+import { SearchButton } from '@/components/ui';
+import { formatPlayerTime, ticksToMs, getDisplayName, getDisplayImageUrl, getDisplayArtist } from '@/utils';
 import { colors } from '@/theme';
 import { downloadManager } from '@/services/downloadManager';
 import type { BaseItem, Book, AudioBook } from '@/types/jellyfin';
@@ -30,13 +30,18 @@ interface BookCardProps {
   width?: number;
   height?: number;
   progress?: number;
+  hideMedia: boolean;
 }
 
-const BookCard = memo(function BookCard({ item, onPress, onLongPress, width = HORIZONTAL_BOOK_WIDTH, height = HORIZONTAL_BOOK_HEIGHT, progress }: BookCardProps) {
-  const imageUrl = useMemo(() => item.ImageTags?.Primary
+const BookCard = memo(function BookCard({ item, onPress, onLongPress, width = HORIZONTAL_BOOK_WIDTH, height = HORIZONTAL_BOOK_HEIGHT, progress, hideMedia }: BookCardProps) {
+  const rawImageUrl = useMemo(() => item.ImageTags?.Primary
     ? getImageUrl(item.Id, 'Primary', { maxWidth: 400, tag: item.ImageTags.Primary })
     : null, [item.Id, item.ImageTags?.Primary]);
-  const author = useMemo(() => (item as any)?.AlbumArtist ?? (item as any)?.Artists?.[0] ?? '', [item]);
+  const imageUrl = getDisplayImageUrl(item.Id, rawImageUrl, hideMedia, 'Primary');
+  const displayName = getDisplayName(item, hideMedia);
+  const rawArtists = useMemo(() => (item as any)?.Artists || [(item as any)?.AlbumArtist || ''], [item]);
+  const displayArtists = getDisplayArtist(rawArtists, hideMedia);
+  const author = displayArtists[0] || '';
   const accentColor = useSettingsStore((s) => s.accentColor);
 
   return (
@@ -46,7 +51,7 @@ const BookCard = memo(function BookCard({ item, onPress, onLongPress, width = HO
           <Image source={imageUrl} style={styles.bookImage} contentFit="cover" cachePolicy="memory-disk" />
         ) : (
           <View style={styles.bookPlaceholder}>
-            <Text style={styles.bookPlaceholderText}>{item.Name?.charAt(0) ?? '?'}</Text>
+            <Text style={styles.bookPlaceholderText}>{displayName?.charAt(0) ?? '?'}</Text>
           </View>
         )}
         {progress !== undefined && progress > 0 && (
@@ -58,17 +63,21 @@ const BookCard = memo(function BookCard({ item, onPress, onLongPress, width = HO
           </View>
         )}
       </View>
-      <Text style={[styles.bookTitle, { width }]} numberOfLines={2}>{item.Name}</Text>
+      <Text style={[styles.bookTitle, { width }]} numberOfLines={2}>{displayName}</Text>
       {author ? <Text style={[styles.bookAuthor, { width }]} numberOfLines={1}>{author}</Text> : null}
     </Pressable>
   );
 });
 
-const BookRow = memo(function BookRow({ item, onPress, onLongPress, isAudiobook = false, progress }: { item: BaseItem; onPress: () => void; onLongPress?: () => void; isAudiobook?: boolean; progress?: number }) {
-  const imageUrl = useMemo(() => item.ImageTags?.Primary
+const BookRow = memo(function BookRow({ item, onPress, onLongPress, isAudiobook = false, progress, hideMedia }: { item: BaseItem; onPress: () => void; onLongPress?: () => void; isAudiobook?: boolean; progress?: number; hideMedia: boolean }) {
+  const rawImageUrl = useMemo(() => item.ImageTags?.Primary
     ? getImageUrl(item.Id, 'Primary', { maxWidth: 120, tag: item.ImageTags.Primary })
     : null, [item.Id, item.ImageTags?.Primary]);
-  const author = useMemo(() => (item as any)?.AlbumArtist ?? (item as any)?.Artists?.[0] ?? '', [item]);
+  const imageUrl = getDisplayImageUrl(item.Id, rawImageUrl, hideMedia, 'Primary');
+  const displayName = getDisplayName(item, hideMedia);
+  const rawArtists = useMemo(() => (item as any)?.Artists || [(item as any)?.AlbumArtist || ''], [item]);
+  const displayArtists = getDisplayArtist(rawArtists, hideMedia);
+  const author = displayArtists[0] || '';
   const duration = useMemo(() => item.RunTimeTicks ? Math.round(item.RunTimeTicks / 600000000) : null, [item.RunTimeTicks]);
   const accentColor = useSettingsStore((s) => s.accentColor);
 
@@ -79,12 +88,12 @@ const BookRow = memo(function BookRow({ item, onPress, onLongPress, isAudiobook 
           <Image source={imageUrl} style={styles.bookRowImage} contentFit="cover" cachePolicy="memory-disk" />
         ) : (
           <View style={styles.bookRowPlaceholder}>
-            <Text style={styles.bookRowPlaceholderText}>{item.Name?.charAt(0) ?? '?'}</Text>
+            <Text style={styles.bookRowPlaceholderText}>{displayName?.charAt(0) ?? '?'}</Text>
           </View>
         )}
       </View>
       <View style={styles.bookRowInfo}>
-        <Text style={styles.bookRowName} numberOfLines={1}>{item.Name}</Text>
+        <Text style={styles.bookRowName} numberOfLines={1}>{displayName}</Text>
         {author ? <Text style={styles.bookRowAuthor} numberOfLines={1}>{author}</Text> : null}
         <View style={styles.bookRowMeta}>
           {isAudiobook && duration ? <Text style={styles.bookRowDuration}>{duration}h</Text> : null}
@@ -102,11 +111,15 @@ const BookRow = memo(function BookRow({ item, onPress, onLongPress, isAudiobook 
   );
 });
 
-const ContinueReadingCard = memo(function ContinueReadingCard({ item, onPress, progress }: { item: BaseItem; onPress: () => void; progress: number }) {
-  const imageUrl = useMemo(() => item.ImageTags?.Primary
+const ContinueReadingCard = memo(function ContinueReadingCard({ item, onPress, progress, hideMedia }: { item: BaseItem; onPress: () => void; progress: number; hideMedia: boolean }) {
+  const rawImageUrl = useMemo(() => item.ImageTags?.Primary
     ? getImageUrl(item.Id, 'Primary', { maxWidth: 300, tag: item.ImageTags.Primary })
     : null, [item.Id, item.ImageTags?.Primary]);
-  const author = useMemo(() => (item as any)?.AlbumArtist ?? (item as any)?.Artists?.[0] ?? '', [item]);
+  const imageUrl = getDisplayImageUrl(item.Id, rawImageUrl, hideMedia, 'Primary');
+  const displayName = getDisplayName(item, hideMedia);
+  const rawArtists = useMemo(() => (item as any)?.Artists || [(item as any)?.AlbumArtist || ''], [item]);
+  const displayArtists = getDisplayArtist(rawArtists, hideMedia);
+  const author = displayArtists[0] || '';
   const accentColor = useSettingsStore((s) => s.accentColor);
 
   return (
@@ -116,7 +129,7 @@ const ContinueReadingCard = memo(function ContinueReadingCard({ item, onPress, p
           <Image source={imageUrl} style={styles.continueImage} contentFit="cover" cachePolicy="memory-disk" />
         ) : (
           <View style={styles.continuePlaceholder}>
-            <Text style={styles.continuePlaceholderText}>{item.Name?.charAt(0) ?? '?'}</Text>
+            <Text style={styles.continuePlaceholderText}>{displayName?.charAt(0) ?? '?'}</Text>
           </View>
         )}
         <View style={styles.continueProgressOverlay}>
@@ -125,7 +138,7 @@ const ContinueReadingCard = memo(function ContinueReadingCard({ item, onPress, p
           </View>
         </View>
       </View>
-      <Text style={styles.continueTitle} numberOfLines={1}>{item.Name}</Text>
+      <Text style={styles.continueTitle} numberOfLines={1}>{displayName}</Text>
       {author ? <Text style={styles.continueAuthor} numberOfLines={1}>{author}</Text> : null}
       <Text style={styles.continueProgressText}>{progress}%</Text>
     </Pressable>
@@ -171,6 +184,7 @@ export default function BooksScreen() {
 
   const currentUser = useAuthStore((state) => state.currentUser);
   const accentColor = useSettingsStore((s) => s.accentColor);
+  const hideMedia = useSettingsStore((s) => s.hideMedia);
   const userId = currentUser?.Id ?? '';
 
   const { data: libraries } = useQuery({
@@ -179,7 +193,14 @@ export default function BooksScreen() {
     enabled: !!userId,
   });
 
-  const bookLibrary = libraries?.find(l => l.CollectionType === 'books');
+  const bookLibraryIds = useMemo(() => {
+    if (!libraries) return [];
+    const booksLibIds = getLibraryIdsByType(libraries, 'books');
+    const audiobooksLibIds = getLibraryIdsByType(libraries, 'audiobooks');
+    return [...new Set([...booksLibIds, ...audiobooksLibIds])];
+  }, [libraries]);
+
+  const hasBookLibraries = bookLibraryIds.length > 0;
 
   const readingProgress = useReadingProgressStore((state) => state.progress);
   const bookmarks = useReadingProgressStore((state) => state.bookmarks);
@@ -229,17 +250,16 @@ export default function BooksScreen() {
   const getProgressForItem = (itemId: string) => readingProgress[itemId]?.percent ?? 0;
 
   const { data: booksData, isLoading: latestBooksLoading } = useQuery({
-    queryKey: ['libraryPreview', userId, bookLibrary?.Id],
+    queryKey: ['libraryPreview', userId, bookLibraryIds.join(',')],
     queryFn: () =>
-      getItems<BaseItem>(userId, {
-        parentId: bookLibrary?.Id,
+      getItemsFromMultipleLibraries<BaseItem>(userId, bookLibraryIds, {
         includeItemTypes: ['Book', 'AudioBook'],
         sortBy: 'DateCreated',
         sortOrder: 'Descending',
         limit: 40,
         recursive: true,
       }),
-    enabled: !!userId && !!bookLibrary,
+    enabled: !!userId && hasBookLibraries,
     staleTime: Infinity,
     refetchOnMount: false,
   });
@@ -257,10 +277,9 @@ export default function BooksScreen() {
     isLoading: ebooksLoading,
     refetch: refetchEbooks,
   } = useInfiniteQuery({
-    queryKey: ['allEbooks', userId, bookLibrary?.Id],
+    queryKey: ['allEbooks', userId, bookLibraryIds.join(',')],
     queryFn: ({ pageParam = 0 }) =>
-      getItems<Book>(userId, {
-        parentId: bookLibrary?.Id,
+      getItemsFromMultipleLibraries<Book>(userId, bookLibraryIds, {
         includeItemTypes: ['Book'],
         sortBy: 'SortName',
         sortOrder: 'Ascending',
@@ -273,7 +292,7 @@ export default function BooksScreen() {
       const totalFetched = pages.reduce((acc, p) => acc + p.Items.length, 0);
       return totalFetched < lastPage.TotalRecordCount ? totalFetched : undefined;
     },
-    enabled: !!userId && !!bookLibrary && viewMode === 'ebooks',
+    enabled: !!userId && hasBookLibraries && viewMode === 'ebooks',
     staleTime: Infinity,
   });
 
@@ -285,10 +304,9 @@ export default function BooksScreen() {
     isLoading: audiobooksLoading,
     refetch: refetchAudiobooks,
   } = useInfiniteQuery({
-    queryKey: ['allAudiobooks', userId, bookLibrary?.Id],
+    queryKey: ['allAudiobooks', userId, bookLibraryIds.join(',')],
     queryFn: ({ pageParam = 0 }) =>
-      getItems<AudioBook>(userId, {
-        parentId: bookLibrary?.Id,
+      getItemsFromMultipleLibraries<AudioBook>(userId, bookLibraryIds, {
         includeItemTypes: ['AudioBook'],
         sortBy: 'SortName',
         sortOrder: 'Ascending',
@@ -301,7 +319,7 @@ export default function BooksScreen() {
       const totalFetched = pages.reduce((acc, p) => acc + p.Items.length, 0);
       return totalFetched < lastPage.TotalRecordCount ? totalFetched : undefined;
     },
-    enabled: !!userId && !!bookLibrary && viewMode === 'audiobooks',
+    enabled: !!userId && hasBookLibraries && viewMode === 'audiobooks',
     staleTime: Infinity,
   });
 
@@ -377,6 +395,7 @@ export default function BooksScreen() {
                   item={{ Id: progress.itemId, Name: progress.itemName, Type: progress.itemType, ImageTags: progress.coverImageTag ? { Primary: progress.coverImageTag } : undefined } as BaseItem}
                   onPress={() => handleItemPress({ Id: progress.itemId, Type: progress.itemType } as BaseItem)}
                   progress={progress.percent}
+                  hideMedia={hideMedia}
                 />
               </View>
             ))}
@@ -391,7 +410,7 @@ export default function BooksScreen() {
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalScroll}>
           {latestEbooks.map((item) => (
             <View key={item.Id} style={styles.horizontalItem}>
-              <BookCard item={item} onPress={() => handleItemPress(item)} onLongPress={() => handleLongPress(item)} progress={getProgressForItem(item.Id)} />
+              <BookCard item={item} onPress={() => handleItemPress(item)} onLongPress={() => handleLongPress(item)} progress={getProgressForItem(item.Id)} hideMedia={hideMedia} />
             </View>
           ))}
         </ScrollView>
@@ -406,7 +425,7 @@ export default function BooksScreen() {
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalScroll}>
           {latestAudiobooks.map((item) => (
             <View key={item.Id} style={styles.horizontalItem}>
-              <BookCard item={item} onPress={() => handleItemPress(item)} onLongPress={() => handleLongPress(item)} progress={getProgressForItem(item.Id)} />
+              <BookCard item={item} onPress={() => handleItemPress(item)} onLongPress={() => handleLongPress(item)} progress={getProgressForItem(item.Id)} hideMedia={hideMedia} />
             </View>
           ))}
         </ScrollView>
@@ -432,7 +451,7 @@ export default function BooksScreen() {
             sections={ebooksSections}
             keyExtractor={(item) => item.Id}
             style={{ flex: 1 }}
-            renderItem={({ item }) => <BookRow item={item} onPress={() => handleItemPress(item)} onLongPress={() => handleLongPress(item)} progress={getProgressForItem(item.Id)} />}
+            renderItem={({ item }) => <BookRow item={item} onPress={() => handleItemPress(item)} onLongPress={() => handleLongPress(item)} progress={getProgressForItem(item.Id)} hideMedia={hideMedia} />}
             renderSectionHeader={({ section: { title } }) => (
               <View style={styles.sectionHeaderContainer}>
                 <Text style={[styles.sectionHeaderText, { color: accentColor }]}>{title}</Text>
@@ -467,7 +486,7 @@ export default function BooksScreen() {
             sections={audiobooksSections}
             keyExtractor={(item) => item.Id}
             style={{ flex: 1 }}
-            renderItem={({ item }) => <BookRow item={item} onPress={() => handleItemPress(item)} onLongPress={() => handleLongPress(item)} isAudiobook progress={getProgressForItem(item.Id)} />}
+            renderItem={({ item }) => <BookRow item={item} onPress={() => handleItemPress(item)} onLongPress={() => handleLongPress(item)} isAudiobook progress={getProgressForItem(item.Id)} hideMedia={hideMedia} />}
             renderSectionHeader={({ section: { title } }) => (
               <View style={styles.sectionHeaderContainer}>
                 <Text style={[styles.sectionHeaderText, { color: accentColor }]}>{title}</Text>
@@ -542,8 +561,7 @@ export default function BooksScreen() {
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-          <HomeButton currentScreen="books" />
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <Text style={styles.headerTitle}>Books</Text>
         </View>
         <SearchButton />

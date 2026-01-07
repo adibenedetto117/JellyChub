@@ -5,8 +5,9 @@ import { useQuery, useInfiniteQuery } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useAuthStore, useSettingsStore } from '@/stores';
-import { getLibraries, getItems, getImageUrl } from '@/api';
-import { SearchButton, HomeButton, AnimatedGradient } from '@/components/ui';
+import { getLibraries, getItems, getImageUrl, getLibraryIdsByType, getItemsFromMultipleLibraries } from '@/api';
+import { SearchButton, AnimatedGradient } from '@/components/ui';
+import { getDisplayName, getDisplayImageUrl } from '@/utils';
 import { colors } from '@/theme';
 import type { BaseItem, Series } from '@/types/jellyfin';
 
@@ -22,10 +23,12 @@ type SortOption = 'DateCreated' | 'SortName' | 'PremiereDate' | 'CommunityRating
 const ITEMS_PER_PAGE = 100;
 const FULL_ALPHABET = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '#'];
 
-const ShowCard = memo(function ShowCard({ item, onPress, showRating }: { item: BaseItem; onPress: () => void; showRating?: boolean }) {
-  const imageUrl = item.ImageTags?.Primary
+const ShowCard = memo(function ShowCard({ item, onPress, showRating, hideMedia }: { item: BaseItem; onPress: () => void; showRating?: boolean; hideMedia: boolean }) {
+  const rawImageUrl = item.ImageTags?.Primary
     ? getImageUrl(item.Id, 'Primary', { maxWidth: 300, tag: item.ImageTags.Primary })
     : null;
+  const imageUrl = getDisplayImageUrl(item.Id, rawImageUrl, hideMedia, 'Primary');
+  const displayName = getDisplayName(item, hideMedia);
 
   const yearAndRating = [
     item.ProductionYear,
@@ -45,7 +48,7 @@ const ShowCard = memo(function ShowCard({ item, onPress, showRating }: { item: B
           />
         ) : (
           <View style={styles.posterPlaceholder}>
-            <Text style={styles.posterPlaceholderText}>{item.Name?.charAt(0) ?? '?'}</Text>
+            <Text style={styles.posterPlaceholderText}>{displayName?.charAt(0) ?? '?'}</Text>
           </View>
         )}
         {item.UserData?.UnplayedItemCount === 0 && (
@@ -54,16 +57,18 @@ const ShowCard = memo(function ShowCard({ item, onPress, showRating }: { item: B
           </View>
         )}
       </View>
-      <Text style={styles.showTitle} numberOfLines={1}>{item.Name}</Text>
+      <Text style={styles.showTitle} numberOfLines={1}>{displayName}</Text>
       <Text style={styles.showYear}>{yearAndRating}</Text>
     </Pressable>
   );
 });
 
-const ShowRow = memo(function ShowRow({ item, onPress }: { item: BaseItem; onPress: () => void }) {
-  const imageUrl = item.ImageTags?.Primary
+const ShowRow = memo(function ShowRow({ item, onPress, hideMedia }: { item: BaseItem; onPress: () => void; hideMedia: boolean }) {
+  const rawImageUrl = item.ImageTags?.Primary
     ? getImageUrl(item.Id, 'Primary', { maxWidth: 120, tag: item.ImageTags.Primary })
     : null;
+  const imageUrl = getDisplayImageUrl(item.Id, rawImageUrl, hideMedia, 'Primary');
+  const displayName = getDisplayName(item, hideMedia);
 
   return (
     <Pressable onPress={onPress} style={styles.showRow}>
@@ -78,12 +83,12 @@ const ShowRow = memo(function ShowRow({ item, onPress }: { item: BaseItem; onPre
           />
         ) : (
           <View style={styles.showRowPlaceholder}>
-            <Text style={styles.showRowPlaceholderText}>{item.Name?.charAt(0) ?? '?'}</Text>
+            <Text style={styles.showRowPlaceholderText}>{displayName?.charAt(0) ?? '?'}</Text>
           </View>
         )}
       </View>
       <View style={styles.showRowInfo}>
-        <Text style={styles.showRowName} numberOfLines={1}>{item.Name}</Text>
+        <Text style={styles.showRowName} numberOfLines={1}>{displayName}</Text>
         <Text style={styles.showRowMeta} numberOfLines={1}>
           {[item.ProductionYear, item.CommunityRating ? `★ ${item.CommunityRating.toFixed(1)}` : null].filter(Boolean).join(' • ')}
         </Text>
@@ -129,6 +134,7 @@ export default function ShowsScreen() {
 
   const currentUser = useAuthStore((state) => state.currentUser);
   const accentColor = useSettingsStore((s) => s.accentColor);
+  const hideMedia = useSettingsStore((s) => s.hideMedia);
   const userId = currentUser?.Id ?? '';
 
   const { data: libraries } = useQuery({
@@ -138,7 +144,10 @@ export default function ShowsScreen() {
     staleTime: 1000 * 60 * 5,
   });
 
-  const showLibrary = libraries?.find((l) => l.CollectionType === 'tvshows');
+  const showLibraryIds = useMemo(() => {
+    if (!libraries) return [];
+    return getLibraryIdsByType(libraries, 'tvshows');
+  }, [libraries]);
 
   const {
     data,
@@ -148,10 +157,9 @@ export default function ShowsScreen() {
     isLoading,
     refetch,
   } = useInfiniteQuery({
-    queryKey: ['shows', userId, showLibrary?.Id],
+    queryKey: ['shows', userId, showLibraryIds.join(',')],
     queryFn: ({ pageParam = 0 }) =>
-      getItems<Series>(userId, {
-        parentId: showLibrary?.Id,
+      getItemsFromMultipleLibraries<Series>(userId, showLibraryIds, {
         includeItemTypes: ['Series'],
         sortBy: 'SortName',
         sortOrder: 'Ascending',
@@ -165,7 +173,7 @@ export default function ShowsScreen() {
       const totalFetched = pages.reduce((acc, p) => acc + p.Items.length, 0);
       return totalFetched < lastPage.TotalRecordCount ? totalFetched : undefined;
     },
-    enabled: !!userId && !!showLibrary,
+    enabled: !!userId && showLibraryIds.length > 0,
     staleTime: 1000 * 60 * 5,
   });
 
@@ -248,9 +256,9 @@ export default function ShowsScreen() {
     setRefreshing(false);
   }, [refetch]);
 
-  const handleItemPress = (item: BaseItem) => {
-    router.push(`/details/series/${item.Id}`);
-  };
+  const handleItemPress = useCallback((item: BaseItem) => {
+    router.push(`/(tabs)/details/series/${item.Id}`);
+  }, []);
 
   const handleSortChange = (newSort: SortOption) => {
     setSortBy(newSort);
@@ -261,7 +269,7 @@ export default function ShowsScreen() {
     }
   };
 
-  const renderFooter = () => {
+  const renderFooter = useCallback(() => {
     if (!isFetchingNextPage) return <View style={styles.bottomSpacer} />;
     return (
       <View style={styles.loadingFooter}>
@@ -269,7 +277,22 @@ export default function ShowsScreen() {
         <Text style={styles.loadingFooterText}>Loading more...</Text>
       </View>
     );
-  };
+  }, [isFetchingNextPage, accentColor]);
+
+  // Memoized renderItem callbacks to prevent re-renders
+  const renderShowRow = useCallback(({ item }: { item: BaseItem }) => (
+    <ShowRow item={item} onPress={() => handleItemPress(item)} hideMedia={hideMedia} />
+  ), [handleItemPress, hideMedia]);
+
+  const renderShowCard = useCallback(({ item }: { item: BaseItem }) => (
+    <ShowCard item={item} onPress={() => handleItemPress(item)} showRating={sortBy !== 'SortName'} hideMedia={hideMedia} />
+  ), [handleItemPress, sortBy, hideMedia]);
+
+  const renderSectionHeader = useCallback(({ section }: { section: { title: string; data: BaseItem[] } }) => (
+    <View style={styles.sectionHeaderContainer}>
+      <Text style={[styles.sectionHeaderText, { color: accentColor }]}>{section.title}</Text>
+    </View>
+  ), [accentColor]);
 
   const sortOptions: { label: string; value: SortOption }[] = [
     { label: 'A-Z', value: 'SortName' },
@@ -284,14 +307,8 @@ export default function ShowsScreen() {
         ref={sectionListRef}
         sections={showSections}
         contentContainerStyle={styles.sectionListContent}
-        renderItem={({ item }) => (
-          <ShowRow item={item} onPress={() => handleItemPress(item)} />
-        )}
-        renderSectionHeader={({ section }) => (
-          <View style={styles.sectionHeaderContainer}>
-            <Text style={[styles.sectionHeaderText, { color: accentColor }]}>{section.title}</Text>
-          </View>
-        )}
+        renderItem={renderShowRow}
+        renderSectionHeader={renderSectionHeader}
         keyExtractor={(item) => item.Id}
         stickySectionHeadersEnabled={true}
         onEndReached={() => hasNextPage && !isFetchingNextPage && fetchNextPage()}
@@ -324,9 +341,7 @@ export default function ShowsScreen() {
     <FlatList
       ref={flatListRef}
       data={sortedShows}
-      renderItem={({ item }) => (
-        <ShowCard item={item} onPress={() => handleItemPress(item)} showRating={sortBy !== 'SortName'} />
-      )}
+      renderItem={renderShowCard}
       keyExtractor={(item) => item.Id}
       numColumns={NUM_COLUMNS}
       columnWrapperStyle={styles.gridRow}
@@ -359,8 +374,7 @@ export default function ShowsScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <AnimatedGradient intensity="subtle" />
       <View style={styles.header}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-          <HomeButton currentScreen="shows" />
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <Text style={styles.headerTitle}>TV Shows</Text>
         </View>
         <SearchButton />

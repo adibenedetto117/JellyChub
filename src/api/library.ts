@@ -625,3 +625,123 @@ export async function getFavoriteSongs(
 
   return response.data;
 }
+
+export interface GroupedLibraries {
+  collectionType: CollectionType;
+  libraries: Library[];
+  label: string;
+  icon: string;
+}
+
+export function groupLibrariesByType(libraries: Library[]): GroupedLibraries[] {
+  const groups: Record<string, Library[]> = {};
+
+  for (const library of libraries) {
+    const type = library.CollectionType ?? 'mixed';
+    if (!groups[type]) {
+      groups[type] = [];
+    }
+    groups[type].push(library);
+  }
+
+  return Object.entries(groups).map(([type, libs]) => {
+    const config = COLLECTION_TYPE_CONFIG[type] ?? DEFAULT_LIBRARY_CONFIG;
+    return {
+      collectionType: type as CollectionType,
+      libraries: libs,
+      label: config.label,
+      icon: config.icon,
+    };
+  });
+}
+
+export function getLibrariesByType(libraries: Library[], collectionType: CollectionType): Library[] {
+  return libraries.filter(lib => lib.CollectionType === collectionType);
+}
+
+export function getLibraryIdsByType(libraries: Library[], collectionType: CollectionType): string[] {
+  return getLibrariesByType(libraries, collectionType).map(lib => lib.Id);
+}
+
+export async function getLatestMediaFromMultipleLibraries(
+  userId: string,
+  parentIds: string[],
+  limit: number = 16
+): Promise<BaseItem[]> {
+  if (parentIds.length === 0) return [];
+
+  const results = await Promise.all(
+    parentIds.map(parentId => getLatestMedia(userId, parentId, limit))
+  );
+
+  const allItems = results.flat();
+
+  allItems.sort((a, b) => {
+    const dateA = (a as any).DateCreated ?? '';
+    const dateB = (b as any).DateCreated ?? '';
+    return dateB.localeCompare(dateA);
+  });
+
+  return allItems.slice(0, limit);
+}
+
+export async function getItemsFromMultipleLibraries<T extends BaseItem = BaseItem>(
+  userId: string,
+  parentIds: string[],
+  params: Omit<LibraryQueryParams, 'parentId'> = {}
+): Promise<ItemsResponse<T>> {
+  if (parentIds.length === 0) {
+    return { Items: [], TotalRecordCount: 0, StartIndex: 0 };
+  }
+
+  if (parentIds.length === 1) {
+    return getItems<T>(userId, { ...params, parentId: parentIds[0] });
+  }
+
+  const results = await Promise.all(
+    parentIds.map(parentId => getItems<T>(userId, { ...params, parentId }))
+  );
+
+  const allItems = results.flatMap(r => r.Items);
+  const totalCount = results.reduce((sum, r) => sum + r.TotalRecordCount, 0);
+
+  if (params.sortBy === 'SortName') {
+    allItems.sort((a, b) => {
+      const nameA = a.SortName ?? a.Name ?? '';
+      const nameB = b.SortName ?? b.Name ?? '';
+      return params.sortOrder === 'Descending'
+        ? nameB.localeCompare(nameA)
+        : nameA.localeCompare(nameB);
+    });
+  } else if (params.sortBy === 'DateCreated') {
+    allItems.sort((a, b) => {
+      const dateA = (a as any).DateCreated ?? '';
+      const dateB = (b as any).DateCreated ?? '';
+      return params.sortOrder === 'Descending'
+        ? dateB.localeCompare(dateA)
+        : dateA.localeCompare(dateB);
+    });
+  } else if (params.sortBy === 'PremiereDate') {
+    allItems.sort((a, b) => {
+      const yearA = a.ProductionYear ?? 0;
+      const yearB = b.ProductionYear ?? 0;
+      return params.sortOrder === 'Descending' ? yearB - yearA : yearA - yearB;
+    });
+  } else if (params.sortBy === 'CommunityRating') {
+    allItems.sort((a, b) => {
+      const ratingA = a.CommunityRating ?? 0;
+      const ratingB = b.CommunityRating ?? 0;
+      return params.sortOrder === 'Descending' ? ratingB - ratingA : ratingA - ratingB;
+    });
+  }
+
+  const startIndex = params.startIndex ?? 0;
+  const limit = params.limit ?? allItems.length;
+  const paginatedItems = allItems.slice(startIndex, startIndex + limit);
+
+  return {
+    Items: paginatedItems,
+    TotalRecordCount: totalCount,
+    StartIndex: startIndex,
+  };
+}
