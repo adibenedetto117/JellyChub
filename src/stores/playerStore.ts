@@ -223,16 +223,10 @@ export const usePlayerStore = create<PlayerStore>()(
     },
 
     playPrevious: () => {
-      const { currentQueueIndex, progress } = get();
+      const { currentQueueIndex } = get();
 
-      // If more than 3 seconds into track, restart it
-      if (progress.position > 3000) {
-        set((state) => ({
-          progress: { ...state.progress, position: 0 },
-        }));
-        return;
-      }
-
+      // Note: 3-second restart logic is handled by audioService.skipToPrevious()
+      // This just handles the queue index change
       if (currentQueueIndex > 0) {
         set({ currentQueueIndex: currentQueueIndex - 1 });
       }
@@ -364,4 +358,4 @@ export const selectHasNext = (state: PlayerStore) =>
   state.music.repeatMode === 'all';
 
 export const selectHasPrevious = (state: PlayerStore) =>
-  state.currentQueueIndex > 0 || state.progress.position > 3000;
+  state.currentQueueIndex >= 0; // Can always restart or go back

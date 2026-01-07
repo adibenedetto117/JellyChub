@@ -49,8 +49,6 @@ export default function MusicPlayerScreen() {
     cycleRepeatMode,
     setShowLyrics,
     setProgress,
-    playNext,
-    playPrevious,
   } = usePlayerStore();
 
   const [isFavorite, setIsFavorite] = useState(false);
@@ -585,7 +583,7 @@ export default function MusicPlayerScreen() {
               )}
             </Pressable>
 
-            <Pressable onPress={playPrevious} style={{ width: 56, height: 56, alignItems: 'center', justifyContent: 'center' }}>
+            <Pressable onPress={() => audioService.skipToPrevious()} style={{ width: 56, height: 56, alignItems: 'center', justifyContent: 'center' }}>
               <Ionicons name="play-skip-back" size={32} color="#fff" />
             </Pressable>
 
@@ -607,7 +605,7 @@ export default function MusicPlayerScreen() {
               </Pressable>
             </Animated.View>
 
-            <Pressable onPress={playNext} style={{ width: 56, height: 56, alignItems: 'center', justifyContent: 'center' }}>
+            <Pressable onPress={() => audioService.skipToNext()} style={{ width: 56, height: 56, alignItems: 'center', justifyContent: 'center' }}>
               <Ionicons name="play-skip-forward" size={32} color="#fff" />
             </Pressable>
 

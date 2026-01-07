@@ -13,6 +13,7 @@ class AudioService {
   private isInitialized = false;
   private isLoading = false;
   private isSeeking = false;
+  private hasHandledTrackEnd = false;
   private statusSubscription: { remove: () => void } | null = null;
   private queueSubscription: (() => void) | null = null;
   private currentUserId: string | null = null;
@@ -58,15 +59,85 @@ class AudioService {
 
   async skipToNext() {
     const store = usePlayerStore.getState();
+    const hasNext = store.currentQueueIndex < store.queue.length - 1 || store.music.repeatMode === 'all';
+
+    if (!hasNext) {
+      console.log('Skip next: No next track available');
+      return;
+    }
+
+    console.log(`Skip next: ${store.currentQueueIndex + 1}/${store.queue.length}`);
+    this.hasHandledTrackEnd = false;
     store.playNext();
   }
 
   async skipToPrevious() {
     const store = usePlayerStore.getState();
+
+    // If more than 3 seconds in, restart current track
     if (store.progress.position > 3000) {
-      await this.seek(0);
-    } else {
+      console.log('Skip previous: Restarting current track');
+      this.hasHandledTrackEnd = false;
+
+      // Seek to beginning and ensure playback
+      if (this.player) {
+        this.player.seekTo(0);
+        if (!this.player.playing) {
+          this.player.play();
+        }
+      }
+
+      // Update store progress
+      store.setProgress(0, store.progress.duration, store.progress.buffered);
+      return;
+    }
+
+    // Otherwise go to previous track
+    if (store.currentQueueIndex > 0) {
+      console.log(`Skip previous: Going to track ${store.currentQueueIndex}`);
+      this.hasHandledTrackEnd = false;
       store.playPrevious();
+    } else {
+      // At first track, just restart it
+      console.log('Skip previous: At first track, restarting');
+      if (this.player) {
+        this.player.seekTo(0);
+        if (!this.player.playing) {
+          this.player.play();
+        }
+      }
+      store.setProgress(0, store.progress.duration, store.progress.buffered);
+    }
+  }
+
+  // Force play a specific queue index (always reloads, even if same track)
+  async forcePlayIndex(index: number) {
+    const store = usePlayerStore.getState();
+    const queueItem = store.queue[index];
+
+    if (!queueItem || !this.currentUserId) {
+      console.log('forcePlayIndex: Invalid index or no user');
+      return;
+    }
+
+    console.log(`Force playing index ${index}: ${queueItem.item.Name}`);
+
+    // Clear current item ID to force reload
+    this.currentItemId = null;
+    this.hasHandledTrackEnd = false;
+
+    // Update store index (this triggers the subscription)
+    store.skipToIndex(index);
+
+    // If subscription didn't trigger (same index), manually load
+    if (store.currentQueueIndex === index) {
+      const mediaType = store.mediaType;
+      await this.loadAndPlay(
+        queueItem.item,
+        this.currentUserId,
+        undefined,
+        mediaType === 'audiobook' ? 'audiobook' : 'audio'
+      );
     }
   }
 
@@ -119,6 +190,7 @@ class AudioService {
       this.playSessionId = generatePlaySessionId();
       this.currentItemId = item.Id;
       this.currentItem = item;
+      this.hasHandledTrackEnd = false;
 
       store.setCurrentItem(
         { item, mediaSource: { Id: item.Id } as any, streamUrl: '', playSessionId: this.playSessionId },
@@ -176,13 +248,20 @@ class AudioService {
     const durationMs = status.duration ? status.duration * 1000 : ticksToMs(currentItemData?.RunTimeTicks ?? 0);
     const bufferedMs = durationMs;
 
+    // Check for track end - use didJustFinish OR position-based detection as fallback
+    // Position-based: if we're within 500ms of the end and not playing, treat as ended
+    const isNearEnd = durationMs > 0 && positionMs >= durationMs - 500;
+    const shouldTriggerEnd = status.didJustFinish || (isNearEnd && !status.playing);
+
+    if (shouldTriggerEnd && !this.hasHandledTrackEnd) {
+      this.handleTrackEnd();
+      return;
+    }
+
     if (status.playing) {
       store.setPlayerState('playing');
       mediaSessionService.updatePlaybackState('playing', positionMs);
-    } else if (status.didJustFinish) {
-      this.handleTrackEnd();
-      return;
-    } else {
+    } else if (!shouldTriggerEnd) {
       store.setPlayerState('paused');
       mediaSessionService.updatePlaybackState('paused', positionMs);
     }
@@ -191,9 +270,18 @@ class AudioService {
   }
 
   private handleTrackEnd() {
+    // Prevent duplicate calls for the same track
+    if (this.hasHandledTrackEnd) {
+      return;
+    }
+    this.hasHandledTrackEnd = true;
+
     const store = usePlayerStore.getState();
+    console.log(`Track ended. Queue: ${store.currentQueueIndex + 1}/${store.queue.length}, RepeatMode: ${store.music.repeatMode}`);
 
     if (store.music.repeatMode === 'one') {
+      // For repeat one, reset the flag so it can trigger again
+      this.hasHandledTrackEnd = false;
       this.player?.seekTo(0);
       this.player?.play();
     } else if (store.music.repeatMode === 'all' || store.currentQueueIndex < store.queue.length - 1) {

@@ -34,18 +34,16 @@ Requires Android 8.0 (API 26) or higher.
 - Skip credits button
 - Auto-play next episode (configurable)
 - Continue watching with resume support
-- Gesture controls: swipe up/down for volume and brightness
-- Gesture controls: double-tap left/right to seek 10 seconds
+- Double-tap left/right to seek 10 seconds
 - Orientation lock toggle (landscape left/right)
 - Hardware acceleration option
 - Offline playback for downloaded content
 
 ### Music
 - Background playback with lock screen controls
-- Queue management with drag-to-reorder
 - Shuffle mode
 - Repeat modes: off, repeat all, repeat one
-- Synced lyrics display with auto-scroll
+- Lyrics display
 - Add to playlist
 - Add to favorites
 - Create new playlists
@@ -227,9 +225,14 @@ npx expo run:android
 
 ### In Progress
 - [ ] iOS build and testing
-- [ ] Enhanced image caching
+- [ ] Better image caching
+- [ ] Video player icon overhaul
+- [ ] Audio quality improvements
 
 ### Planned
+- [ ] Volume/brightness swipe gestures
+- [ ] Queue view and management
+- [ ] Synced lyrics with auto-scroll
 - [ ] iOS release
 - [ ] Live TV support
 - [ ] Chromecast support
@@ -246,16 +249,6 @@ npx expo run:android
 - [ ] Intro/credits detection improvements
 - [ ] Custom server plugins support
 - [ ] Parental controls
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
 
 ## Acknowledgments
 
