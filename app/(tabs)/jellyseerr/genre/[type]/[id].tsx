@@ -58,6 +58,11 @@ export default function GenreBrowseScreen() {
               <Ionicons name="arrow-back" size={24} color="#fff" />
             </Pressable>
           ),
+          headerRight: () => (
+            <Pressable onPress={() => router.push('/search')} style={{ marginLeft: 16 }}>
+              <Ionicons name="search" size={22} color="#fff" />
+            </Pressable>
+          ),
         }}
       />
 

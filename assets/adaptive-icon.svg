@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <!-- Jellyfish body gradient -->
+    <linearGradient id="bodyGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#a855f7"/>
+      <stop offset="50%" style="stop-color:#7c3aed"/>
+      <stop offset="100%" style="stop-color:#5b21b6"/>
+    </linearGradient>
+
+    <!-- Inner glow for body -->
+    <radialGradient id="innerGlow" cx="50%" cy="30%" r="50%">
+      <stop offset="0%" style="stop-color:#e879f9;stop-opacity:0.6"/>
+      <stop offset="100%" style="stop-color:#a855f7;stop-opacity:0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Tentacles -->
+  <g opacity="0.9">
+    <!-- Left tentacles -->
+    <path d="M300 480 Q280 580 320 680 Q340 750 300 820"
+          stroke="url(#bodyGrad)" stroke-width="28" fill="none" stroke-linecap="round"/>
+    <path d="M370 500 Q340 620 380 720 Q400 800 360 880"
+          stroke="url(#bodyGrad)" stroke-width="32" fill="none" stroke-linecap="round"/>
+    <path d="M440 510 Q420 650 460 750 Q480 830 450 920"
+          stroke="url(#bodyGrad)" stroke-width="36" fill="none" stroke-linecap="round"/>
+
+    <!-- Center tentacle -->
+    <path d="M512 520 Q512 680 512 780 Q512 860 512 940"
+          stroke="url(#bodyGrad)" stroke-width="38" fill="none" stroke-linecap="round"/>
+
+    <!-- Right tentacles -->
+    <path d="M584 510 Q604 650 564 750 Q544 830 574 920"
+          stroke="url(#bodyGrad)" stroke-width="36" fill="none" stroke-linecap="round"/>
+    <path d="M654 500 Q684 620 644 720 Q624 800 664 880"
+          stroke="url(#bodyGrad)" stroke-width="32" fill="none" stroke-linecap="round"/>
+    <path d="M724 480 Q744 580 704 680 Q684 750 724 820"
+          stroke="url(#bodyGrad)" stroke-width="28" fill="none" stroke-linecap="round"/>
+  </g>
+
+  <!-- Chubby jellyfish body (main dome) -->
+  <ellipse cx="512" cy="360" rx="250" ry="210" fill="url(#bodyGrad)"/>
+
+  <!-- Body highlight/shine -->
+  <ellipse cx="512" cy="340" rx="230" ry="180" fill="url(#innerGlow)"/>
+
+  <!-- Extra chubby cheeks -->
+  <ellipse cx="340" cy="420" rx="70" ry="50" fill="#7c3aed" opacity="0.7"/>
+  <ellipse cx="684" cy="420" rx="70" ry="50" fill="#7c3aed" opacity="0.7"/>
+
+  <!-- Cute face -->
+  <!-- Left eye -->
+  <ellipse cx="420" cy="340" rx="35" ry="40" fill="#0a0a0a"/>
+  <ellipse cx="428" cy="332" rx="14" ry="16" fill="#ffffff"/>
+
+  <!-- Right eye -->
+  <ellipse cx="604" cy="340" rx="35" ry="40" fill="#0a0a0a"/>
+  <ellipse cx="612" cy="332" rx="14" ry="16" fill="#ffffff"/>
+
+  <!-- Happy smile -->
+  <path d="M460 420 Q512 470 564 420"
+        stroke="#0a0a0a" stroke-width="14" fill="none" stroke-linecap="round"/>
+
+  <!-- Rosy cheeks -->
+  <ellipse cx="380" cy="400" rx="30" ry="20" fill="#f472b6" opacity="0.5"/>
+  <ellipse cx="644" cy="400" rx="30" ry="20" fill="#f472b6" opacity="0.5"/>
+
+  <!-- Small play button on body -->
+  <path d="M490 280 L540 305 L490 330 Z" fill="#ffffff" opacity="0.8"/>
+</svg>

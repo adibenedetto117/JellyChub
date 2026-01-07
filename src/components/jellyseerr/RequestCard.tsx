@@ -140,7 +140,7 @@ export const RequestCard = memo(function RequestCard({
 
   return (
     <Pressable onPress={onPress} style={styles.container}>
-      <Animated.View entering={FadeIn.duration(300)} style={styles.card}>
+      <Animated.View entering={FadeIn.duration(150)} style={styles.card}>
         {/* Poster */}
         <View style={styles.posterContainer}>
           <CachedImage

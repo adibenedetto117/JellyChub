@@ -278,28 +278,7 @@ export default function TabLayout() {
       screenOptions={{
         headerShown: false,
         lazy: true,
-        tabBarStyle: {
-          backgroundColor: colors.background.primary,
-          borderTopColor: 'rgba(255, 255, 255, 0.08)',
-          borderTopWidth: 0.5,
-          height: tabBarHeight,
-          paddingBottom: insets.bottom + 6,
-          paddingTop: 6,
-          elevation: 0,
-          shadowOpacity: 0,
-        },
-        tabBarActiveTintColor: accentColor,
-        tabBarInactiveTintColor: colors.text.tertiary,
-        tabBarShowLabel: true,
-        tabBarLabelStyle: {
-          fontSize: 10,
-          fontWeight: '500',
-          marginTop: 4,
-          fontFamily: 'System',
-        },
-        tabBarItemStyle: {
-          paddingTop: 2,
-        },
+        tabBarStyle: { display: 'none' },
       }}
     >
       {orderedTabs.map((tab) => (
@@ -309,9 +288,6 @@ export default function TabLayout() {
           options={{
             title: tab.title,
             href: tab.href,
-            tabBarIcon: ({ focused }) => (
-              <TabIcon name={tab.iconName} focused={focused} accentColor={accentColor} isLandingPage={tab.isLandingPage} />
-            ),
           }}
         />
       ))}

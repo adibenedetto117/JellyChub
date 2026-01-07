@@ -17,7 +17,7 @@ import {
 import { MediaRow } from '@/components/media/MediaRow';
 import { ContinueWatching } from '@/components/media/ContinueWatching';
 import { NextUpRow } from '@/components/media/NextUpRow';
-import { SearchButton, HomeButton } from '@/components/ui';
+import { SearchButton, HomeButton, AnimatedGradient } from '@/components/ui';
 import { SkeletonContinueWatching, SkeletonRow } from '@/components/ui/Skeleton';
 import type { BaseItem, Library, Episode } from '@/types/jellyfin';
 
@@ -137,7 +137,7 @@ export default function HomeScreen() {
     setRefreshing(false);
   }, [refetchLibraries, refetchResume, refetchNextUp, refetchSuggestions, refetchFavoriteMovies, refetchFavoriteSeries, latestMediaQueries]);
 
-  const handleItemPress = (item: BaseItem) => {
+  const handleItemPress = useCallback((item: BaseItem) => {
     const type = item.Type?.toLowerCase();
     if (type === 'movie') {
       router.push(`/details/movie/${item.Id}`);
@@ -155,22 +155,19 @@ export default function HomeScreen() {
     } else {
       router.push(`/details/${type}/${item.Id}`);
     }
-  };
+  }, []);
 
-  const handleEpisodePress = (item: Episode) => {
+  const handleEpisodePress = useCallback((item: Episode) => {
     if (item.SeriesId) {
       router.push(`/details/series/${item.SeriesId}`);
     }
-  };
+  }, []);
 
-  // Generate a display title for a library's "Latest" section
-  const getLatestSectionTitle = (library: Library): string => {
-    // Use the library's custom name for mixed/unknown types
+  const getLatestSectionTitle = useCallback((library: Library): string => {
     if (!library.CollectionType) {
       return `Latest in ${library.Name}`;
     }
 
-    // For known types, create a nicer title
     switch (library.CollectionType) {
       case 'movies':
         return `Latest ${library.Name}`;
@@ -188,10 +185,11 @@ export default function HomeScreen() {
       default:
         return `Latest in ${library.Name}`;
     }
-  };
+  }, []);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
+      <AnimatedGradient intensity="subtle" />
       <ScrollView
         style={styles.scrollView}
         refreshControl={

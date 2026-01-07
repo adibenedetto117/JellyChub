@@ -167,6 +167,14 @@ export default function JellyseerrDetailsScreen() {
           <Ionicons name="chevron-back" size={24} color="#fff" />
         </Pressable>
 
+        {/* Search Button */}
+        <Pressable
+          style={[styles.backButton, { top: insets.top + 8, left: undefined, right: 16 }]}
+          onPress={() => router.push('/search')}
+        >
+          <Ionicons name="search" size={20} color="#fff" />
+        </Pressable>
+
         {/* Content */}
         <View style={styles.content}>
           <View style={styles.headerRow}>

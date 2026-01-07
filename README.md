@@ -1,66 +1,163 @@
 # JellyChub
 
-A Jellyfin client for mobile that handles all your media - video, music, audiobooks, ebooks, and comics.
+A modern Jellyfin client for Android that handles all your media - video, music, audiobooks, ebooks, and comics in one app.
 
-![Platform](https://img.shields.io/badge/platform-Android%20%7C%20iOS%20(coming%20soon)-green)
+<p align="center">
+  <img src="assets/icon.png" alt="JellyChub" width="128" height="128"/>
+</p>
+
+![Platform](https://img.shields.io/badge/platform-Android-green)
+![iOS](https://img.shields.io/badge/iOS-coming%20soon-lightgrey)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
----
+## Download
+
+**[Download Latest APK](https://github.com/adibenedetto117/JellyChub/releases/latest)**
+
+Requires Android 8.0 (API 26) or higher.
 
 ## Features
 
-**Video & TV**
-- Stream with subtitle and audio track selection
-- Picture-in-Picture, skip intro/credits, auto-play next
+### Video & TV Shows
+- Full video streaming with quality selection
+- Subtitle support (embedded & external) with style customization
+- Multiple audio track selection
+- Picture-in-Picture mode
+- Skip intro and credits buttons
+- Auto-play next episode
+- Continue watching with resume support
 
-**Music**
-- Background playback with queue, shuffle, repeat
-- Lyrics display, playlist management
+### Music
+- Background playback with lock screen controls
+- Queue management with drag-to-reorder
+- Shuffle and repeat modes
+- Lyrics display (synced and unsynced)
+- Playlist creation and management
+- Artist, album, and genre browsing
+- Gapless playback
 
-**Audiobooks**
-- Chapter navigation, sleep timer, bookmarks
-- Variable speed (0.5x-2x), M4B chapter parsing
+### Audiobooks
+- Chapter navigation with visual progress
+- Sleep timer with shake-to-extend
+- Bookmarks with notes
+- Variable playback speed (0.5x - 2.0x)
+- M4B chapter parsing support
+- Resume position sync across devices
 
-**E-books & Comics**
-- EPUB and PDF reader with themes
-- Comic reader with manga support (RTL)
+### E-books & Comics
+- EPUB reader with customizable themes
+- PDF support with smooth scrolling
+- Comic/manga reader with page modes
+- Right-to-left reading for manga
+- Reading progress tracking
+- Offline reading support
 
-**Downloads**
-- Offline playback for video, music, audiobooks
-- Storage management, WiFi-only option
+### Downloads & Offline
+- Download video, music, and audiobooks for offline playback
+- Storage management with usage stats
+- WiFi-only download option
+- Background download queue
+- Automatic cleanup of watched downloads
 
-**Extras**
-- Jellyseerr integration for requests
-- Server admin panel
-- Multi-server, Quick Connect
+### Additional Features
+- **Jellyseerr Integration**: Browse and request new content directly from the app
+- **Multi-server Support**: Connect to multiple Jellyfin servers
+- **Quick Connect**: Easy server authentication via QR code
+- **Server Administration**: Basic admin controls for managing your server
+- **Favorites**: Quick access to your favorite content
+- **Search**: Global search across all libraries
 
----
+## Tech Stack
 
-## Install
+| Component | Technology |
+|-----------|------------|
+| Framework | React Native 0.81 / Expo 54 |
+| Language | TypeScript |
+| Styling | NativeWind (Tailwind CSS) |
+| State Management | Zustand |
+| Data Fetching | TanStack Query (React Query) |
+| Local Storage | MMKV |
+| Video Player | expo-video |
+| Audio Player | react-native-track-player |
 
-**Android 8.0+** - Download from [Releases](https://github.com/adibenedetto117/JellyChub/releases)
+## Building from Source
 
-### Build
+### Prerequisites
+- Node.js 18+
+- Android SDK (API 26+)
+- Java 17
+
+### Build Steps
 
 ```bash
+# Clone the repository
 git clone https://github.com/adibenedetto117/JellyChub.git
-cd JellyChub && npm install
+cd JellyChub
+
+# Install dependencies
+npm install
+
+# Generate native code
 npx expo prebuild
-cd android && ./gradlew assembleDebug
+
+# Build release APK
+cd android && ./gradlew assembleRelease
 ```
 
----
+The APK will be at `android/app/build/outputs/apk/release/app-release.apk`
+
+### Development
+
+```bash
+# Start development server
+npx expo start
+
+# Run on Android device/emulator
+npx expo run:android
+```
 
 ## Roadmap
 
-- iOS release
-- Play Store / App Store
-- Chromecast, SyncPlay
+### In Progress
+- [ ] iOS build and testing
+- [ ] Enhanced image caching
 
----
+### Planned
+- [ ] Chromecast support
+- [ ] SyncPlay (watch together)
+- [ ] Android TV optimization
+- [ ] Play Store release
+- [ ] App Store release
+- [ ] Widget for currently playing
+- [ ] Wear OS companion app
+- [ ] CarPlay / Android Auto
+
+### Under Consideration
+- [ ] Intro/credits detection improvements
+- [ ] Custom server plugins support
+- [ ] Parental controls
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## Acknowledgments
+
+- [Jellyfin](https://jellyfin.org/) - The free software media system
+- [Expo](https://expo.dev/) - React Native framework and tooling
+- [Finamp](https://github.com/jmshrv/finamp) - Inspiration for music player features
+- [Jellyseerr](https://github.com/Fallenbagel/jellyseerr) - Request management integration
 
 ## License
 
-MIT
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-*Not affiliated with Jellyfin.*
+---
+
+*JellyChub is an independent project and is not affiliated with or endorsed by Jellyfin.*

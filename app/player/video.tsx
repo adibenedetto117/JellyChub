@@ -234,7 +234,7 @@ export default function VideoPlayerScreen() {
   const [playSessionId] = useState(() => generatePlaySessionId());
   const [mediaSource, setMediaSource] = useState<MediaSource | null>(null);
   const [streamUrl, setStreamUrl] = useState<string | null>(null);
-  const [orientationLocked, setOrientationLocked] = useState<'landscape-left' | 'landscape-right'>('landscape-left');
+  const [orientationLocked, setOrientationLocked] = useState<'landscape-left' | 'landscape-right'>('landscape-right');
   const [isRotationLocked, setIsRotationLocked] = useState(false);
   const [isPortrait, setIsPortrait] = useState(false);
   const [selectedSubtitleIndex, setSelectedSubtitleIndex] = useState<number | undefined>(undefined);
@@ -350,31 +350,27 @@ export default function VideoPlayerScreen() {
   const isNavigatingRef = useRef(false);
 
   useEffect(() => {
-    const lockOrientation = () => {
-      if (isPortrait) {
-        ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT);
-        return;
-      }
-      if (orientationLocked === 'landscape-left') {
-        ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE_LEFT);
-      } else {
-        ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE_RIGHT);
-      }
-    };
-    lockOrientation();
+    if (isPortrait) {
+      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT);
+    } else if (orientationLocked === 'landscape-left') {
+      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE_LEFT);
+    } else {
+      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE_RIGHT);
+    }
     activateKeepAwakeAsync();
     return () => {
       if (!isNavigatingRef.current) {
-        ScreenOrientation.unlockAsync();
+        ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
       }
       deactivateKeepAwake();
     };
   }, [orientationLocked, isPortrait]);
 
   const cycleOrientationLock = useCallback(() => {
-    setOrientationLocked((current) =>
-      current === 'landscape-left' ? 'landscape-right' : 'landscape-left'
-    );
+    setOrientationLocked((current) => {
+      if (current === 'landscape-left') return 'landscape-right';
+      return 'landscape-left';
+    });
   }, []);
 
   const toggleOrientation = useCallback(() => {
@@ -431,47 +427,10 @@ export default function VideoPlayerScreen() {
         if (subtitles.length > 0 && (preferredSubLang || forceSubtitles)) {
           const preferredSub = subtitles.find((s) => s.language?.toLowerCase() === preferredSubLang?.toLowerCase())
             || subtitles.find((s) => s.isDefault)
-            || (forceSubtitles ? subtitles[0] : undefined); // If force subtitles, pick first available
+            || (forceSubtitles ? subtitles[0] : undefined);
           if (preferredSub) {
+            loadSubtitleTrack(item.Id, source.Id, preferredSub.index);
             setSelectedSubtitleIndex(preferredSub.index);
-            // Load subtitle file
-            const subtitleUrl = getSubtitleUrl(item.Id, source.Id, preferredSub.index, 'vtt');
-            fetch(subtitleUrl)
-              .then(res => res.text())
-              .then(vttText => {
-                const cues: Array<{ start: number; end: number; text: string }> = [];
-                const lines = vttText.split('\n');
-                let i = 0;
-                while (i < lines.length) {
-                  const line = lines[i].trim();
-                  if (line.includes('-->')) {
-                    const [startStr, endStr] = line.split('-->').map(s => s.trim());
-                    const parseTime = (t: string) => {
-                      const parts = t.replace(',', '.').split(':');
-                      if (parts.length === 3) {
-                        return parseFloat(parts[0]) * 3600000 + parseFloat(parts[1]) * 60000 + parseFloat(parts[2]) * 1000;
-                      } else if (parts.length === 2) {
-                        return parseFloat(parts[0]) * 60000 + parseFloat(parts[1]) * 1000;
-                      }
-                      return 0;
-                    };
-                    const start = parseTime(startStr);
-                    const end = parseTime(endStr.split(' ')[0]);
-                    const textLines: string[] = [];
-                    i++;
-                    while (i < lines.length && lines[i].trim() !== '') {
-                      textLines.push(lines[i].trim());
-                      i++;
-                    }
-                    if (textLines.length > 0) {
-                      cues.push({ start, end, text: textLines.join('\n').replace(/<[^>]+>/g, '') });
-                    }
-                  }
-                  i++;
-                }
-                setSubtitleCues(cues);
-              })
-              .catch(() => {});
           }
         }
 
@@ -518,10 +477,13 @@ export default function VideoPlayerScreen() {
   ) => {
     if (!item) return;
 
-    const url = getStreamUrl(item.Id, source.Id, {
-      startTimeTicks: startPositionMs > 0 ? msToTicks(startPositionMs) : undefined,
-      useHls: false,
-    });
+    // Use local file if downloaded, otherwise stream from server
+    const url = localFilePath
+      ? localFilePath
+      : getStreamUrl(item.Id, source.Id, {
+          startTimeTicks: startPositionMs > 0 ? msToTicks(startPositionMs) : undefined,
+          useHls: false,
+        });
     setStreamUrl(url);
 
     resumePositionMs.current = startPositionMs;
@@ -534,46 +496,108 @@ export default function VideoPlayerScreen() {
       ItemId: item.Id,
       MediaSourceId: source.Id,
       PlaySessionId: playSessionId,
-      PlayMethod: 'DirectStream',
+      PlayMethod: localFilePath ? 'DirectPlay' : 'DirectStream',
       StartTimeTicks: startPositionMs > 0 ? msToTicks(startPositionMs) : undefined,
     });
 
     setPlayerState('playing');
-  }, [item, playSessionId]);
+  }, [item, playSessionId, localFilePath]);
 
-  const parseVtt = useCallback((vttText: string): Array<{ start: number; end: number; text: string }> => {
+  const loadSubtitleTrack = useCallback(async (itemId: string, mediaSourceId: string, index: number) => {
+    const tryFetch = async (format: string): Promise<string | null> => {
+      try {
+        const url = getSubtitleUrl(itemId, mediaSourceId, index, format);
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 10000);
+        const res = await fetch(url, { signal: controller.signal });
+        clearTimeout(timeout);
+        if (!res.ok) return null;
+        return await res.text();
+      } catch (e) {
+        return null;
+      }
+    };
+
+    // Try multiple formats in order of preference
+    let text = await tryFetch('vtt');
+    if (!text || text.length < 10) {
+      text = await tryFetch('srt');
+    }
+    if (!text || text.length < 10) {
+      text = await tryFetch('ass');
+    }
+    if (!text || text.length < 10) {
+      text = await tryFetch('ssa');
+    }
+
+    if (!text || text.length < 10) {
+      setSubtitleCues([]);
+      return;
+    }
+
     const cues: Array<{ start: number; end: number; text: string }> = [];
-    const lines = vttText.split('\n');
-    let i = 0;
 
-    while (i < lines.length) {
-      const line = lines[i].trim();
-      if (line.includes('-->')) {
-        const [startStr, endStr] = line.split('-->').map(s => s.trim());
-        const parseTime = (t: string) => {
-          const parts = t.replace(',', '.').split(':');
-          if (parts.length === 3) {
-            return parseFloat(parts[0]) * 3600000 + parseFloat(parts[1]) * 60000 + parseFloat(parts[2]) * 1000;
-          } else if (parts.length === 2) {
-            return parseFloat(parts[0]) * 60000 + parseFloat(parts[1]) * 1000;
+    // Parse time string to milliseconds
+    const parseTime = (t: string): number => {
+      const cleaned = t.replace(',', '.').trim();
+      const parts = cleaned.split(':');
+      if (parts.length === 3) {
+        return parseFloat(parts[0]) * 3600000 + parseFloat(parts[1]) * 60000 + parseFloat(parts[2]) * 1000;
+      } else if (parts.length === 2) {
+        return parseFloat(parts[0]) * 60000 + parseFloat(parts[1]) * 1000;
+      }
+      return 0;
+    };
+
+    // Check if ASS/SSA format (has [Script Info] or Dialogue:)
+    const isAss = text.includes('[Script Info]') || text.includes('Dialogue:');
+
+    if (isAss) {
+      // Parse ASS/SSA format
+      const lines = text.split('\n');
+      for (const line of lines) {
+        if (line.startsWith('Dialogue:')) {
+          const parts = line.substring(9).split(',');
+          if (parts.length >= 10) {
+            const startTime = parseTime(parts[1]);
+            const endTime = parseTime(parts[2]);
+            // Text is everything after the 9th comma, remove ASS style tags
+            const subtitleText = parts.slice(9).join(',')
+              .replace(/\{[^}]*\}/g, '')
+              .replace(/\\N/g, '\n')
+              .replace(/\\n/g, '\n')
+              .trim();
+            if (subtitleText) {
+              cues.push({ start: startTime, end: endTime, text: subtitleText });
+            }
           }
-          return 0;
-        };
-        const start = parseTime(startStr);
-        const end = parseTime(endStr.split(' ')[0]);
-        const textLines: string[] = [];
-        i++;
-        while (i < lines.length && lines[i].trim() !== '') {
-          textLines.push(lines[i].trim());
-          i++;
-        }
-        if (textLines.length > 0) {
-          cues.push({ start, end, text: textLines.join('\n').replace(/<[^>]+>/g, '') });
         }
       }
-      i++;
+    } else {
+      // Parse VTT/SRT format
+      const lines = text.split('\n');
+      let i = 0;
+      while (i < lines.length) {
+        const line = lines[i].trim();
+        if (line.includes('-->')) {
+          const [startStr, endStr] = line.split('-->').map(s => s.trim());
+          const start = parseTime(startStr);
+          const end = parseTime(endStr.split(' ')[0]);
+          const textLines: string[] = [];
+          i++;
+          while (i < lines.length && lines[i].trim() !== '') {
+            textLines.push(lines[i].trim());
+            i++;
+          }
+          if (textLines.length > 0) {
+            cues.push({ start, end, text: textLines.join('\n').replace(/<[^>]+>/g, '') });
+          }
+        }
+        i++;
+      }
     }
-    return cues;
+
+    setSubtitleCues(cues);
   }, []);
 
   const handleSelectSubtitle = useCallback(async (index: number | undefined) => {
@@ -585,16 +609,8 @@ export default function VideoPlayerScreen() {
       return;
     }
 
-    try {
-      const subtitleUrl = getSubtitleUrl(item.Id, mediaSource.Id, index, 'vtt');
-      const response = await fetch(subtitleUrl);
-      const vttText = await response.text();
-      const cues = parseVtt(vttText);
-      setSubtitleCues(cues);
-    } catch (e) {
-      setSubtitleCues([]);
-    }
-  }, [mediaSource, item, parseVtt]);
+    await loadSubtitleTrack(item.Id, mediaSource.Id, index);
+  }, [mediaSource, item, loadSubtitleTrack]);
 
   const handleSelectAudio = useCallback((index: number) => {
     setSelectedAudioIndex(index);
@@ -605,16 +621,42 @@ export default function VideoPlayerScreen() {
 
         let track = null;
 
-        // Try matching by language code (handle 3-letter to 2-letter conversion)
+        // Try matching by language code
         if (jellyfinTrack?.language) {
           const lang = jellyfinTrack.language.toLowerCase();
           const langMap: Record<string, string[]> = {
             'eng': ['en', 'eng', 'english'],
             'rus': ['ru', 'rus', 'russian'],
-            'jpn': ['ja', 'jpn', 'japanese'],
+            'jpn': ['ja', 'jpn', 'japanese', 'jp'],
             'spa': ['es', 'spa', 'spanish'],
             'fre': ['fr', 'fra', 'fre', 'french'],
             'ger': ['de', 'deu', 'ger', 'german'],
+            'ita': ['it', 'ita', 'italian'],
+            'por': ['pt', 'por', 'portuguese'],
+            'zho': ['zh', 'zho', 'chi', 'chinese', 'cmn'],
+            'chi': ['zh', 'zho', 'chi', 'chinese', 'cmn'],
+            'kor': ['ko', 'kor', 'korean'],
+            'ara': ['ar', 'ara', 'arabic'],
+            'hin': ['hi', 'hin', 'hindi'],
+            'tha': ['th', 'tha', 'thai'],
+            'vie': ['vi', 'vie', 'vietnamese'],
+            'pol': ['pl', 'pol', 'polish'],
+            'dut': ['nl', 'dut', 'nld', 'dutch'],
+            'nld': ['nl', 'dut', 'nld', 'dutch'],
+            'swe': ['sv', 'swe', 'swedish'],
+            'dan': ['da', 'dan', 'danish'],
+            'nor': ['no', 'nor', 'norwegian'],
+            'fin': ['fi', 'fin', 'finnish'],
+            'tur': ['tr', 'tur', 'turkish'],
+            'heb': ['he', 'heb', 'hebrew'],
+            'ind': ['id', 'ind', 'indonesian'],
+            'ukr': ['uk', 'ukr', 'ukrainian'],
+            'ces': ['cs', 'ces', 'cze', 'czech'],
+            'cze': ['cs', 'ces', 'cze', 'czech'],
+            'hun': ['hu', 'hun', 'hungarian'],
+            'ron': ['ro', 'ron', 'rum', 'romanian'],
+            'ell': ['el', 'ell', 'gre', 'greek'],
+            'gre': ['el', 'ell', 'gre', 'greek'],
           };
           const variants = langMap[lang] || [lang];
           track = availableTracks.find((t: any) => {
@@ -623,7 +665,7 @@ export default function VideoPlayerScreen() {
           });
         }
 
-        // Fallback: use position in list (reversed - player often has opposite order)
+        // Fallback: try matching by track index position
         if (!track) {
           const jellyfinIdx = jellyfinAudioTracks.findIndex((t) => t.index === index);
           const reversedIdx = availableTracks.length - 1 - jellyfinIdx;
@@ -667,10 +709,36 @@ export default function VideoPlayerScreen() {
               const langMap: Record<string, string[]> = {
                 'eng': ['en', 'eng', 'english'],
                 'rus': ['ru', 'rus', 'russian'],
-                'jpn': ['ja', 'jpn', 'japanese'],
+                'jpn': ['ja', 'jpn', 'japanese', 'jp'],
                 'spa': ['es', 'spa', 'spanish'],
                 'fre': ['fr', 'fra', 'fre', 'french'],
                 'ger': ['de', 'deu', 'ger', 'german'],
+                'ita': ['it', 'ita', 'italian'],
+                'por': ['pt', 'por', 'portuguese'],
+                'zho': ['zh', 'zho', 'chi', 'chinese', 'cmn'],
+                'chi': ['zh', 'zho', 'chi', 'chinese', 'cmn'],
+                'kor': ['ko', 'kor', 'korean'],
+                'ara': ['ar', 'ara', 'arabic'],
+                'hin': ['hi', 'hin', 'hindi'],
+                'tha': ['th', 'tha', 'thai'],
+                'vie': ['vi', 'vie', 'vietnamese'],
+                'pol': ['pl', 'pol', 'polish'],
+                'dut': ['nl', 'dut', 'nld', 'dutch'],
+                'nld': ['nl', 'dut', 'nld', 'dutch'],
+                'swe': ['sv', 'swe', 'swedish'],
+                'dan': ['da', 'dan', 'danish'],
+                'nor': ['no', 'nor', 'norwegian'],
+                'fin': ['fi', 'fin', 'finnish'],
+                'tur': ['tr', 'tur', 'turkish'],
+                'heb': ['he', 'heb', 'hebrew'],
+                'ind': ['id', 'ind', 'indonesian'],
+                'ukr': ['uk', 'ukr', 'ukrainian'],
+                'ces': ['cs', 'ces', 'cze', 'czech'],
+                'cze': ['cs', 'ces', 'cze', 'czech'],
+                'hun': ['hu', 'hun', 'hungarian'],
+                'ron': ['ro', 'ron', 'rum', 'romanian'],
+                'ell': ['el', 'ell', 'gre', 'greek'],
+                'gre': ['el', 'ell', 'gre', 'greek'],
               };
               const variants = langMap[lang] || [lang];
               track = availableTracks.find((t: any) => {
@@ -680,9 +748,8 @@ export default function VideoPlayerScreen() {
             }
             if (!track) {
               const jellyfinIdx = jellyfinAudioTracks.findIndex((t) => t.index === selectedAudioIndex);
-              const reversedIdx = availableTracks.length - 1 - jellyfinIdx;
-              if (reversedIdx >= 0 && reversedIdx < availableTracks.length) {
-                track = availableTracks[reversedIdx];
+              if (jellyfinIdx >= 0 && jellyfinIdx < availableTracks.length) {
+                track = availableTracks[jellyfinIdx];
               }
             }
             if (track) {
@@ -1061,42 +1128,47 @@ export default function VideoPlayerScreen() {
             />
           )}
 
-          {currentSubtitle !== '' && (
-            <View
-              style={{
-                position: 'absolute',
-                bottom: 40,
-                left: 20,
-                right: 20,
-                alignItems: 'center',
-              }}
-              pointerEvents="none"
-            >
+          {currentSubtitle !== '' && (() => {
+            const subtitleSettings = useSettingsStore.getState().player;
+            const fontSize = subtitleSettings.subtitleSize === 'small' ? 14 : subtitleSettings.subtitleSize === 'large' ? 24 : 18;
+            const bottomPosition = showControls ? 140 : 60;
+            return (
               <View
                 style={{
-                  backgroundColor: 'rgba(0,0,0,0.75)',
-                  paddingHorizontal: 16,
-                  paddingVertical: 8,
-                  borderRadius: 4,
-                  maxWidth: '90%',
+                  position: 'absolute',
+                  bottom: bottomPosition,
+                  left: 20,
+                  right: 20,
+                  alignItems: 'center',
                 }}
+                pointerEvents="none"
               >
-                <Text
+                <View
                   style={{
-                    color: '#fff',
-                    fontSize: 18,
-                    fontWeight: '500',
-                    textAlign: 'center',
-                    textShadowColor: 'rgba(0,0,0,0.8)',
-                    textShadowOffset: { width: 1, height: 1 },
-                    textShadowRadius: 2,
+                    backgroundColor: `${subtitleSettings.subtitleBackgroundColor}${Math.round(subtitleSettings.subtitleBackgroundOpacity * 255).toString(16).padStart(2, '0')}`,
+                    paddingHorizontal: 16,
+                    paddingVertical: 8,
+                    borderRadius: 4,
+                    maxWidth: '90%',
                   }}
                 >
-                  {currentSubtitle}
-                </Text>
+                  <Text
+                    style={{
+                      color: subtitleSettings.subtitleTextColor,
+                      fontSize,
+                      fontWeight: '500',
+                      textAlign: 'center',
+                      textShadowColor: 'rgba(0,0,0,0.8)',
+                      textShadowOffset: { width: 1, height: 1 },
+                      textShadowRadius: 2,
+                    }}
+                  >
+                    {currentSubtitle}
+                  </Text>
+                </View>
               </View>
-            </View>
-          )}
+            );
+          })()}
 
           {showLoadingIndicator && (
             <View className="absolute inset-0 items-center justify-center">
@@ -1393,12 +1465,6 @@ export default function VideoPlayerScreen() {
                 <Text className="text-white/60 text-sm w-14 text-right">
                   {formatPlayerTime(progress.duration)}
                 </Text>
-                {/* Debug: show if intro detected */}
-                {introEnd !== null && (
-                  <View style={{ marginLeft: 8, backgroundColor: '#FFD700', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
-                    <Text style={{ color: '#000', fontSize: 10, fontWeight: 'bold' }}>INTRO</Text>
-                  </View>
-                )}
               </View>
 
               {isSeeking && (

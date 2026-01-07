@@ -37,7 +37,7 @@ export const JellyseerrPosterCard = memo(function JellyseerrPosterCard({
 
   return (
     <Pressable onPress={onPress} style={{ marginRight: 12 }}>
-      <Animated.View entering={FadeIn.duration(300)}>
+      <Animated.View entering={FadeIn.duration(150)}>
         <View
           style={{
             width: dimensions.width,

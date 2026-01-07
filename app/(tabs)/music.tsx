@@ -1,14 +1,14 @@
 import { View, Text, FlatList, SectionList, Pressable, RefreshControl, ScrollView, Dimensions, ActivityIndicator, StyleSheet, Alert, Modal, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 import { Image } from 'expo-image';
-import { useState, useCallback, useMemo, useRef } from 'react';
-import Animated, { useSharedValue, useAnimatedStyle, withSpring } from 'react-native-reanimated';
+import { useState, useCallback, useMemo, useRef, memo } from 'react';
+import Animated, { useSharedValue, useAnimatedStyle, withSpring, FadeIn } from 'react-native-reanimated';
 import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useAuthStore, useSettingsStore } from '@/stores';
 import { getLibraries, getItems, getImageUrl, getLatestMedia, getArtists, createPlaylist, getFavoriteSongs } from '@/api';
-import { SkeletonGrid, SearchButton, HomeButton } from '@/components/ui';
+import { SkeletonGrid, SearchButton, HomeButton, AnimatedGradient } from '@/components/ui';
 import { colors } from '@/theme';
 import type { BaseItem, MusicAlbum } from '@/types/jellyfin';
 
@@ -18,7 +18,7 @@ const HORIZONTAL_ALBUM_SIZE = 140;
 
 type ViewMode = 'home' | 'albums' | 'artists' | 'playlists';
 
-function AlbumCard({ item, onPress, size = ALBUM_SIZE }: { item: BaseItem; onPress: () => void; size?: number }) {
+const AlbumCard = memo(function AlbumCard({ item, onPress, size = ALBUM_SIZE }: { item: BaseItem; onPress: () => void; size?: number }) {
   const imageUrl = item.ImageTags?.Primary
     ? getImageUrl(item.Id, 'Primary', { maxWidth: 400, tag: item.ImageTags.Primary })
     : null;
@@ -46,9 +46,9 @@ function AlbumCard({ item, onPress, size = ALBUM_SIZE }: { item: BaseItem; onPre
       ) : null}
     </Pressable>
   );
-}
+});
 
-function CompactAlbumCard({ item, onPress }: { item: BaseItem; onPress: () => void }) {
+const CompactAlbumCard = memo(function CompactAlbumCard({ item, onPress }: { item: BaseItem; onPress: () => void }) {
   const getItemImageUrl = () => {
     if (item.ImageTags?.Primary) {
       return getImageUrl(item.Id, 'Primary', { maxWidth: 200, tag: item.ImageTags.Primary });
@@ -84,9 +84,9 @@ function CompactAlbumCard({ item, onPress }: { item: BaseItem; onPress: () => vo
       </View>
     </Pressable>
   );
-}
+});
 
-function ArtistRow({ item, onPress }: { item: BaseItem; onPress: () => void }) {
+const ArtistRow = memo(function ArtistRow({ item, onPress }: { item: BaseItem; onPress: () => void }) {
   const imageUrl = item.ImageTags?.Primary
     ? getImageUrl(item.Id, 'Primary', { maxWidth: 120, tag: item.ImageTags.Primary })
     : null;
@@ -107,9 +107,9 @@ function ArtistRow({ item, onPress }: { item: BaseItem; onPress: () => void }) {
       </Text>
     </Pressable>
   );
-}
+});
 
-function AlbumRow({ item, onPress }: { item: BaseItem; onPress: () => void }) {
+const AlbumRow = memo(function AlbumRow({ item, onPress }: { item: BaseItem; onPress: () => void }) {
   const imageUrl = item.ImageTags?.Primary
     ? getImageUrl(item.Id, 'Primary', { maxWidth: 120, tag: item.ImageTags.Primary })
     : null;
@@ -139,11 +139,11 @@ function AlbumRow({ item, onPress }: { item: BaseItem; onPress: () => void }) {
       </View>
     </Pressable>
   );
-}
+});
 
 const FULL_ALPHABET = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '#'];
 
-function AlphabetScroller({ availableLetters, onLetterPress, accentColor }: { availableLetters: string[]; onLetterPress: (letter: string) => void; accentColor: string }) {
+const AlphabetScroller = memo(function AlphabetScroller({ availableLetters, onLetterPress, accentColor }: { availableLetters: string[]; onLetterPress: (letter: string) => void; accentColor: string }) {
   return (
     <View style={styles.alphabetContainer}>
       {FULL_ALPHABET.map((letter) => {
@@ -165,9 +165,9 @@ function AlphabetScroller({ availableLetters, onLetterPress, accentColor }: { av
       })}
     </View>
   );
-}
+});
 
-function PlaylistRow({ item, onPress }: { item: BaseItem; onPress: () => void }) {
+const PlaylistRow = memo(function PlaylistRow({ item, onPress }: { item: BaseItem; onPress: () => void }) {
   const imageUrl = item.ImageTags?.Primary
     ? getImageUrl(item.Id, 'Primary', { maxWidth: 120, tag: item.ImageTags.Primary })
     : null;
@@ -188,9 +188,9 @@ function PlaylistRow({ item, onPress }: { item: BaseItem; onPress: () => void })
       </Text>
     </Pressable>
   );
-}
+});
 
-function SectionHeader({ title, onSeeAll, icon }: { title: string; onSeeAll?: () => void; icon?: string }) {
+const SectionHeader = memo(function SectionHeader({ title, onSeeAll, icon }: { title: string; onSeeAll?: () => void; icon?: string }) {
   return (
     <View style={styles.sectionHeader}>
       <View style={styles.sectionTitleRow}>
@@ -204,20 +204,33 @@ function SectionHeader({ title, onSeeAll, icon }: { title: string; onSeeAll?: ()
       )}
     </View>
   );
-}
+});
 
-function TabButton({ label, active, onPress, accentColor }: { label: string; active: boolean; onPress: () => void; accentColor: string }) {
+const TabButton = memo(function TabButton({ label, active, onPress, accentColor }: { label: string; active: boolean; onPress: () => void; accentColor: string }) {
+  const scale = useSharedValue(1);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  const handlePressIn = useCallback(() => {
+    scale.value = withSpring(0.92, { damping: 15, stiffness: 400 });
+  }, [scale]);
+
+  const handlePressOut = useCallback(() => {
+    scale.value = withSpring(1, { damping: 15, stiffness: 400 });
+  }, [scale]);
+
   return (
-    <Pressable
-      onPress={onPress}
-      style={[styles.tabButton, { backgroundColor: active ? accentColor : 'rgba(255,255,255,0.1)' }]}
-    >
-      <Text style={[styles.tabButtonText, { color: active ? '#fff' : 'rgba(255,255,255,0.7)' }]}>
-        {label}
-      </Text>
+    <Pressable onPress={onPress} onPressIn={handlePressIn} onPressOut={handlePressOut}>
+      <Animated.View style={[styles.tabButton, { backgroundColor: active ? accentColor : 'rgba(255,255,255,0.1)' }, animatedStyle]}>
+        <Text style={[styles.tabButtonText, { color: active ? '#fff' : 'rgba(255,255,255,0.7)' }]}>
+          {label}
+        </Text>
+      </Animated.View>
     </Pressable>
   );
-}
+});
 
 export default function MusicScreen() {
   const [refreshing, setRefreshing] = useState(false);
@@ -258,9 +271,10 @@ export default function MusicScreen() {
   });
 
   const { data: favorites, refetch: refetchFavorites } = useQuery({
-    queryKey: ['favoriteMusic', userId],
+    queryKey: ['favoriteSongs', userId],
     queryFn: () => getFavoriteSongs(userId),
     enabled: !!userId,
+    staleTime: 0,
   });
 
   const { data: allAlbums, isLoading: albumsLoading, refetch: refetchAlbums, fetchNextPage: fetchNextAlbums, hasNextPage: hasNextAlbums, isFetchingNextPage: isFetchingNextAlbums } = useInfiniteQuery({
@@ -447,17 +461,17 @@ export default function MusicScreen() {
     setRefreshing(false);
   }, [refetchRecent, refetchAdded, refetchFavorites, refetchAlbums, refetchArtists, refetchPlaylists]);
 
-  const handleAlbumPress = (item: BaseItem) => {
+  const handleAlbumPress = useCallback((item: BaseItem) => {
     router.push(`/details/album/${item.Id}`);
-  };
+  }, []);
 
-  const handleArtistPress = (item: BaseItem) => {
+  const handleArtistPress = useCallback((item: BaseItem) => {
     router.push(`/details/artist/${item.Id}`);
-  };
+  }, []);
 
-  const handlePlaylistPress = (item: BaseItem) => {
+  const handlePlaylistPress = useCallback((item: BaseItem) => {
     router.push(`/playlist/${item.Id}`);
-  };
+  }, []);
 
   const createPlaylistMutation = useMutation({
     mutationFn: (name: string) => createPlaylist(userId, name),
@@ -472,18 +486,23 @@ export default function MusicScreen() {
     },
   });
 
-  const handleCreatePlaylist = () => {
+  const handleCreatePlaylist = useCallback(() => {
     setShowCreatePlaylist(true);
-  };
+  }, []);
 
-  const handleConfirmCreatePlaylist = () => {
+  const handleConfirmCreatePlaylist = useCallback(() => {
     const name = newPlaylistName.trim();
     if (!name) {
       Alert.alert('Error', 'Please enter a playlist name');
       return;
     }
     createPlaylistMutation.mutate(name);
-  };
+  }, [newPlaylistName, createPlaylistMutation]);
+
+  const setViewModeHome = useCallback(() => setViewMode('home'), []);
+  const setViewModeAlbums = useCallback(() => setViewMode('albums'), []);
+  const setViewModeArtists = useCallback(() => setViewMode('artists'), []);
+  const setViewModePlaylists = useCallback(() => setViewMode('playlists'), []);
 
   const renderHomeView = () => (
     <ScrollView
@@ -494,7 +513,7 @@ export default function MusicScreen() {
     >
       {recentlyPlayed?.Items && recentlyPlayed.Items.length > 0 && (
         <>
-          <SectionHeader title="Recently Played" onSeeAll={() => setViewMode('albums')} />
+          <SectionHeader title="Recently Played" onSeeAll={setViewModeAlbums} />
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalScroll}>
             {recentlyPlayed.Items.map((item) => (
               <View key={item.Id} style={styles.horizontalItem}>
@@ -507,7 +526,7 @@ export default function MusicScreen() {
 
       {recentlyAdded && recentlyAdded.length > 0 && (
         <>
-          <SectionHeader title="Recently Added" onSeeAll={() => setViewMode('albums')} />
+          <SectionHeader title="Recently Added" onSeeAll={setViewModeAlbums} />
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalScroll}>
             {recentlyAdded.map((item) => (
               <View key={item.Id} style={styles.horizontalItem}>
@@ -714,6 +733,7 @@ export default function MusicScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
+      <AnimatedGradient intensity="subtle" />
       <View style={styles.header}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
           <HomeButton currentScreen="music" />
@@ -724,10 +744,10 @@ export default function MusicScreen() {
 
       <View style={styles.tabContainer}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          <TabButton label="Home" active={viewMode === 'home'} onPress={() => setViewMode('home')} accentColor={accentColor} />
-          <TabButton label="Albums" active={viewMode === 'albums'} onPress={() => setViewMode('albums')} accentColor={accentColor} />
-          <TabButton label="Artists" active={viewMode === 'artists'} onPress={() => setViewMode('artists')} accentColor={accentColor} />
-          <TabButton label="Playlists" active={viewMode === 'playlists'} onPress={() => setViewMode('playlists')} accentColor={accentColor} />
+          <TabButton label="Home" active={viewMode === 'home'} onPress={setViewModeHome} accentColor={accentColor} />
+          <TabButton label="Albums" active={viewMode === 'albums'} onPress={setViewModeAlbums} accentColor={accentColor} />
+          <TabButton label="Artists" active={viewMode === 'artists'} onPress={setViewModeArtists} accentColor={accentColor} />
+          <TabButton label="Playlists" active={viewMode === 'playlists'} onPress={setViewModePlaylists} accentColor={accentColor} />
         </ScrollView>
       </View>
 

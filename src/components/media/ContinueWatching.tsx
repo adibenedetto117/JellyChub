@@ -48,7 +48,7 @@ const ContinueCard = memo(function ContinueCard({ item, onPress, cardWidth, card
 
   return (
     <Pressable onPress={onPress} style={styles.cardPressable}>
-      <Animated.View entering={FadeIn.duration(300)}>
+      <Animated.View entering={FadeIn.duration(150)}>
         <View style={[styles.card, { width: cardWidth }]}>
           <View style={[styles.imageContainer, { height: cardHeight }]}>
             <CachedImage

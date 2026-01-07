@@ -26,20 +26,18 @@ export default function FavoritesScreen() {
   const [showTrackOptions, setShowTrackOptions] = useState(false);
 
   const handleGoBack = () => {
-    if (router.canGoBack()) {
-      router.back();
-    } else {
-      router.replace('/(tabs)/music');
-    }
+    router.replace('/(tabs)/music');
   };
 
   const { data: favorites, isLoading } = useQuery({
-    queryKey: ['favoriteMusic', userId],
+    queryKey: ['favoriteSongs', userId],
     queryFn: () => getFavoriteSongs(userId),
     enabled: !!userId,
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
 
-  const tracks = favorites?.Items ?? [];
+  const tracks = (favorites?.Items ?? []).filter(item => item.Type === 'Audio');
   const totalDuration = tracks.reduce((sum, t) => sum + (t.RunTimeTicks ?? 0), 0);
 
   const handlePlayAll = () => {

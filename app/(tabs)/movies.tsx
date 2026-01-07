@@ -1,12 +1,12 @@
 import { View, Text, SectionList, FlatList, Pressable, RefreshControl, ActivityIndicator, Dimensions, StyleSheet } from 'react-native';
 import { Image } from 'expo-image';
-import { useState, useCallback, useMemo, useRef } from 'react';
+import { useState, useCallback, useMemo, useRef, memo } from 'react';
 import { useQuery, useInfiniteQuery } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useAuthStore, useSettingsStore } from '@/stores';
 import { getLibraries, getItems, getImageUrl } from '@/api';
-import { SearchButton, HomeButton } from '@/components/ui';
+import { SearchButton, HomeButton, AnimatedGradient } from '@/components/ui';
 import { colors } from '@/theme';
 import type { BaseItem, Movie } from '@/types/jellyfin';
 
@@ -22,7 +22,7 @@ type SortOption = 'DateCreated' | 'SortName' | 'PremiereDate' | 'CommunityRating
 const ITEMS_PER_PAGE = 100;
 const FULL_ALPHABET = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '#'];
 
-function MovieCard({ item, onPress, showRating }: { item: BaseItem; onPress: () => void; showRating?: boolean }) {
+const MovieCard = memo(function MovieCard({ item, onPress, showRating }: { item: BaseItem; onPress: () => void; showRating?: boolean }) {
   const imageUrl = item.ImageTags?.Primary
     ? getImageUrl(item.Id, 'Primary', { maxWidth: 300, tag: item.ImageTags.Primary })
     : null;
@@ -58,9 +58,9 @@ function MovieCard({ item, onPress, showRating }: { item: BaseItem; onPress: () 
       <Text style={styles.movieYear}>{yearAndRating}</Text>
     </Pressable>
   );
-}
+});
 
-function MovieRow({ item, onPress }: { item: BaseItem; onPress: () => void }) {
+const MovieRow = memo(function MovieRow({ item, onPress }: { item: BaseItem; onPress: () => void }) {
   const imageUrl = item.ImageTags?.Primary
     ? getImageUrl(item.Id, 'Primary', { maxWidth: 120, tag: item.ImageTags.Primary })
     : null;
@@ -95,9 +95,9 @@ function MovieRow({ item, onPress }: { item: BaseItem; onPress: () => void }) {
       )}
     </Pressable>
   );
-}
+});
 
-function AlphabetScroller({ availableLetters, onLetterPress, accentColor }: { availableLetters: string[]; onLetterPress: (letter: string) => void; accentColor: string }) {
+const AlphabetScroller = memo(function AlphabetScroller({ availableLetters, onLetterPress, accentColor }: { availableLetters: string[]; onLetterPress: (letter: string) => void; accentColor: string }) {
   return (
     <View style={styles.alphabetContainer}>
       {FULL_ALPHABET.map((letter) => {
@@ -119,7 +119,7 @@ function AlphabetScroller({ availableLetters, onLetterPress, accentColor }: { av
       })}
     </View>
   );
-}
+});
 
 export default function MoviesScreen() {
   const [refreshing, setRefreshing] = useState(false);
@@ -361,6 +361,7 @@ export default function MoviesScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
+      <AnimatedGradient intensity="subtle" />
       <View style={styles.header}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
           <HomeButton currentScreen="movies" />

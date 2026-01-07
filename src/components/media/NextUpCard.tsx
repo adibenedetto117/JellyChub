@@ -60,7 +60,7 @@ export const NextUpCard = memo(function NextUpCard({ item, onPress }: Props) {
 
   return (
     <Pressable onPress={onPress} style={styles.container}>
-      <Animated.View entering={FadeIn.duration(300)}>
+      <Animated.View entering={FadeIn.duration(150)}>
         <View style={[styles.card, { width: dimensions.width, height: dimensions.height }]}>
           <CachedImage
             uri={imageUrl}

@@ -1,5 +1,5 @@
 import { View, Text, Pressable, RefreshControl, ScrollView, StyleSheet } from 'react-native';
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, memo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -12,7 +12,7 @@ import {
   getImageUrl,
   getLibraryIcon,
 } from '@/api';
-import { SearchButton, HomeButton } from '@/components/ui';
+import { SearchButton, HomeButton, AnimatedGradient } from '@/components/ui';
 import { CachedImage } from '@/components/ui/CachedImage';
 import { SkeletonRow } from '@/components/ui/Skeleton';
 import type { BaseItem, Library, CollectionType } from '@/types/jellyfin';
@@ -73,7 +73,7 @@ interface LibraryCardProps {
   fontSize: number;
 }
 
-function LibraryCard({ item, isSquare, onPress, cardWidth, cardHeight, fontSize }: LibraryCardProps) {
+const LibraryCard = memo(function LibraryCard({ item, isSquare, onPress, cardWidth, cardHeight, fontSize }: LibraryCardProps) {
   const imageUrl = item.ImageTags?.Primary
     ? getImageUrl(item.Id, 'Primary', { maxWidth: cardWidth * 2, tag: item.ImageTags.Primary })
     : null;
@@ -96,7 +96,7 @@ function LibraryCard({ item, isSquare, onPress, cardWidth, cardHeight, fontSize 
       </Text>
     </Pressable>
   );
-}
+});
 
 interface LibrarySectionProps {
   library: Library;
@@ -104,13 +104,12 @@ interface LibrarySectionProps {
   accentColor: string;
 }
 
-function LibrarySection({ library, userId, accentColor }: LibrarySectionProps) {
+const LibrarySection = memo(function LibrarySection({ library, userId, accentColor }: LibrarySectionProps) {
   const { isTablet, isTV, fontSize } = useResponsive();
   const iconName = getLibraryIcon(library.CollectionType);
   const itemTypes = getItemTypes(library.CollectionType);
   const isSquare = library.CollectionType === 'music';
 
-  // Responsive card sizes
   const cardWidth = isTV ? 180 : isTablet ? 140 : isSquare ? 120 : 100;
   const cardHeight = isSquare ? cardWidth : cardWidth * 1.5;
   const horizontalPadding = isTV ? 48 : isTablet ? 24 : 16;
@@ -140,7 +139,7 @@ function LibrarySection({ library, userId, accentColor }: LibrarySectionProps) {
     return <SkeletonRow cardWidth={cardWidth} cardHeight={cardHeight} count={4} isSquare={isSquare} />;
   }
 
-  const handleSeeAll = () => {
+  const handleSeeAll = useCallback(() => {
     if (library.CollectionType === 'movies') {
       router.push('/(tabs)/movies');
     } else if (library.CollectionType === 'tvshows') {
@@ -152,11 +151,11 @@ function LibrarySection({ library, userId, accentColor }: LibrarySectionProps) {
     } else {
       router.push(`/library/${library.Id}`);
     }
-  };
+  }, [library.CollectionType, library.Id]);
 
-  const handleItemPress = (item: BaseItem) => {
+  const handleItemPress = useCallback((item: BaseItem) => {
     router.push(getDetailRoute(item) as never);
-  };
+  }, []);
 
   return (
     <View style={{ marginBottom: isTablet ? 32 : 24 }}>
@@ -206,7 +205,7 @@ function LibrarySection({ library, userId, accentColor }: LibrarySectionProps) {
       )}
     </View>
   );
-}
+});
 
 export default function LibraryScreen() {
   const [refreshing, setRefreshing] = useState(false);
@@ -245,6 +244,7 @@ export default function LibraryScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
+      <AnimatedGradient intensity="subtle" />
       <View style={[styles.header, { paddingHorizontal: horizontalPadding, paddingTop: isTablet ? 20 : 16 }]}>
         <View style={styles.headerLeft}>
           <HomeButton currentScreen="library" />

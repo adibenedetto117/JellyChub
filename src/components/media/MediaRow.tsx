@@ -1,5 +1,5 @@
 import { View, Text, ScrollView, Pressable, StyleSheet } from 'react-native';
-import { memo } from 'react';
+import { memo, useCallback } from 'react';
 import { PosterCard } from './PosterCard';
 import { useResponsive } from '@/hooks';
 import type { BaseItem } from '@/types/jellyfin';
@@ -22,6 +22,10 @@ export const MediaRow = memo(function MediaRow({
   showProgress = true,
 }: Props) {
   const { isTablet, isTV, fontSize, spacing } = useResponsive();
+
+  const handleItemPress = useCallback((item: BaseItem) => {
+    onItemPress(item);
+  }, [onItemPress]);
 
   if (!items.length) return null;
 
@@ -49,7 +53,7 @@ export const MediaRow = memo(function MediaRow({
           <PosterCard
             key={`${item.Id}-${index}`}
             item={item}
-            onPress={() => onItemPress(item)}
+            onPress={() => handleItemPress(item)}
             variant={variant}
             showProgress={showProgress}
           />

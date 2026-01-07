@@ -11,6 +11,7 @@ import { jellyfinClient, jellyseerrClient } from '@/api';
 import { useDeepLinking } from '@/hooks';
 import { ErrorBoundary } from '@/components/ui';
 import { MiniPlayer } from '@/components/player';
+import { BottomNav } from '@/components/navigation';
 import { colors } from '@/theme';
 import '../global.css';
 
@@ -63,6 +64,7 @@ function AppContent() {
           headerShown: false,
           contentStyle: { backgroundColor: colors.background.primary },
           animation: 'fade',
+          animationDuration: 200,
         }}
       >
         <Stack.Screen name="(auth)" options={{ animation: 'fade' }} />
@@ -79,6 +81,7 @@ function AppContent() {
           name="player/music"
           options={{
             animation: 'slide_from_bottom',
+            animationDuration: 220,
             presentation: 'modal',
           }}
         />
@@ -86,6 +89,7 @@ function AppContent() {
           name="player/audiobook"
           options={{
             animation: 'slide_from_bottom',
+            animationDuration: 220,
             presentation: 'modal',
           }}
         />
@@ -112,16 +116,17 @@ function AppContent() {
         />
         <Stack.Screen
           name="settings/jellyseerr"
-          options={{ animation: 'slide_from_right' }}
+          options={{ animation: 'slide_from_right', animationDuration: 200 }}
         />
         <Stack.Screen
           name="settings/bottom-bar"
-          options={{ animation: 'slide_from_right' }}
+          options={{ animation: 'slide_from_right', animationDuration: 200 }}
         />
         <Stack.Screen
           name="search"
           options={{
             animation: 'slide_from_bottom',
+            animationDuration: 220,
             presentation: 'modal',
             gestureEnabled: true,
             gestureDirection: 'vertical',
@@ -129,6 +134,7 @@ function AppContent() {
         />
       </Stack>
       <MiniPlayer />
+      <BottomNav />
     </View>
   );
 }

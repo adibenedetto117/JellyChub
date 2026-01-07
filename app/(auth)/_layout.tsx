@@ -8,6 +8,7 @@ export default function AuthLayout() {
         headerShown: false,
         contentStyle: { backgroundColor: colors.background.primary },
         animation: 'fade',
+        animationDuration: 200,
       }}
     >
       <Stack.Screen name="server-select" />

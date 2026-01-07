@@ -11,3 +11,4 @@ export { HomeButton } from './HomeButton';
 export { Skeleton, SkeletonCard, SkeletonGrid, SkeletonRow, SkeletonContinueWatching } from './Skeleton';
 export { CachedImage } from './CachedImage';
 export { NowPlayingBars } from './NowPlayingBars';
+export { AnimatedGradient } from './AnimatedGradient';

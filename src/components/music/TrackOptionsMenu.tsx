@@ -39,7 +39,7 @@ export function TrackOptionsMenu({ track, visible, onClose }: TrackOptionsMenuPr
     mutationFn: ({ itemId, favorite }: { itemId: string; favorite: boolean }) =>
       markAsFavorite(userId, itemId, favorite),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['favoriteMusic'] });
+      queryClient.invalidateQueries({ queryKey: ['favoriteSongs'] });
       queryClient.invalidateQueries({ queryKey: ['tracks'] });
       queryClient.invalidateQueries({ queryKey: ['playlistTracks'] });
     },

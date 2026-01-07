@@ -591,9 +591,9 @@ export async function getFavoriteSongs(
   userId: string
 ): Promise<ItemsResponse<BaseItem>> {
   const libraries = await getLibraries(userId);
-  const musicLibrary = libraries.find(lib => lib.CollectionType === 'music');
+  const musicLib = libraries.find(lib => lib.CollectionType === 'music');
 
-  if (!musicLibrary) {
+  if (!musicLib) {
     return { Items: [], TotalRecordCount: 0, StartIndex: 0 };
   }
 
@@ -608,16 +608,8 @@ export async function getFavoriteSongs(
   ];
 
   const response = await jellyfinClient.api.get<ItemsResponse<BaseItem>>(
-    `/Users/${userId}/Items?ParentId=${musicLibrary.Id}&IncludeItemTypes=Audio&Recursive=true&SortBy=DateCreated&SortOrder=Descending&Limit=500&Fields=${fields.join(',')}&EnableUserData=true`
+    `/Users/${userId}/Items?ParentId=${musicLib.Id}&IncludeItemTypes=Audio&Filters=IsFavorite&Recursive=true&SortBy=DateCreated&SortOrder=Descending&Limit=100&Fields=${fields.join(',')}`
   );
 
-  const items = (response.data.Items ?? []).filter(
-    item => item.Type === 'Audio' && item.UserData?.IsFavorite === true
-  );
-
-  return {
-    Items: items,
-    TotalRecordCount: items.length,
-    StartIndex: 0,
-  };
+  return response.data;
 }

@@ -60,7 +60,9 @@ export function MiniPlayer() {
     return null;
   }, [item]);
 
-  const progressPercent = progress.duration > 0 ? (progress.position / progress.duration) * 100 : 0;
+  const progressPercent = useMemo(() => {
+    return progress.duration > 0 ? (progress.position / progress.duration) * 100 : 0;
+  }, [progress.position, progress.duration]);
   const isPlaying = playerState === 'playing';
 
   const handlePress = useCallback(() => {
@@ -88,6 +90,16 @@ export function MiniPlayer() {
     opacity.value = withTiming(0, { duration: 150 });
     stopAudio();
   }, [isDismissing, scale, opacity, stopAudio]);
+
+  const handlePlayPausePress = useCallback((e: any) => {
+    e.stopPropagation();
+    handlePlayPause();
+  }, [handlePlayPause]);
+
+  const handleClosePress = useCallback((e: any) => {
+    e.stopPropagation();
+    handleClose();
+  }, [handleClose]);
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: -80 }, { scale: scale.value }],
@@ -156,7 +168,7 @@ export function MiniPlayer() {
       </View>
 
       <Pressable
-        onPress={(e) => { e.stopPropagation(); handlePlayPause(); }}
+        onPress={handlePlayPausePress}
         hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
         style={{ width: 26, height: 26, alignItems: 'center', justifyContent: 'center' }}
       >
@@ -169,7 +181,7 @@ export function MiniPlayer() {
       </Pressable>
 
       <Pressable
-        onPress={(e) => { e.stopPropagation(); handleClose(); }}
+        onPress={handleClosePress}
         hitSlop={{ top: 8, bottom: 8, left: 4, right: 8 }}
         style={{ width: 26, height: 26, alignItems: 'center', justifyContent: 'center' }}
       >

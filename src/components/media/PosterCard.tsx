@@ -1,6 +1,6 @@
 import { View, Text, Pressable } from 'react-native';
-import { memo, useMemo } from 'react';
-import Animated, { FadeIn } from 'react-native-reanimated';
+import { memo, useMemo, useCallback } from 'react';
+import Animated, { FadeIn, useSharedValue, useAnimatedStyle, withSpring } from 'react-native-reanimated';
 import { getImageUrl } from '@/api';
 import { getWatchProgress, formatEpisodeNumber } from '@/utils';
 import { CachedImage } from '@/components/ui/CachedImage';
@@ -52,6 +52,8 @@ function getScaledSizes(isTablet: boolean, isTV: boolean) {
   return result;
 }
 
+const springConfig = { damping: 15, stiffness: 400 };
+
 export const PosterCard = memo(function PosterCard({
   item,
   onPress,
@@ -71,6 +73,20 @@ export const PosterCard = memo(function PosterCard({
   };
   const progress = getWatchProgress(item);
   const hasProgress = showProgress && progress > 0 && progress < 100;
+
+  const scale = useSharedValue(1);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  const handlePressIn = useCallback(() => {
+    scale.value = withSpring(0.95, springConfig);
+  }, [scale]);
+
+  const handlePressOut = useCallback(() => {
+    scale.value = withSpring(1, springConfig);
+  }, [scale]);
 
   const imageType = variant === 'backdrop' ? 'Backdrop' : 'Primary';
   const imageTag = variant === 'backdrop'
@@ -93,8 +109,8 @@ export const PosterCard = memo(function PosterCard({
     : item.ProductionYear?.toString();
 
   return (
-    <Pressable onPress={onPress} className="mr-3">
-      <Animated.View entering={FadeIn.duration(300)}>
+    <Pressable onPress={onPress} onPressIn={handlePressIn} onPressOut={handlePressOut} className="mr-3">
+      <Animated.View entering={FadeIn.duration(150)} style={animatedStyle}>
         <View
           className="rounded-xl overflow-hidden bg-surface"
           style={{ width: dimensions.width, height: dimensions.height }}

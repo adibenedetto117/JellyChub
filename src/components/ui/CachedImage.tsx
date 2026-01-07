@@ -67,7 +67,7 @@ export const CachedImage = memo(function CachedImage({
     <View style={[style, { borderRadius, overflow: 'hidden' }]}>
       {showSkeleton && loadState === 'loading' && (
         <Animated.View
-          exiting={FadeOut.duration(200)}
+          exiting={FadeOut.duration(150)}
           style={{
             position: 'absolute',
             width: '100%',
@@ -85,7 +85,7 @@ export const CachedImage = memo(function CachedImage({
         priority={priority}
         placeholder={{ blurhash: placeholder }}
         placeholderContentFit="cover"
-        transition={200}
+        transition={150}
         cachePolicy={cachePolicy}
         onLoad={handleLoad}
         onError={handleError}
