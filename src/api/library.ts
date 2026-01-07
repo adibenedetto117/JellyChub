@@ -556,10 +556,11 @@ export async function getPersonItems(
 export async function getSuggestions(
   userId: string,
   limit: number = 12,
-  itemTypes: string[] = ['Movie', 'Series']
+  itemTypes: string[] = ['Movie']
 ): Promise<BaseItem[]> {
   const params = new URLSearchParams();
-  params.set('Limit', limit.toString());
+  // Request more items so we have enough after filtering
+  params.set('Limit', (limit * 3).toString());
   params.set('Fields', DEFAULT_FIELDS.join(','));
   if (itemTypes.length > 0) {
     params.set('IncludeItemTypes', itemTypes.join(','));
@@ -568,7 +569,14 @@ export async function getSuggestions(
   const response = await jellyfinClient.api.get<{ Items: BaseItem[] }>(
     `/Users/${userId}/Suggestions?${params.toString()}`
   );
-  return response.data.Items ?? [];
+
+  // Filter client-side in case API doesn't respect IncludeItemTypes
+  const items = response.data.Items ?? [];
+  const filtered = itemTypes.length > 0
+    ? items.filter(item => itemTypes.includes(item.Type ?? ''))
+    : items;
+
+  return filtered.slice(0, limit);
 }
 
 export async function getFavorites(

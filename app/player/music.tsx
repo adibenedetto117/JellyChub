@@ -17,8 +17,8 @@ import Animated, {
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import * as Brightness from 'expo-brightness';
 import { VolumeManager } from 'react-native-volume-manager';
-import { useAuthStore, usePlayerStore, useSettingsStore } from '@/stores';
-import { audioService } from '@/services';
+import { useAuthStore, usePlayerStore, useSettingsStore, useDownloadStore } from '@/stores';
+import { audioService, downloadManager } from '@/services';
 import {
   getItem,
   getImageUrl,
@@ -40,9 +40,22 @@ interface LyricLine {
 export default function MusicPlayerScreen() {
   const { itemId } = useLocalSearchParams<{ itemId: string }>();
   const currentUser = useAuthStore((state) => state.currentUser);
+  const activeServerId = useAuthStore((state) => state.activeServerId);
   const accentColor = useSettingsStore((s) => s.accentColor);
   const queryClient = useQueryClient();
   const userId = currentUser?.Id ?? '';
+
+  // Download status
+  const downloadStatus = useDownloadStore((state) => {
+    const download = state.downloads.find((d) => d.itemId === itemId);
+    return download?.status ?? null;
+  });
+  const downloadProgress = useDownloadStore((state) => {
+    const download = state.downloads.find((d) => d.itemId === itemId);
+    return download?.progress ?? 0;
+  });
+  const isDownloaded = downloadStatus === 'completed';
+  const isDownloading = downloadStatus === 'downloading' || downloadStatus === 'pending';
 
   const {
     playerState,
@@ -164,11 +177,14 @@ export default function MusicPlayerScreen() {
     };
   }, []);
 
-  const { data: item, isLoading } = useQuery({
+  const { data: queriedItem, isLoading } = useQuery({
     queryKey: ['item', userId, itemId],
     queryFn: () => getItem(userId, itemId),
     enabled: !!userId && !!itemId,
   });
+
+  // Use currentItem from store (updates on track change) or fall back to queried item
+  const item = currentItem?.item ?? queriedItem;
 
   const getAlbumArtUrl = () => {
     if (!item) return null;
@@ -283,6 +299,19 @@ export default function MusicPlayerScreen() {
     lyricsScrollRef.current.scrollTo({ y: offset, animated: true });
   }, [currentLyricIndex]);
 
+  // Update favorite status and lyrics when track changes
+  useEffect(() => {
+    if (!item?.Id) return;
+
+    // Update favorite status
+    setIsFavorite(item.UserData?.IsFavorite ?? false);
+
+    // Fetch lyrics for new track
+    setLyrics(null);
+    setCurrentLyricIndex(-1);
+    fetchLyrics();
+  }, [item?.Id]);
+
   const handleClose = () => {
     router.back();
   };
@@ -354,6 +383,29 @@ export default function MusicPlayerScreen() {
     setShowOptions(false);
     setAddedToast('Play Next');
     setTimeout(() => setAddedToast(null), 2500);
+  };
+
+  const handleDownload = async () => {
+    if (!item || !activeServerId) return;
+
+    if (isDownloaded) {
+      Alert.alert('Already Downloaded', 'This track is already downloaded.');
+      return;
+    }
+
+    if (isDownloading) {
+      Alert.alert('Download in Progress', 'This track is already being downloaded.');
+      return;
+    }
+
+    setShowOptions(false);
+    try {
+      await downloadManager.startDownload(item, activeServerId);
+      setAddedToast('Download Started');
+      setTimeout(() => setAddedToast(null), 2500);
+    } catch (error) {
+      Alert.alert('Download Failed', 'Could not start download.');
+    }
   };
 
   const handleSelectPlaylist = (playlistId: string) => {
@@ -497,42 +549,69 @@ export default function MusicPlayerScreen() {
     setTimeout(() => setShowVolumeIndicator(false), 300);
   }, [volumeIndicatorOpacity]);
 
-  // Brightness gesture (left edge)
-  const brightnessGesture = useMemo(() => Gesture.Pan()
-    .activeOffsetY([-10, 10])
-    .failOffsetX([-20, 20])
+  // Brightness gesture (left edge only, requires long-press to activate)
+  const brightnessLongPress = useMemo(() => Gesture.LongPress()
+    .minDuration(300)
+    .maxDistance(50)
     .onStart((e) => {
       if (e.x <= EDGE_ZONE_WIDTH) {
         runOnJS(handleBrightnessStart)(e.absoluteY);
       }
+    }), [handleBrightnessStart]);
+
+  const brightnessPan = useMemo(() => Gesture.Pan()
+    .manualActivation(true)
+    .onTouchesMove((e, stateManager) => {
+      if (showBrightnessIndicator) {
+        stateManager.activate();
+      }
     })
     .onUpdate((e) => {
-      if (e.x <= EDGE_ZONE_WIDTH || showBrightnessIndicator) {
+      if (showBrightnessIndicator) {
         runOnJS(handleBrightnessUpdate)(e.absoluteY);
       }
     })
     .onEnd(() => {
       runOnJS(handleBrightnessEnd)();
-    }), [handleBrightnessStart, handleBrightnessUpdate, handleBrightnessEnd, showBrightnessIndicator]);
+    })
+    .onFinalize(() => {
+      runOnJS(handleBrightnessEnd)();
+    }), [handleBrightnessUpdate, handleBrightnessEnd, showBrightnessIndicator]);
 
-  // Volume gesture (right edge)
-  const volumeGesture = useMemo(() => Gesture.Pan()
-    .activeOffsetY([-10, 10])
-    .failOffsetX([-20, 20])
+  const brightnessGesture = Gesture.Simultaneous(brightnessLongPress, brightnessPan);
+
+  // Volume gesture (right edge only, requires long-press to activate)
+  const volumeLongPress = useMemo(() => Gesture.LongPress()
+    .minDuration(300)
+    .maxDistance(50)
     .onStart((e) => {
       if (e.x >= SCREEN_WIDTH - EDGE_ZONE_WIDTH) {
         runOnJS(handleVolumeStart)(e.absoluteY);
       }
+    }), [handleVolumeStart]);
+
+  const volumePan = useMemo(() => Gesture.Pan()
+    .manualActivation(true)
+    .onTouchesMove((e, stateManager) => {
+      if (showVolumeIndicator) {
+        stateManager.activate();
+      }
     })
     .onUpdate((e) => {
-      if (e.x >= SCREEN_WIDTH - EDGE_ZONE_WIDTH || showVolumeIndicator) {
+      if (showVolumeIndicator) {
         runOnJS(handleVolumeUpdate)(e.absoluteY);
       }
     })
     .onEnd(() => {
       runOnJS(handleVolumeEnd)();
-    }), [handleVolumeStart, handleVolumeUpdate, handleVolumeEnd, showVolumeIndicator]);
+    })
+    .onFinalize(() => {
+      runOnJS(handleVolumeEnd)();
+    }), [handleVolumeUpdate, handleVolumeEnd, showVolumeIndicator]);
 
+  const volumeGesture = Gesture.Simultaneous(volumeLongPress, volumePan);
+
+  // Dismiss gesture (center of screen - swipe down to close)
   const dismissGesture = Gesture.Pan()
     .activeOffsetY(10)
     .failOffsetX([-20, 20])
@@ -1071,6 +1150,21 @@ export default function MusicPlayerScreen() {
                   >
                     <Ionicons name="play-forward" size={24} color="#fff" />
                     <Text style={{ color: '#fff', fontSize: 16, marginLeft: 16 }}>Play Next</Text>
+                  </Pressable>
+
+                  <Pressable
+                    style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.1)' }}
+                    onPress={handleDownload}
+                    disabled={isDownloading}
+                  >
+                    <Ionicons
+                      name={isDownloaded ? "checkmark-circle" : isDownloading ? "cloud-download" : "download-outline"}
+                      size={24}
+                      color={isDownloaded ? "#4CAF50" : isDownloading ? accentColor : "#fff"}
+                    />
+                    <Text style={{ color: isDownloaded ? "#4CAF50" : '#fff', fontSize: 16, marginLeft: 16 }}>
+                      {isDownloaded ? 'Downloaded' : isDownloading ? `Downloading ${Math.round(downloadProgress)}%` : 'Download'}
+                    </Text>
                   </Pressable>
 
                   <Pressable

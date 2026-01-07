@@ -64,7 +64,7 @@ export default function VideoPlayerScreen() {
   const shouldAutoResume = resume === 'true';
   const currentUser = useAuthStore((state) => state.currentUser);
   const accentColor = useSettingsStore((s) => s.accentColor);
-  const { getDownloadedItem } = useDownloadStore();
+  const getDownloadedItem = useDownloadStore((s) => s.getDownloadedItem);
   const userId = currentUser?.Id ?? '';
   const insets = useSafeAreaInsets();
 
@@ -72,14 +72,13 @@ export default function VideoPlayerScreen() {
   const downloadedItem = getDownloadedItem(itemId);
   const localFilePath = downloadedItem?.localPath;
 
-  const {
-    playerState,
-    progress,
-    setPlayerState,
-    setProgress,
-    setCurrentItem,
-    clearCurrentItem,
-  } = usePlayerStore();
+  // Use granular selectors to prevent unnecessary re-renders during playback
+  const playerState = usePlayerStore((s) => s.playerState);
+  const progress = usePlayerStore((s) => s.progress);
+  const setPlayerState = usePlayerStore((s) => s.setPlayerState);
+  const setProgress = usePlayerStore((s) => s.setProgress);
+  const setCurrentItem = usePlayerStore((s) => s.setCurrentItem);
+  const clearCurrentItem = usePlayerStore((s) => s.clearCurrentItem);
 
   const [showControls, setShowControls] = useState(true);
   const [isSeeking, setIsSeeking] = useState(false);

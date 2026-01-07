@@ -129,11 +129,45 @@ export function selectBestMediaSource(sources: MediaSource[]): MediaSource | nul
   return sources[0];
 }
 
+// Image-based subtitle codecs that require burning in (transcoding)
+const IMAGE_BASED_SUBTITLE_CODECS = [
+  'pgs',
+  'pgssub',
+  'hdmv_pgs_subtitle',
+  'dvdsub',
+  'dvd_subtitle',
+  'vobsub',
+  'dvbsub',
+  'dvb_subtitle',
+  'xsub',
+];
+
+/**
+ * Checks if a subtitle codec is image-based (requires burn-in/transcoding)
+ * Text-based subtitles (SRT, VTT, ASS, etc.) can be delivered externally
+ */
+function isImageBasedSubtitle(codec?: string): boolean {
+  if (!codec) return false;
+  return IMAGE_BASED_SUBTITLE_CODECS.includes(codec.toLowerCase());
+}
+
 export function determinePlayMethod(
   source: MediaSource,
   subtitleIndex?: number
 ): 'DirectPlay' | 'DirectStream' | 'Transcode' {
-  if (subtitleIndex !== undefined) return 'Transcode';
+  // If a subtitle is selected, check if it requires transcoding
+  if (subtitleIndex !== undefined) {
+    const subtitleStream = source.MediaStreams?.find(
+      (stream) => stream.Type === 'Subtitle' && stream.Index === subtitleIndex
+    );
+
+    // Only force transcode for image-based subtitles that need burning in
+    // Text-based subtitles (SRT, VTT, ASS, SSA) can be delivered externally
+    if (subtitleStream && isImageBasedSubtitle(subtitleStream.Codec)) {
+      return 'Transcode';
+    }
+  }
+
   if (source.SupportsDirectPlay) return 'DirectPlay';
   if (source.SupportsDirectStream) return 'DirectStream';
   return 'Transcode';

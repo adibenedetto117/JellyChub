@@ -29,7 +29,7 @@ Requires Android 8.0 (API 26) or higher.
 
 ### Music
 - Background playback with lock screen controls
-- Lyrics display
+- Synced lyrics with auto-scroll
 - Gapless playback
 - Mini player with quick controls
 - Playlist management
@@ -134,13 +134,11 @@ npx expo run:android
 ### In Progress
 - [ ] iOS build and testing
 - [ ] Better image caching
-- [ ] Video player icon overhaul
 - [ ] Audio quality improvements
 
 ### Planned
 - [ ] Volume/brightness swipe gestures
 - [ ] Queue view and management
-- [ ] Synced lyrics with auto-scroll
 - [ ] iOS release
 - [ ] Live TV support
 - [ ] Chromecast support
@@ -152,7 +150,6 @@ npx expo run:android
 - [ ] Wear OS companion app
 - [ ] CarPlay / Android Auto
 - [ ] Comic/manga reader
-- [ ] Intro/credits detection improvements
 - [ ] Custom server plugins support
 - [ ] Parental controls
 

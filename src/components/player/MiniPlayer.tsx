@@ -79,16 +79,16 @@ export function MiniPlayer() {
     await audioService.togglePlayPause();
   }, []);
 
-  const stopAudio = useCallback(() => {
-    audioService.stop();
+  const stopAudio = useCallback(async () => {
+    await audioService.stop();
   }, []);
 
-  const handleClose = useCallback(() => {
+  const handleClose = useCallback(async () => {
     if (isDismissing) return;
     setIsDismissing(true);
     scale.value = withSpring(0, { damping: 15, stiffness: 400 });
     opacity.value = withTiming(0, { duration: 150 });
-    stopAudio();
+    await stopAudio();
   }, [isDismissing, scale, opacity, stopAudio]);
 
   const handlePlayPausePress = useCallback((e: any) => {
