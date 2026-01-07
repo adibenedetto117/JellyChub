@@ -1,0 +1,262 @@
+import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig } from 'axios';
+import { useAuthStore } from '@/stores/authStore';
+import Constants from 'expo-constants';
+import { Platform } from 'react-native';
+import { MMKV } from 'react-native-mmkv';
+
+const APP_NAME = 'JellyChub';
+const APP_VERSION = Constants.expoConfig?.version ?? '1.0.0';
+
+function getDeviceName(): string {
+  return Platform.select({
+    ios: 'iOS Device',
+    android: 'Android Device',
+    default: 'Unknown Device',
+  });
+}
+
+// Persistent device ID storage
+const deviceStorage = new MMKV({ id: 'device-storage' });
+const DEVICE_ID_KEY = 'jellychub_device_id';
+
+function getDeviceId(): string {
+  let deviceId = deviceStorage.getString(DEVICE_ID_KEY);
+  if (!deviceId) {
+    // Create a stable device ID that persists across app restarts
+    deviceId = `jellychub_${Platform.OS}_${Math.random().toString(36).substring(2, 15)}${Math.random().toString(36).substring(2, 15)}`;
+    deviceStorage.set(DEVICE_ID_KEY, deviceId);
+  }
+  return deviceId;
+}
+
+function buildAuthHeader(token?: string): string {
+  const parts = [
+    `MediaBrowser Client="${APP_NAME}"`,
+    `Device="${getDeviceName()}"`,
+    `DeviceId="${getDeviceId()}"`,
+    `Version="${APP_VERSION}"`,
+  ];
+
+  if (token) {
+    parts.push(`Token="${token}"`);
+  }
+
+  return parts.join(', ');
+}
+
+class JellyfinClient {
+  private instance: AxiosInstance | null = null;
+  private baseUrl: string | null = null;
+
+  initialize(serverUrl: string): void {
+    this.baseUrl = serverUrl.replace(/\/$/, '');
+    this.instance = axios.create({
+      baseURL: this.baseUrl,
+      timeout: 30000,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    this.instance.interceptors.request.use(
+      (config: InternalAxiosRequestConfig) => {
+        const state = useAuthStore.getState();
+        const server = state.getActiveServer();
+        const token = server?.accessToken;
+
+        config.headers['X-Emby-Authorization'] = buildAuthHeader(token);
+
+        return config;
+      },
+      (error) => Promise.reject(error)
+    );
+
+    this.instance.interceptors.response.use(
+      (response) => response,
+      (error: AxiosError) => Promise.reject(error)
+    );
+  }
+
+  get api(): AxiosInstance {
+    if (!this.instance) {
+      throw new Error('JellyfinClient not initialized. Call initialize() first.');
+    }
+    return this.instance;
+  }
+
+  get url(): string {
+    if (!this.baseUrl) {
+      throw new Error('JellyfinClient not initialized. Call initialize() first.');
+    }
+    return this.baseUrl;
+  }
+
+  isInitialized(): boolean {
+    return this.instance !== null;
+  }
+}
+
+export const jellyfinClient = new JellyfinClient();
+
+export function getImageUrl(
+  itemId: string,
+  imageType: string = 'Primary',
+  options: {
+    maxWidth?: number;
+    maxHeight?: number;
+    quality?: number;
+    tag?: string;
+  } = {}
+): string | null {
+  if (!jellyfinClient.isInitialized() || !itemId) return null;
+
+  const { maxWidth, maxHeight, quality = 90, tag } = options;
+  const params = new URLSearchParams();
+
+  if (maxWidth) params.set('maxWidth', maxWidth.toString());
+  if (maxHeight) params.set('maxHeight', maxHeight.toString());
+  params.set('quality', quality.toString());
+  if (tag) params.set('tag', tag);
+
+  return `${jellyfinClient.url}/Items/${itemId}/Images/${imageType}?${params.toString()}`;
+}
+
+export function getStreamUrl(
+  itemId: string,
+  mediaSourceId: string,
+  options: {
+    audioStreamIndex?: number;
+    subtitleStreamIndex?: number;
+    startTimeTicks?: number;
+    maxStreamingBitrate?: number;
+    useHls?: boolean;
+  } = {}
+): string {
+  if (!jellyfinClient.isInitialized()) {
+    return '';
+  }
+
+  const state = useAuthStore.getState();
+  const server = state.getActiveServer();
+  const userId = state.currentUser?.Id;
+  const params = new URLSearchParams();
+
+  params.set('mediaSourceId', mediaSourceId);
+  params.set('deviceId', getDeviceId());
+
+  if (userId) {
+    params.set('userId', userId);
+  }
+
+  if (server?.accessToken) {
+    params.set('api_key', server.accessToken);
+  }
+
+  if (options.audioStreamIndex !== undefined) {
+    params.set('audioStreamIndex', options.audioStreamIndex.toString());
+  }
+
+  if (options.startTimeTicks) {
+    params.set('startTimeTicks', options.startTimeTicks.toString());
+  }
+
+  if (options.useHls) {
+    params.set('videoCodec', 'h264,hevc,vp9');
+    params.set('audioCodec', 'aac,mp3,ac3,eac3');
+    params.set('maxStreamingBitrate', (options.maxStreamingBitrate ?? 20000000).toString());
+    params.set('segmentContainer', 'ts');
+    params.set('minSegments', '1');
+    params.set('context', 'Streaming');
+    params.set('playSessionId', `ps_${Date.now()}`);
+    params.set('transcodeAudioChannels', '2');
+    params.set('transcodingMaxAudioChannels', '6');
+    params.set('breakOnNonKeyFrames', 'true');
+    return `${jellyfinClient.url}/Videos/${itemId}/master.m3u8?${params.toString()}`;
+  }
+
+  params.set('static', 'true');
+
+  if (options.maxStreamingBitrate) {
+    params.set('maxStreamingBitrate', options.maxStreamingBitrate.toString());
+  }
+
+  return `${jellyfinClient.url}/Videos/${itemId}/stream?${params.toString()}`;
+}
+
+export function getAudioStreamUrl(
+  itemId: string,
+  options: {
+    container?: string;
+    maxStreamingBitrate?: number;
+    directStream?: boolean;
+  } = {}
+): string {
+  if (!jellyfinClient.isInitialized()) {
+    return '';
+  }
+
+  const state = useAuthStore.getState();
+  const server = state.getActiveServer();
+  const userId = state.currentUser?.Id;
+  const { maxStreamingBitrate = 320000, directStream = false } = options;
+  const params = new URLSearchParams();
+
+  if (userId) {
+    params.set('userId', userId);
+  }
+
+  if (server?.accessToken) {
+    params.set('api_key', server.accessToken);
+  }
+
+  // Use direct stream for better seeking support (especially for M4B/M4A audiobooks)
+  if (directStream) {
+    params.set('static', 'true');
+    return `${jellyfinClient.url}/Audio/${itemId}/stream?${params.toString()}`;
+  }
+
+  params.set('maxStreamingBitrate', maxStreamingBitrate.toString());
+  params.set('container', 'mp3,aac,m4a,flac,wav,ogg');
+  params.set('transcodingContainer', 'mp3');
+  params.set('transcodingProtocol', 'http');
+  params.set('audioCodec', 'mp3');
+
+  return `${jellyfinClient.url}/Audio/${itemId}/universal?${params.toString()}`;
+}
+
+export function getBookDownloadUrl(itemId: string): string {
+  if (!jellyfinClient.isInitialized()) {
+    return '';
+  }
+
+  const state = useAuthStore.getState();
+  const server = state.getActiveServer();
+  const params = new URLSearchParams();
+
+  if (server?.accessToken) {
+    params.set('api_key', server.accessToken);
+  }
+
+  return `${jellyfinClient.url}/Items/${itemId}/Download?${params.toString()}`;
+}
+
+export function getSubtitleUrl(
+  itemId: string,
+  mediaSourceId: string,
+  subtitleIndex: number,
+  format: string = 'vtt'
+): string {
+  if (!jellyfinClient.isInitialized()) {
+    return '';
+  }
+
+  const state = useAuthStore.getState();
+  const server = state.getActiveServer();
+  const params = new URLSearchParams();
+
+  if (server?.accessToken) {
+    params.set('api_key', server.accessToken);
+  }
+
+  return `${jellyfinClient.url}/Videos/${itemId}/${mediaSourceId}/Subtitles/${subtitleIndex}/Stream.${format}?${params.toString()}`;
+}

@@ -1,0 +1,1474 @@
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { View, Text, Pressable, StatusBar, Dimensions, ActivityIndicator, ScrollView } from 'react-native';
+import { useLocalSearchParams, router } from 'expo-router';
+import { useQuery } from '@tanstack/react-query';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  withSpring,
+  withSequence,
+  runOnJS,
+  interpolate,
+  Extrapolation,
+} from 'react-native-reanimated';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { LinearGradient } from 'expo-linear-gradient';
+import * as ScreenOrientation from 'expo-screen-orientation';
+import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
+import { useVideoPlayer, VideoView } from 'expo-video';
+import { useAuthStore, usePlayerStore, useSettingsStore, useDownloadStore } from '@/stores';
+import {
+  getItem,
+  getPlaybackInfo,
+  getStreamUrl,
+  reportPlaybackStart,
+  reportPlaybackProgress,
+  reportPlaybackStopped,
+  selectBestMediaSource,
+  generatePlaySessionId,
+  getEpisodes,
+  getSeasons,
+  getMediaSegments,
+  getSubtitleUrl,
+} from '@/api';
+import { downloadManager } from '@/services';
+import { formatPlayerTime, ticksToMs, msToTicks, getSubtitleStreams, getAudioStreams } from '@/utils';
+import { AudioTrackSelector } from '@/components/player/AudioTrackSelector';
+import { SubtitleSelector } from '@/components/player/SubtitleSelector';
+import type { MediaSource } from '@/types/jellyfin';
+
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+function PlayIcon({ size = 32, color = '#fff' }: { size?: number; color?: string }) {
+  return (
+    <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
+      <View
+        style={{
+          width: 0,
+          height: 0,
+          borderLeftWidth: size * 0.8,
+          borderTopWidth: size * 0.5,
+          borderBottomWidth: size * 0.5,
+          borderLeftColor: color,
+          borderTopColor: 'transparent',
+          borderBottomColor: 'transparent',
+          marginLeft: size * 0.15,
+        }}
+      />
+    </View>
+  );
+}
+
+function PauseIcon({ size = 32, color = '#fff' }: { size?: number; color?: string }) {
+  return (
+    <View style={{ width: size, height: size, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: size * 0.2 }}>
+      <View style={{ width: size * 0.25, height: size * 0.7, backgroundColor: color, borderRadius: 2 }} />
+      <View style={{ width: size * 0.25, height: size * 0.7, backgroundColor: color, borderRadius: 2 }} />
+    </View>
+  );
+}
+
+function SkipIcon({ size = 24, seconds = 10, direction = 'forward', color = '#fff' }: { size?: number; seconds?: number; direction?: 'forward' | 'back'; color?: string }) {
+  const isBack = direction === 'back';
+  return (
+    <View style={{ alignItems: 'center' }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        {isBack && (
+          <View
+            style={{
+              width: 0,
+              height: 0,
+              borderRightWidth: size * 0.5,
+              borderTopWidth: size * 0.35,
+              borderBottomWidth: size * 0.35,
+              borderRightColor: color,
+              borderTopColor: 'transparent',
+              borderBottomColor: 'transparent',
+            }}
+          />
+        )}
+        <View
+          style={{
+            width: size * 0.8,
+            height: size * 0.8,
+            borderWidth: 2.5,
+            borderColor: color,
+            borderRadius: size * 0.4,
+            borderLeftColor: isBack ? color : 'transparent',
+            borderRightColor: isBack ? 'transparent' : color,
+            transform: [{ rotate: isBack ? '45deg' : '-45deg' }],
+          }}
+        />
+        {!isBack && (
+          <View
+            style={{
+              width: 0,
+              height: 0,
+              borderLeftWidth: size * 0.5,
+              borderTopWidth: size * 0.35,
+              borderBottomWidth: size * 0.35,
+              borderLeftColor: color,
+              borderTopColor: 'transparent',
+              borderBottomColor: 'transparent',
+            }}
+          />
+        )}
+      </View>
+      <Text style={{ color: color, fontSize: size * 0.5, fontWeight: '700', marginTop: 2 }}>{seconds}</Text>
+    </View>
+  );
+}
+
+function CloseIcon({ size = 24 }: { size?: number }) {
+  return (
+    <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
+      <View style={{ position: 'absolute', width: size * 0.7, height: 2.5, backgroundColor: '#fff', transform: [{ rotate: '45deg' }], borderRadius: 2 }} />
+      <View style={{ position: 'absolute', width: size * 0.7, height: 2.5, backgroundColor: '#fff', transform: [{ rotate: '-45deg' }], borderRadius: 2 }} />
+    </View>
+  );
+}
+
+function SettingsIcon({ size = 20 }: { size?: number }) {
+  return (
+    <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
+      <View style={{ width: size * 0.6, height: size * 0.6, borderWidth: 2, borderColor: '#fff', borderRadius: size * 0.3 }} />
+      {[0, 60, 120, 180, 240, 300].map((deg) => (
+        <View
+          key={deg}
+          style={{
+            position: 'absolute',
+            width: 3,
+            height: size * 0.25,
+            backgroundColor: '#fff',
+            transform: [{ rotate: `${deg}deg` }, { translateY: -size * 0.4 }],
+            borderRadius: 1,
+          }}
+        />
+      ))}
+    </View>
+  );
+}
+
+function PipIcon({ size = 20 }: { size?: number }) {
+  return (
+    <View style={{ width: size, height: size * 0.7, borderWidth: 2, borderColor: '#fff', borderRadius: 3 }}>
+      <View style={{ position: 'absolute', right: 2, bottom: 2, width: size * 0.4, height: size * 0.3, backgroundColor: '#fff', borderRadius: 2 }} />
+    </View>
+  );
+}
+
+function LockIcon({ size = 18, locked = false }: { size?: number; locked?: boolean }) {
+  return (
+    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+      <View style={{ width: size * 0.6, height: size * 0.35, borderWidth: 2, borderColor: '#fff', borderTopLeftRadius: size * 0.3, borderTopRightRadius: size * 0.3, borderBottomWidth: 0, marginBottom: -1 }} />
+      <View style={{ width: size * 0.8, height: size * 0.5, backgroundColor: locked ? '#fff' : 'transparent', borderWidth: 2, borderColor: '#fff', borderRadius: 3 }} />
+    </View>
+  );
+}
+
+function RotateIcon({ size = 18 }: { size?: number }) {
+  return (
+    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+      <View
+        style={{
+          width: size * 0.7,
+          height: size * 0.7,
+          borderWidth: 2,
+          borderColor: '#fff',
+          borderRadius: size * 0.35,
+          borderRightColor: 'transparent',
+          transform: [{ rotate: '45deg' }],
+        }}
+      />
+      <View
+        style={{
+          position: 'absolute',
+          top: size * 0.05,
+          right: size * 0.2,
+          width: 0,
+          height: 0,
+          borderLeftWidth: size * 0.15,
+          borderRightWidth: size * 0.15,
+          borderBottomWidth: size * 0.2,
+          borderLeftColor: 'transparent',
+          borderRightColor: 'transparent',
+          borderBottomColor: '#fff',
+          transform: [{ rotate: '-45deg' }],
+        }}
+      />
+    </View>
+  );
+}
+
+export default function VideoPlayerScreen() {
+  const { itemId, resume } = useLocalSearchParams<{ itemId: string; resume?: string }>();
+  const shouldAutoResume = resume === 'true';
+  const currentUser = useAuthStore((state) => state.currentUser);
+  const accentColor = useSettingsStore((s) => s.accentColor);
+  const { getDownloadedItem } = useDownloadStore();
+  const userId = currentUser?.Id ?? '';
+  const insets = useSafeAreaInsets();
+
+  // Check if item is downloaded for offline playback
+  const downloadedItem = getDownloadedItem(itemId);
+  const localFilePath = downloadedItem?.localPath;
+
+  const {
+    playerState,
+    progress,
+    setPlayerState,
+    setProgress,
+    setCurrentItem,
+    clearCurrentItem,
+  } = usePlayerStore();
+
+  const [showControls, setShowControls] = useState(true);
+  const [isSeeking, setIsSeeking] = useState(false);
+  const [isBuffering, setIsBuffering] = useState(false);
+  const [seekPosition, setSeekPosition] = useState(0);
+  const [showAudioSelector, setShowAudioSelector] = useState(false);
+  const [showSubtitleSelector, setShowSubtitleSelector] = useState(false);
+  const [skipIndicator, setSkipIndicator] = useState<{ direction: 'left' | 'right'; visible: boolean }>({ direction: 'left', visible: false });
+  const [playSessionId] = useState(() => generatePlaySessionId());
+  const [mediaSource, setMediaSource] = useState<MediaSource | null>(null);
+  const [streamUrl, setStreamUrl] = useState<string | null>(null);
+  const [orientationLocked, setOrientationLocked] = useState<'landscape' | 'landscape-left' | 'landscape-right'>('landscape');
+  const [isRotationLocked, setIsRotationLocked] = useState(false);
+  const [isPortrait, setIsPortrait] = useState(false);
+  const [selectedSubtitleIndex, setSelectedSubtitleIndex] = useState<number | undefined>(undefined);
+  const [selectedAudioIndex, setSelectedAudioIndex] = useState<number | undefined>(undefined);
+  const [jellyfinSubtitleTracks, setJellyfinSubtitleTracks] = useState<any[]>([]);
+  const [jellyfinAudioTracks, setJellyfinAudioTracks] = useState<any[]>([]);
+  const [showSkipIntro, setShowSkipIntro] = useState(false);
+  const [introStart, setIntroStart] = useState<number | null>(null);
+  const [introEnd, setIntroEnd] = useState<number | null>(null);
+  const [showSkipCredits, setShowSkipCredits] = useState(false);
+  const [creditsStart, setCreditsStart] = useState<number | null>(null);
+  const [showNextUpCard, setShowNextUpCard] = useState(false);
+  const [nextEpisode, setNextEpisode] = useState<any>(null);
+  const [subtitleCues, setSubtitleCues] = useState<Array<{ start: number; end: number; text: string }>>([]);
+  const [currentSubtitle, setCurrentSubtitle] = useState<string>('');
+
+  const controlsTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const progressInterval = useRef<ReturnType<typeof setInterval> | null>(null);
+  const videoViewRef = useRef<VideoView>(null);
+  const hasResumedPosition = useRef(false);
+  const resumePositionMs = useRef(0);
+  const [seekBarLayoutWidth, setSeekBarLayoutWidth] = useState(500);
+
+  const controlsOpacity = useSharedValue(1);
+  const playButtonScale = useSharedValue(1);
+  const seekBarWidth = useSharedValue(0);
+  const skipLeftOpacity = useSharedValue(0);
+  const skipRightOpacity = useSharedValue(0);
+  const skipLeftScale = useSharedValue(0.5);
+  const skipRightScale = useSharedValue(0.5);
+
+  const playerKey = useRef(0);
+  const isPlayerValid = useRef(true);
+
+  const player = useVideoPlayer(streamUrl ?? '', (p) => {
+    p.loop = false;
+    p.play();
+  });
+
+  useEffect(() => {
+    playerKey.current += 1;
+    isPlayerValid.current = true;
+    return () => {
+      isPlayerValid.current = false;
+    };
+  }, [streamUrl]);
+
+  const { data: item, isLoading: itemLoading } = useQuery({
+    queryKey: ['item', userId, itemId],
+    queryFn: () => getItem(userId, itemId),
+    enabled: !!userId && !!itemId,
+  });
+
+  const { data: playbackInfo, isLoading: playbackLoading } = useQuery({
+    queryKey: ['playback', userId, itemId],
+    queryFn: () => getPlaybackInfo(itemId, userId),
+    enabled: !!userId && !!itemId,
+  });
+
+  // Get next episode for auto-play (only for TV episodes)
+  const isEpisode = item?.Type === 'Episode';
+  const seriesId = item?.SeriesId;
+  const seasonId = item?.SeasonId;
+  const currentEpisodeNumber = item?.IndexNumber;
+  const currentSeasonNumber = item?.ParentIndexNumber;
+
+  const { data: seasonEpisodes } = useQuery({
+    queryKey: ['seasonEpisodes', seriesId, seasonId, userId],
+    queryFn: () => getEpisodes(seriesId!, userId, seasonId),
+    enabled: !!userId && !!seriesId && !!seasonId && isEpisode,
+  });
+
+  // Get all seasons for finding next season
+  const { data: allSeasons } = useQuery({
+    queryKey: ['seriesSeasons', seriesId, userId],
+    queryFn: () => getSeasons(seriesId!, userId),
+    enabled: !!userId && !!seriesId && isEpisode,
+  });
+
+  // Find next season ID if we're on the last episode of current season
+  const [nextSeasonId, setNextSeasonId] = useState<string | null>(null);
+
+  // Get next season's episodes (only when we need it)
+  const { data: nextSeasonEpisodes } = useQuery({
+    queryKey: ['nextSeasonEpisodes', seriesId, nextSeasonId, userId],
+    queryFn: () => getEpisodes(seriesId!, userId, nextSeasonId!),
+    enabled: !!userId && !!seriesId && !!nextSeasonId,
+  });
+
+  // Get media segments for intro/credits detection (from server)
+  const { data: mediaSegments } = useQuery({
+    queryKey: ['mediaSegments', itemId],
+    queryFn: () => getMediaSegments(itemId),
+    enabled: !!itemId,
+  });
+
+  // Set intro/credits from media segments when available
+  useEffect(() => {
+    if (mediaSegments?.Items?.length) {
+      const intro = mediaSegments.Items.find((s) => s.Type === 'Intro');
+      const outro = mediaSegments.Items.find((s) => s.Type === 'Outro');
+
+      if (intro && intro.StartTicks !== undefined && intro.EndTicks !== undefined) {
+        setIntroStart(ticksToMs(intro.StartTicks));
+        setIntroEnd(ticksToMs(intro.EndTicks));
+      }
+      if (outro && outro.StartTicks !== undefined) {
+        setCreditsStart(ticksToMs(outro.StartTicks));
+      }
+    }
+  }, [mediaSegments]);
+
+  const isNavigatingRef = useRef(false);
+
+  useEffect(() => {
+    const lockOrientation = () => {
+      if (isPortrait) {
+        ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT);
+        return;
+      }
+      switch (orientationLocked) {
+        case 'landscape':
+          ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
+          break;
+        case 'landscape-left':
+          ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE_LEFT);
+          break;
+        case 'landscape-right':
+          ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE_RIGHT);
+          break;
+      }
+    };
+    lockOrientation();
+    activateKeepAwakeAsync();
+    return () => {
+      // Don't unlock orientation if navigating to next episode
+      if (!isNavigatingRef.current) {
+        ScreenOrientation.unlockAsync();
+      }
+      deactivateKeepAwake();
+    };
+  }, [orientationLocked, isPortrait]);
+
+  const cycleOrientationLock = useCallback(() => {
+    setOrientationLocked((current) => {
+      switch (current) {
+        case 'landscape': return 'landscape-left';
+        case 'landscape-left': return 'landscape-right';
+        case 'landscape-right': return 'landscape';
+        default: return 'landscape';
+      }
+    });
+  }, []);
+
+  const toggleOrientation = useCallback(() => {
+    if (isRotationLocked) return; // Don't toggle if locked
+    setIsPortrait((current) => !current);
+  }, [isRotationLocked]);
+
+  const toggleRotationLock = useCallback(() => {
+    setIsRotationLocked((current) => !current);
+  }, []);
+
+  useEffect(() => {
+    if (playbackInfo && item) {
+      const source = selectBestMediaSource(playbackInfo.MediaSources);
+      if (source) {
+        setMediaSource(source);
+
+        const subtitleStreams = getSubtitleStreams(source);
+        const subtitles = subtitleStreams.map((s) => ({
+          index: s.Index,
+          language: s.Language,
+          title: s.DisplayTitle,
+          isDefault: s.IsDefault,
+          isForced: s.IsForced,
+          codec: s.Codec,
+        }));
+        setJellyfinSubtitleTracks(subtitles);
+
+        const audioStreams = getAudioStreams(source);
+        const audioTracks = audioStreams.map((s) => ({
+          index: s.Index,
+          language: s.Language,
+          title: s.DisplayTitle,
+          codec: s.Codec,
+          channels: s.Channels,
+          isDefault: s.IsDefault,
+        }));
+        setJellyfinAudioTracks(audioTracks);
+
+        // Auto-select audio based on settings
+        const preferredAudioLang = useSettingsStore.getState().player.defaultAudioLanguage || 'eng';
+        const preferredAudio = audioTracks.find((a) => a.language?.toLowerCase() === preferredAudioLang.toLowerCase())
+          || audioTracks.find((a) => a.isDefault)
+          || audioTracks[0];
+        if (preferredAudio) {
+          setSelectedAudioIndex(preferredAudio.index);
+        }
+
+        // Auto-select subtitle based on settings
+        const playerSettings = useSettingsStore.getState().player;
+        const preferredSubLang = playerSettings.defaultSubtitleLanguage;
+        const forceSubtitles = playerSettings.forceSubtitles;
+
+        if (subtitles.length > 0 && (preferredSubLang || forceSubtitles)) {
+          const preferredSub = subtitles.find((s) => s.language?.toLowerCase() === preferredSubLang?.toLowerCase())
+            || subtitles.find((s) => s.isDefault)
+            || (forceSubtitles ? subtitles[0] : undefined); // If force subtitles, pick first available
+          if (preferredSub) {
+            setSelectedSubtitleIndex(preferredSub.index);
+            // Load subtitle file
+            const subtitleUrl = getSubtitleUrl(item.Id, source.Id, preferredSub.index, 'vtt');
+            fetch(subtitleUrl)
+              .then(res => res.text())
+              .then(vttText => {
+                const cues: Array<{ start: number; end: number; text: string }> = [];
+                const lines = vttText.split('\n');
+                let i = 0;
+                while (i < lines.length) {
+                  const line = lines[i].trim();
+                  if (line.includes('-->')) {
+                    const [startStr, endStr] = line.split('-->').map(s => s.trim());
+                    const parseTime = (t: string) => {
+                      const parts = t.replace(',', '.').split(':');
+                      if (parts.length === 3) {
+                        return parseFloat(parts[0]) * 3600000 + parseFloat(parts[1]) * 60000 + parseFloat(parts[2]) * 1000;
+                      } else if (parts.length === 2) {
+                        return parseFloat(parts[0]) * 60000 + parseFloat(parts[1]) * 1000;
+                      }
+                      return 0;
+                    };
+                    const start = parseTime(startStr);
+                    const end = parseTime(endStr.split(' ')[0]);
+                    const textLines: string[] = [];
+                    i++;
+                    while (i < lines.length && lines[i].trim() !== '') {
+                      textLines.push(lines[i].trim());
+                      i++;
+                    }
+                    if (textLines.length > 0) {
+                      cues.push({ start, end, text: textLines.join('\n').replace(/<[^>]+>/g, '') });
+                    }
+                  }
+                  i++;
+                }
+                setSubtitleCues(cues);
+              })
+              .catch(() => {});
+          }
+        }
+
+        const savedPosition = ticksToMs(item.UserData?.PlaybackPositionTicks ?? 0);
+        setProgress(0, ticksToMs(item.RunTimeTicks ?? 0), 0);
+
+        // Check for intro chapter as fallback (if media segments didn't provide it)
+        // Only set if not already set by media segments
+        if (!introEnd) {
+          const chapters = (item as any).Chapters || [];
+          const introChapter = chapters.find((c: any) =>
+            c.MarkerType === 'IntroStart' ||
+            c.Name?.toLowerCase().includes('intro') ||
+            c.Name?.toLowerCase().includes('opening')
+          );
+          if (introChapter) {
+            // Find intro end - either next chapter or IntroEnd marker
+            const introIndex = chapters.indexOf(introChapter);
+            const introEndChapter = chapters.find((c: any) => c.MarkerType === 'IntroEnd');
+            const nextChapter = chapters[introIndex + 1];
+            const introStartTime = ticksToMs(introChapter.StartPositionTicks);
+            const introEndTime = introEndChapter
+              ? ticksToMs(introEndChapter.StartPositionTicks)
+              : nextChapter
+                ? ticksToMs(nextChapter.StartPositionTicks)
+                : introStartTime + 90000; // Default 90s intro
+            setIntroStart(introStartTime);
+            setIntroEnd(introEndTime);
+          }
+        }
+
+        if (savedPosition > 10000) {
+          startPlayback(source, savedPosition);
+        } else {
+          startPlayback(source, 0);
+        }
+      }
+    }
+  }, [playbackInfo, item]);
+
+  const startPlayback = useCallback((
+    source: MediaSource,
+    startPositionMs: number
+  ) => {
+    if (!item) return;
+
+    const url = getStreamUrl(item.Id, source.Id, {
+      startTimeTicks: startPositionMs > 0 ? msToTicks(startPositionMs) : undefined,
+      useHls: false,
+    });
+    setStreamUrl(url);
+
+    resumePositionMs.current = startPositionMs;
+    hasResumedPosition.current = false;
+    setProgress(startPositionMs, ticksToMs(item.RunTimeTicks ?? 0), 0);
+
+    setCurrentItem({ item, mediaSource: source, streamUrl: url, playSessionId }, 'video');
+
+    reportPlaybackStart({
+      ItemId: item.Id,
+      MediaSourceId: source.Id,
+      PlaySessionId: playSessionId,
+      PlayMethod: 'DirectStream',
+      StartTimeTicks: startPositionMs > 0 ? msToTicks(startPositionMs) : undefined,
+    });
+
+    setPlayerState('playing');
+  }, [item, playSessionId]);
+
+  const parseVtt = useCallback((vttText: string): Array<{ start: number; end: number; text: string }> => {
+    const cues: Array<{ start: number; end: number; text: string }> = [];
+    const lines = vttText.split('\n');
+    let i = 0;
+
+    while (i < lines.length) {
+      const line = lines[i].trim();
+      if (line.includes('-->')) {
+        const [startStr, endStr] = line.split('-->').map(s => s.trim());
+        const parseTime = (t: string) => {
+          const parts = t.replace(',', '.').split(':');
+          if (parts.length === 3) {
+            return parseFloat(parts[0]) * 3600000 + parseFloat(parts[1]) * 60000 + parseFloat(parts[2]) * 1000;
+          } else if (parts.length === 2) {
+            return parseFloat(parts[0]) * 60000 + parseFloat(parts[1]) * 1000;
+          }
+          return 0;
+        };
+        const start = parseTime(startStr);
+        const end = parseTime(endStr.split(' ')[0]);
+        const textLines: string[] = [];
+        i++;
+        while (i < lines.length && lines[i].trim() !== '') {
+          textLines.push(lines[i].trim());
+          i++;
+        }
+        if (textLines.length > 0) {
+          cues.push({ start, end, text: textLines.join('\n').replace(/<[^>]+>/g, '') });
+        }
+      }
+      i++;
+    }
+    return cues;
+  }, []);
+
+  const handleSelectSubtitle = useCallback(async (index: number | undefined) => {
+    setSelectedSubtitleIndex(index);
+    setCurrentSubtitle('');
+
+    if (index === undefined || !mediaSource || !item) {
+      setSubtitleCues([]);
+      return;
+    }
+
+    try {
+      const subtitleUrl = getSubtitleUrl(item.Id, mediaSource.Id, index, 'vtt');
+      const response = await fetch(subtitleUrl);
+      const vttText = await response.text();
+      const cues = parseVtt(vttText);
+      setSubtitleCues(cues);
+    } catch (e) {
+      setSubtitleCues([]);
+    }
+  }, [mediaSource, item, parseVtt]);
+
+  const handleSelectAudio = useCallback((index: number) => {
+    setSelectedAudioIndex(index);
+    if (player) {
+      try {
+        const availableTracks = player.availableAudioTracks || [];
+        const jellyfinTrack = jellyfinAudioTracks.find((t) => t.index === index);
+
+        let track = null;
+
+        // Try matching by language code (handle 3-letter to 2-letter conversion)
+        if (jellyfinTrack?.language) {
+          const lang = jellyfinTrack.language.toLowerCase();
+          const langMap: Record<string, string[]> = {
+            'eng': ['en', 'eng', 'english'],
+            'rus': ['ru', 'rus', 'russian'],
+            'jpn': ['ja', 'jpn', 'japanese'],
+            'spa': ['es', 'spa', 'spanish'],
+            'fre': ['fr', 'fra', 'fre', 'french'],
+            'ger': ['de', 'deu', 'ger', 'german'],
+          };
+          const variants = langMap[lang] || [lang];
+          track = availableTracks.find((t: any) => {
+            const tLang = (t.language || '').toLowerCase();
+            return variants.some(v => tLang.includes(v) || v.includes(tLang));
+          });
+        }
+
+        // Fallback: use position in list (reversed - player often has opposite order)
+        if (!track) {
+          const jellyfinIdx = jellyfinAudioTracks.findIndex((t) => t.index === index);
+          const reversedIdx = availableTracks.length - 1 - jellyfinIdx;
+          if (reversedIdx >= 0 && reversedIdx < availableTracks.length) {
+            track = availableTracks[reversedIdx];
+          }
+        }
+
+        if (track) {
+          player.audioTrack = track;
+        }
+      } catch (e) {}
+    }
+  }, [player, jellyfinAudioTracks]);
+
+  useEffect(() => {
+    if (!player) return;
+
+    const currentKey = playerKey.current;
+
+    const statusSub = player.addListener('statusChange', (payload) => {
+      if (currentKey !== playerKey.current || !isPlayerValid.current) return;
+      const status = payload.status;
+      if (status === 'readyToPlay') {
+        setPlayerState('playing');
+        setIsBuffering(false);
+        if (!hasResumedPosition.current && resumePositionMs.current > 0) {
+          hasResumedPosition.current = true;
+          try {
+            player.currentTime = resumePositionMs.current / 1000;
+          } catch (e) {}
+        }
+        // Auto-select audio track based on settings
+        try {
+          const availableTracks = player.availableAudioTracks || [];
+          if (availableTracks.length > 0 && selectedAudioIndex !== undefined) {
+            const jellyfinTrack = jellyfinAudioTracks.find((t) => t.index === selectedAudioIndex);
+            let track = null;
+            if (jellyfinTrack?.language) {
+              const lang = jellyfinTrack.language.toLowerCase();
+              const langMap: Record<string, string[]> = {
+                'eng': ['en', 'eng', 'english'],
+                'rus': ['ru', 'rus', 'russian'],
+                'jpn': ['ja', 'jpn', 'japanese'],
+                'spa': ['es', 'spa', 'spanish'],
+                'fre': ['fr', 'fra', 'fre', 'french'],
+                'ger': ['de', 'deu', 'ger', 'german'],
+              };
+              const variants = langMap[lang] || [lang];
+              track = availableTracks.find((t: any) => {
+                const tLang = (t.language || '').toLowerCase();
+                return variants.some(v => tLang.includes(v) || v.includes(tLang));
+              });
+            }
+            if (!track) {
+              const jellyfinIdx = jellyfinAudioTracks.findIndex((t) => t.index === selectedAudioIndex);
+              const reversedIdx = availableTracks.length - 1 - jellyfinIdx;
+              if (reversedIdx >= 0 && reversedIdx < availableTracks.length) {
+                track = availableTracks[reversedIdx];
+              }
+            }
+            if (track) {
+              player.audioTrack = track;
+            }
+          }
+        } catch (e) {}
+      } else if (status === 'loading') {
+        setPlayerState('loading');
+      } else if (status === 'error') {
+        setPlayerState('idle');
+        setIsBuffering(false);
+      }
+    });
+
+    const playingSub = player.addListener('playingChange', (payload) => {
+      if (currentKey !== playerKey.current || !isPlayerValid.current) return;
+      if (payload.isPlaying) {
+        setIsBuffering(false);
+        setPlayerState('playing');
+      } else {
+        if (!isBuffering) {
+          setPlayerState('paused');
+        }
+      }
+    });
+
+    return () => {
+      try {
+        statusSub.remove();
+        playingSub.remove();
+      } catch (e) {}
+    };
+  }, [player, isBuffering, selectedAudioIndex, jellyfinAudioTracks]);
+
+  const progressReportInterval = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastReportedPosition = useRef(0);
+
+  useEffect(() => {
+    if (!mediaSource || !player) return;
+
+    const currentKey = playerKey.current;
+
+    const updateProgress = () => {
+      if (currentKey !== playerKey.current || !isPlayerValid.current) return;
+      try {
+        const currentPosition = player.currentTime * 1000;
+        const duration = player.duration * 1000;
+
+        if (duration > 0) {
+          setProgress(currentPosition, duration, 0);
+
+          // Check intro
+          if (introEnd) {
+            const startThreshold = introStart ?? 5000;
+            const inIntro = currentPosition >= startThreshold && currentPosition < introEnd;
+            setShowSkipIntro(inIntro);
+          }
+
+          // Check credits
+          if (creditsStart) {
+            const inCredits = currentPosition >= creditsStart && currentPosition < duration - 5000;
+            setShowSkipCredits(inCredits);
+          }
+
+          // Check end / next episode
+          const timeRemaining = duration - currentPosition;
+          if (timeRemaining < 30000 && timeRemaining > 0 && nextEpisode && !showNextUpCard) {
+            setShowNextUpCard(true);
+          }
+          // Auto-play next episode only if setting is enabled
+          const autoPlayEnabled = useSettingsStore.getState().player.autoPlay;
+          if (timeRemaining < 2000 && timeRemaining > 0 && nextEpisode && autoPlayEnabled) {
+            handlePlayNextEpisode();
+          }
+        }
+
+        if (subtitleCues.length > 0) {
+          const subtitleDelay = 200;
+          const activeCue = subtitleCues.find(cue => currentPosition >= cue.start + subtitleDelay && currentPosition <= cue.end + subtitleDelay);
+          setCurrentSubtitle(activeCue?.text || '');
+        }
+      } catch (e) {}
+    };
+
+    progressInterval.current = setInterval(updateProgress, 250);
+
+    return () => {
+      if (progressInterval.current) clearInterval(progressInterval.current);
+    };
+  }, [mediaSource, player, subtitleCues, introStart, introEnd, creditsStart, nextEpisode, showNextUpCard]);
+
+  useEffect(() => {
+    if (!mediaSource || !player) return;
+
+    const currentKey = playerKey.current;
+
+    const reportProgress = () => {
+      if (currentKey !== playerKey.current || !isPlayerValid.current) return;
+      try {
+        const currentPosition = player.currentTime * 1000;
+        if (currentPosition === lastReportedPosition.current && playerState !== 'playing') {
+          return;
+        }
+        lastReportedPosition.current = currentPosition;
+
+        reportPlaybackProgress({
+          ItemId: itemId,
+          MediaSourceId: mediaSource.Id,
+          PositionTicks: msToTicks(currentPosition),
+          IsPaused: playerState !== 'playing',
+          IsMuted: false,
+          PlaySessionId: playSessionId,
+        });
+      } catch (e) {}
+    };
+
+    reportProgress();
+
+    progressReportInterval.current = setInterval(reportProgress, 10000);
+
+    return () => {
+      if (progressReportInterval.current) clearInterval(progressReportInterval.current);
+    };
+  }, [playerState, mediaSource, player, itemId, playSessionId]);
+
+  // Report playback stopped on unmount (handles back button, etc.)
+  useEffect(() => {
+    return () => {
+      if (mediaSource && player) {
+        try {
+          const currentPosition = player.currentTime * 1000;
+          reportPlaybackStopped(itemId, mediaSource.Id, playSessionId, msToTicks(currentPosition)).catch(() => {});
+        } catch (e) {}
+      }
+    };
+  }, [mediaSource, player, itemId, playSessionId]);
+
+  // Update next episode when data is available
+  useEffect(() => {
+    if (seasonEpisodes?.Items?.length && currentEpisodeNumber !== undefined) {
+      const sortedEpisodes = [...seasonEpisodes.Items].sort(
+        (a, b) => (a.IndexNumber || 0) - (b.IndexNumber || 0)
+      );
+      const nextEp = sortedEpisodes.find(
+        (ep) => (ep.IndexNumber || 0) > currentEpisodeNumber
+      );
+
+      if (nextEp) {
+        setNextEpisode(nextEp);
+        setNextSeasonId(null);
+      } else {
+        // Last episode of season - check for next season
+        if (allSeasons?.Items?.length && currentSeasonNumber !== undefined) {
+          const sortedSeasons = [...allSeasons.Items].sort(
+            (a, b) => (a.IndexNumber || 0) - (b.IndexNumber || 0)
+          );
+          const nextSeason = sortedSeasons.find(
+            (s) => (s.IndexNumber || 0) > currentSeasonNumber
+          );
+          if (nextSeason) {
+            setNextSeasonId(nextSeason.Id);
+          } else {
+            setNextEpisode(null);
+            setNextSeasonId(null);
+          }
+        } else {
+          setNextEpisode(null);
+        }
+      }
+    } else {
+      setNextEpisode(null);
+    }
+  }, [seasonEpisodes, currentEpisodeNumber, allSeasons, currentSeasonNumber]);
+
+  // Set next episode from next season when available
+  useEffect(() => {
+    if (nextSeasonEpisodes?.Items?.length) {
+      const sortedEpisodes = [...nextSeasonEpisodes.Items].sort(
+        (a, b) => (a.IndexNumber || 0) - (b.IndexNumber || 0)
+      );
+      const firstEp = sortedEpisodes[0];
+      if (firstEp) {
+        setNextEpisode(firstEp);
+      }
+    }
+  }, [nextSeasonEpisodes]);
+
+  const handleSkipIntro = useCallback(() => {
+    if (!player || !introEnd) return;
+    try {
+      player.currentTime = introEnd / 1000;
+      setShowSkipIntro(false);
+    } catch (e) {}
+  }, [player, introEnd]);
+
+  const handlePlayNextEpisode = useCallback(() => {
+    if (!nextEpisode || !mediaSource) return;
+
+    // Mark that we're navigating to prevent orientation unlock
+    isNavigatingRef.current = true;
+
+    // Report current playback stopped
+    reportPlaybackStopped(itemId, mediaSource.Id, playSessionId, msToTicks(progress.position)).catch(() => {});
+
+    // Navigate to next episode
+    clearCurrentItem();
+    router.replace(`/player/video?itemId=${nextEpisode.Id}`);
+  }, [nextEpisode, mediaSource, itemId, playSessionId, progress.position, clearCurrentItem]);
+
+  const hideControlsDelayed = useCallback(() => {
+    if (controlsTimeout.current) clearTimeout(controlsTimeout.current);
+    controlsTimeout.current = setTimeout(() => {
+      controlsOpacity.value = withTiming(0, { duration: 400 });
+      runOnJS(setShowControls)(false);
+    }, 4000);
+  }, []);
+
+  const showControlsNow = useCallback(() => {
+    controlsOpacity.value = withTiming(1, { duration: 250 });
+    setShowControls(true);
+    hideControlsDelayed();
+  }, [hideControlsDelayed]);
+
+  const toggleControls = useCallback(() => {
+    if (showControls) {
+      if (controlsTimeout.current) clearTimeout(controlsTimeout.current);
+      controlsOpacity.value = withTiming(0, { duration: 250 });
+      setShowControls(false);
+    } else {
+      showControlsNow();
+    }
+  }, [showControls, showControlsNow]);
+
+  const handleClose = useCallback(() => {
+    // Immediately pause playback
+    try {
+      player?.pause();
+    } catch (e) {
+      // Ignore errors when pausing
+    }
+
+    // Report playback stopped to server (fire and forget)
+    if (mediaSource) {
+      reportPlaybackStopped(itemId, mediaSource.Id, playSessionId, msToTicks(progress.position)).catch(() => {
+        // Ignore errors - we're exiting anyway
+      });
+    }
+
+    // Clear state and exit
+    clearCurrentItem();
+    router.back();
+  }, [player, mediaSource, itemId, playSessionId, progress.position, clearCurrentItem]);
+
+  const handlePlayPause = () => {
+    if (!player) return;
+    try {
+      playButtonScale.value = withSequence(
+        withSpring(0.85, { damping: 10 }),
+        withSpring(1, { damping: 8 })
+      );
+      if (playerState === 'playing') player.pause();
+      else player.play();
+      showControlsNow();
+    } catch (e) {}
+  };
+
+  const handleSeek = useCallback((position: number) => {
+    if (!player) return;
+    try {
+      const clampedPosition = Math.max(0, Math.min(progress.duration, position));
+      setIsBuffering(true);
+      player.seekBy((clampedPosition - progress.position) / 1000);
+      setProgress(clampedPosition, progress.duration, progress.buffered);
+      showControlsNow();
+    } catch (e) {}
+  }, [player, progress, showControlsNow]);
+
+  const showSkipAnimation = useCallback((direction: 'left' | 'right') => {
+    const opacity = direction === 'left' ? skipLeftOpacity : skipRightOpacity;
+    const scale = direction === 'left' ? skipLeftScale : skipRightScale;
+
+    opacity.value = withSequence(
+      withTiming(1, { duration: 150 }),
+      withTiming(0, { duration: 400 })
+    );
+    scale.value = withSequence(
+      withSpring(1.2, { damping: 8 }),
+      withSpring(0.5, { damping: 12 })
+    );
+  }, []);
+
+  const handleDoubleTapSeek = useCallback((direction: 'left' | 'right') => {
+    const seekAmount = direction === 'left' ? -10000 : 10000;
+    const newPosition = Math.max(0, Math.min(progress.duration, progress.position + seekAmount));
+    handleSeek(newPosition);
+    showSkipAnimation(direction);
+  }, [progress, handleSeek, showSkipAnimation]);
+
+  const tapGesture = Gesture.Tap().onEnd(() => {
+    runOnJS(toggleControls)();
+  });
+
+  const doubleTapLeftGesture = Gesture.Tap()
+    .numberOfTaps(2)
+    .maxDuration(300)
+    .onEnd((event) => {
+      if (event.x < SCREEN_WIDTH * 0.4) {
+        runOnJS(handleDoubleTapSeek)('left');
+      }
+    });
+
+  const doubleTapRightGesture = Gesture.Tap()
+    .numberOfTaps(2)
+    .maxDuration(300)
+    .onEnd((event) => {
+      if (event.x > SCREEN_WIDTH * 0.6) {
+        runOnJS(handleDoubleTapSeek)('right');
+      }
+    });
+
+  const gesture = Gesture.Exclusive(
+    Gesture.Simultaneous(doubleTapLeftGesture, doubleTapRightGesture),
+    tapGesture
+  );
+
+  const controlsStyle = useAnimatedStyle(() => ({
+    opacity: controlsOpacity.value,
+  }));
+
+  const playButtonStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: playButtonScale.value }],
+  }));
+
+  const skipLeftStyle = useAnimatedStyle(() => ({
+    opacity: skipLeftOpacity.value,
+    transform: [{ scale: skipLeftScale.value }],
+  }));
+
+  const skipRightStyle = useAnimatedStyle(() => ({
+    opacity: skipRightOpacity.value,
+    transform: [{ scale: skipRightScale.value }],
+  }));
+
+  const isLoading = itemLoading || playbackLoading || playerState === 'loading' || playerState === 'buffering';
+  const showLoadingIndicator = isLoading || isBuffering;
+  const progressPercent = progress.duration > 0 ? ((isSeeking ? seekPosition : progress.position) / progress.duration) * 100 : 0;
+
+  const getSubtitle = () => {
+    if (!item) return null;
+    if (item.Type === 'Episode') {
+      return `S${item.ParentIndexNumber} E${item.IndexNumber} - ${item.SeriesName}`;
+    }
+    if (item.ProductionYear) return item.ProductionYear.toString();
+    return null;
+  };
+
+  return (
+    <View className="flex-1 bg-black">
+      <StatusBar hidden />
+
+      <GestureDetector gesture={gesture}>
+        <View className="flex-1">
+          {streamUrl && (
+            <VideoView
+              ref={videoViewRef}
+              player={player}
+              style={{
+                width: '100%',
+                height: '100%',
+              }}
+              contentFit="contain"
+              nativeControls={false}
+              allowsPictureInPicture={true}
+            />
+          )}
+
+          {currentSubtitle !== '' && (
+            <View
+              style={{
+                position: 'absolute',
+                bottom: 40,
+                left: 20,
+                right: 20,
+                alignItems: 'center',
+              }}
+              pointerEvents="none"
+            >
+              <View
+                style={{
+                  backgroundColor: 'rgba(0,0,0,0.75)',
+                  paddingHorizontal: 16,
+                  paddingVertical: 8,
+                  borderRadius: 4,
+                  maxWidth: '90%',
+                }}
+              >
+                <Text
+                  style={{
+                    color: '#fff',
+                    fontSize: 18,
+                    fontWeight: '500',
+                    textAlign: 'center',
+                    textShadowColor: 'rgba(0,0,0,0.8)',
+                    textShadowOffset: { width: 1, height: 1 },
+                    textShadowRadius: 2,
+                  }}
+                >
+                  {currentSubtitle}
+                </Text>
+              </View>
+            </View>
+          )}
+
+          {showLoadingIndicator && (
+            <View className="absolute inset-0 items-center justify-center">
+              <View className="w-20 h-20 rounded-full bg-black/60 items-center justify-center">
+                <ActivityIndicator color={accentColor} size="large" />
+              </View>
+            </View>
+          )}
+
+          {!streamUrl && !isLoading && (
+            <View className="absolute inset-0 items-center justify-center">
+              <Text className="text-white/60 text-lg">No stream available</Text>
+            </View>
+          )}
+
+          <Animated.View style={[skipLeftStyle, { position: 'absolute', left: '15%', top: '50%', marginTop: -40 }]}>
+            <View className="w-20 h-20 rounded-full bg-white/20 items-center justify-center">
+              <SkipIcon size={28} seconds={10} direction="back" color={accentColor} />
+            </View>
+          </Animated.View>
+
+          <Animated.View style={[skipRightStyle, { position: 'absolute', right: '15%', top: '50%', marginTop: -40 }]}>
+            <View className="w-20 h-20 rounded-full bg-white/20 items-center justify-center">
+              <SkipIcon size={28} seconds={10} direction="forward" color={accentColor} />
+            </View>
+          </Animated.View>
+
+          {/* Skip Intro Button */}
+          {showSkipIntro && (
+            <Pressable
+              onPress={handleSkipIntro}
+              style={{
+                position: 'absolute',
+                right: 32,
+                bottom: 120,
+                backgroundColor: 'rgba(255,255,255,0.95)',
+                paddingHorizontal: 20,
+                paddingVertical: 12,
+                borderRadius: 8,
+                flexDirection: 'row',
+                alignItems: 'center',
+              }}
+            >
+              <Text style={{ color: '#000', fontSize: 15, fontWeight: '600' }}>Skip Intro</Text>
+              <Text style={{ color: '#666', fontSize: 13, marginLeft: 8 }}>▶▶</Text>
+            </Pressable>
+          )}
+
+          {/* Skip Credits / Next Episode Button */}
+          {(showSkipCredits || showNextUpCard) && nextEpisode && (
+            <Pressable
+              onPress={handlePlayNextEpisode}
+              style={{
+                position: 'absolute',
+                right: 24,
+                bottom: 100,
+                backgroundColor: 'rgba(255,255,255,0.95)',
+                paddingHorizontal: 16,
+                paddingVertical: 10,
+                borderRadius: 6,
+                flexDirection: 'row',
+                alignItems: 'center',
+              }}
+            >
+              <Text style={{ color: '#000', fontSize: 14, fontWeight: '600' }}>
+                Next: E{nextEpisode.IndexNumber}
+              </Text>
+              <Text style={{ color: '#666', fontSize: 14, marginLeft: 8 }}>▶</Text>
+            </Pressable>
+          )}
+
+          <Animated.View style={controlsStyle} className="absolute inset-0" pointerEvents={showControls ? 'auto' : 'none'}>
+            <LinearGradient
+              colors={['rgba(0,0,0,0.8)', 'transparent', 'transparent', 'rgba(0,0,0,0.9)']}
+              locations={[0, 0.25, 0.7, 1]}
+              className="absolute inset-0"
+            />
+
+            <View
+              className="absolute top-0 left-0 right-0 px-8"
+              style={{ paddingTop: isPortrait ? insets.top + 12 : 24, paddingBottom: 16 }}
+            >
+              <View className="flex-row items-center">
+                <Pressable
+                  onPress={handleClose}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                  className="w-11 h-11 rounded-full bg-white/15 items-center justify-center mr-3 active:bg-white/30"
+                >
+                  <CloseIcon size={22} />
+                </Pressable>
+
+                <View className="flex-1 mr-2">
+                  <Text className="text-white text-base font-bold" numberOfLines={1}>
+                    {item?.Name}
+                  </Text>
+                  {getSubtitle() && (
+                    <Text className="text-white/60 text-xs mt-0.5" numberOfLines={1}>
+                      {getSubtitle()}
+                    </Text>
+                  )}
+                </View>
+
+                {!isPortrait && (
+                  <View className="flex-row items-center gap-2">
+                    <Pressable
+                      onPress={() => setShowSubtitleSelector(true)}
+                      className="h-9 px-3 rounded-full items-center justify-center flex-row active:bg-white/20"
+                      style={{ backgroundColor: selectedSubtitleIndex !== undefined ? accentColor + '40' : 'rgba(255,255,255,0.1)' }}
+                    >
+                      <Text className="text-white text-xs font-bold">CC</Text>
+                    </Pressable>
+
+                    <Pressable
+                      onPress={() => setShowAudioSelector(true)}
+                      className="h-9 px-3 rounded-full bg-white/10 items-center justify-center flex-row active:bg-white/20"
+                    >
+                      <Text className="text-white text-xs font-medium">Audio</Text>
+                    </Pressable>
+
+                    <Pressable
+                      onPress={toggleRotationLock}
+                      className="w-9 h-9 rounded-full items-center justify-center active:bg-white/20"
+                      style={{ backgroundColor: isRotationLocked ? accentColor + '40' : 'rgba(255,255,255,0.1)' }}
+                    >
+                      <LockIcon size={16} locked={isRotationLocked} />
+                    </Pressable>
+
+                    <Pressable
+                      onPress={toggleOrientation}
+                      className="w-9 h-9 rounded-full items-center justify-center active:bg-white/20"
+                      style={{ backgroundColor: isPortrait ? accentColor + '40' : 'rgba(255,255,255,0.1)', opacity: isRotationLocked ? 0.5 : 1 }}
+                    >
+                      <RotateIcon size={16} />
+                    </Pressable>
+
+                    <Pressable
+                      onPress={() => videoViewRef.current?.startPictureInPicture()}
+                      className="w-9 h-9 rounded-full bg-white/10 items-center justify-center active:bg-white/20"
+                    >
+                      <PipIcon size={18} />
+                    </Pressable>
+                  </View>
+                )}
+
+                {isPortrait && (
+                  <View className="flex-row items-center gap-2">
+                    <Pressable
+                      onPress={toggleRotationLock}
+                      className="w-10 h-10 rounded-full items-center justify-center active:bg-white/20"
+                      style={{ backgroundColor: isRotationLocked ? accentColor + '40' : 'rgba(255,255,255,0.1)' }}
+                    >
+                      <LockIcon size={18} locked={isRotationLocked} />
+                    </Pressable>
+                    <Pressable
+                      onPress={toggleOrientation}
+                      className="w-10 h-10 rounded-full items-center justify-center active:bg-white/20"
+                      style={{ backgroundColor: accentColor + '40', opacity: isRotationLocked ? 0.5 : 1 }}
+                    >
+                      <RotateIcon size={18} />
+                    </Pressable>
+                  </View>
+                )}
+              </View>
+            </View>
+
+            <View className="absolute inset-0 items-center justify-center flex-row">
+              <Pressable
+                onPress={() => handleSeek(Math.max(0, progress.position - 10000))}
+                className="w-14 h-14 rounded-full bg-white/10 items-center justify-center mx-6 active:bg-white/20"
+              >
+                <SkipIcon size={22} seconds={10} direction="back" color={accentColor} />
+              </Pressable>
+
+              <Animated.View style={playButtonStyle}>
+                <Pressable
+                  onPress={handlePlayPause}
+                  className="w-20 h-20 rounded-full items-center justify-center mx-6"
+                  style={{ backgroundColor: accentColor }}
+                >
+                  {showLoadingIndicator ? (
+                    <ActivityIndicator color="#fff" size="large" />
+                  ) : playerState === 'playing' ? (
+                    <PauseIcon size={36} />
+                  ) : (
+                    <PlayIcon size={36} />
+                  )}
+                </Pressable>
+              </Animated.View>
+
+              <Pressable
+                onPress={() => handleSeek(Math.min(progress.duration, progress.position + 10000))}
+                className="w-14 h-14 rounded-full bg-white/10 items-center justify-center mx-6 active:bg-white/20"
+              >
+                <SkipIcon size={22} seconds={10} direction="forward" color={accentColor} />
+              </Pressable>
+            </View>
+
+            <View className="absolute bottom-0 left-0 right-0 px-8 pb-8">
+              <View className="flex-row items-center mb-3">
+                <Text className="text-white text-sm font-medium w-14">
+                  {formatPlayerTime(isSeeking ? seekPosition : progress.position)}
+                </Text>
+
+                <View className="flex-1 mx-4">
+                  <GestureDetector
+                    gesture={Gesture.Exclusive(
+                      Gesture.Pan()
+                        .onStart((e) => {
+                          runOnJS(setIsSeeking)(true);
+                          const percent = Math.max(0, Math.min(1, e.x / seekBarLayoutWidth));
+                          const newPosition = percent * progress.duration;
+                          runOnJS(setSeekPosition)(newPosition);
+                        })
+                        .onUpdate((e) => {
+                          const percent = Math.max(0, Math.min(1, e.x / seekBarLayoutWidth));
+                          const newPosition = percent * progress.duration;
+                          runOnJS(setSeekPosition)(newPosition);
+                        })
+                        .onEnd(() => {
+                          runOnJS(handleSeek)(seekPosition);
+                          runOnJS(setIsSeeking)(false);
+                        }),
+                      Gesture.Tap().onEnd((e) => {
+                        const percent = Math.max(0, Math.min(1, e.x / seekBarLayoutWidth));
+                        const newPosition = percent * progress.duration;
+                        runOnJS(handleSeek)(newPosition);
+                      })
+                    )}
+                  >
+                    <View
+                      className="h-10 justify-center"
+                      onLayout={(e) => setSeekBarLayoutWidth(e.nativeEvent.layout.width)}
+                    >
+                      <View style={{ height: 6, backgroundColor: 'rgba(255,255,255,0.3)', borderRadius: 3 }}>
+                        {/* Intro highlight - gold/yellow section */}
+                        {introStart !== null && introEnd !== null && progress.duration > 0 && (
+                          <View
+                            style={{
+                              position: 'absolute',
+                              top: 0,
+                              height: 6,
+                              left: `${(introStart / progress.duration) * 100}%`,
+                              width: `${((introEnd - introStart) / progress.duration) * 100}%`,
+                              backgroundColor: '#FFD700',
+                              borderRadius: 3,
+                            }}
+                          />
+                        )}
+                        {/* Credits highlight - orange section */}
+                        {creditsStart !== null && progress.duration > 0 && (
+                          <View
+                            style={{
+                              position: 'absolute',
+                              top: 0,
+                              height: 6,
+                              left: `${(creditsStart / progress.duration) * 100}%`,
+                              width: `${((progress.duration - creditsStart) / progress.duration) * 100}%`,
+                              backgroundColor: '#FF8C00',
+                              borderRadius: 3,
+                            }}
+                          />
+                        )}
+                        {/* Progress bar */}
+                        <View
+                          style={{
+                            height: 6,
+                            width: `${progressPercent}%`,
+                            backgroundColor: accentColor,
+                            borderRadius: 3,
+                          }}
+                        />
+                      </View>
+                      <Animated.View
+                        style={{
+                          position: 'absolute',
+                          left: `${progressPercent}%`,
+                          marginLeft: -8,
+                          width: 16,
+                          height: 16,
+                          borderRadius: 8,
+                          backgroundColor: '#fff',
+                          shadowColor: '#000',
+                          shadowOffset: { width: 0, height: 2 },
+                          shadowOpacity: 0.3,
+                          shadowRadius: 4,
+                          elevation: 4,
+                          transform: [{ scale: isSeeking ? 1.3 : 1 }],
+                        }}
+                      />
+                    </View>
+                  </GestureDetector>
+                </View>
+
+                <Text className="text-white/60 text-sm w-14 text-right">
+                  {formatPlayerTime(progress.duration)}
+                </Text>
+                {/* Debug: show if intro detected */}
+                {introEnd !== null && (
+                  <View style={{ marginLeft: 8, backgroundColor: '#FFD700', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                    <Text style={{ color: '#000', fontSize: 10, fontWeight: 'bold' }}>INTRO</Text>
+                  </View>
+                )}
+              </View>
+
+              {isSeeking && (
+                <View className="items-center mb-2">
+                  <View className="bg-black/80 px-4 py-2 rounded-lg">
+                    <Text className="text-white text-lg font-bold">
+                      {formatPlayerTime(seekPosition)}
+                    </Text>
+                  </View>
+                </View>
+              )}
+
+              {isPortrait && (
+                <View className="flex-row items-center justify-center gap-4 mt-3">
+                  <Pressable
+                    onPress={() => setShowSubtitleSelector(true)}
+                    className="h-10 px-4 rounded-full items-center justify-center flex-row active:bg-white/20"
+                    style={{ backgroundColor: selectedSubtitleIndex !== undefined ? accentColor + '40' : 'rgba(255,255,255,0.1)' }}
+                  >
+                    <Text className="text-white text-sm font-bold">CC</Text>
+                  </Pressable>
+
+                  <Pressable
+                    onPress={() => setShowAudioSelector(true)}
+                    className="h-10 px-4 rounded-full bg-white/10 items-center justify-center flex-row active:bg-white/20"
+                  >
+                    <Text className="text-white text-sm font-medium">Audio</Text>
+                  </Pressable>
+
+                  <Pressable
+                    onPress={() => videoViewRef.current?.startPictureInPicture()}
+                    className="w-10 h-10 rounded-full bg-white/10 items-center justify-center active:bg-white/20"
+                  >
+                    <PipIcon size={20} />
+                  </Pressable>
+                </View>
+              )}
+            </View>
+          </Animated.View>
+        </View>
+      </GestureDetector>
+
+      {showAudioSelector && (
+        <AudioTrackSelector
+          onClose={() => setShowAudioSelector(false)}
+          tracks={jellyfinAudioTracks}
+          selectedIndex={selectedAudioIndex}
+          onSelectTrack={handleSelectAudio}
+        />
+      )}
+      {showSubtitleSelector && (
+        <SubtitleSelector
+          onClose={() => setShowSubtitleSelector(false)}
+          tracks={jellyfinSubtitleTracks}
+          selectedIndex={selectedSubtitleIndex}
+          onSelectTrack={handleSelectSubtitle}
+        />
+      )}
+
+    </View>
+  );
+}
