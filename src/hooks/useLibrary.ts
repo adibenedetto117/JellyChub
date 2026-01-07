@@ -127,11 +127,12 @@ export function useAlbumTracks(albumId: string) {
 
 export function useSearch(searchTerm: string, limit = 20) {
   const userId = useAuthStore((state) => state.currentUser?.Id);
+  const debouncedSearchTerm = useDebounce(searchTerm, 300);
 
   return useQuery({
-    queryKey: ['search', userId, searchTerm, limit],
-    queryFn: () => search(userId!, searchTerm, limit),
-    enabled: !!userId && searchTerm.length >= 2,
+    queryKey: ['search', userId, debouncedSearchTerm, limit],
+    queryFn: () => search(userId!, debouncedSearchTerm, limit),
+    enabled: !!userId && debouncedSearchTerm.length >= 2,
   });
 }
 
@@ -142,9 +143,14 @@ export function useFavoriteMutation() {
   return useMutation({
     mutationFn: ({ itemId, isFavorite }: { itemId: string; isFavorite: boolean }) =>
       markAsFavorite(userId!, itemId, isFavorite),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['item'] });
-      queryClient.invalidateQueries({ queryKey: ['items'] });
+    onSuccess: (_, { itemId }) => {
+      // Invalidate the specific item query
+      queryClient.invalidateQueries({ queryKey: ['item', userId, itemId] });
+      // Invalidate favorite-related lists
+      queryClient.invalidateQueries({ queryKey: ['favoriteSongs'] });
+      // Invalidate tracks and playlist tracks (may contain favorite status)
+      queryClient.invalidateQueries({ queryKey: ['tracks'] });
+      queryClient.invalidateQueries({ queryKey: ['playlistTracks'] });
     },
   });
 }
@@ -156,10 +162,15 @@ export function usePlayedMutation() {
   return useMutation({
     mutationFn: ({ itemId, played }: { itemId: string; played: boolean }) =>
       markAsPlayed(userId!, itemId, played),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['item'] });
-      queryClient.invalidateQueries({ queryKey: ['items'] });
+    onSuccess: (_, { itemId }) => {
+      // Invalidate the specific item query
+      queryClient.invalidateQueries({ queryKey: ['item', userId, itemId] });
+      // Invalidate resume items (played status affects continue watching)
       queryClient.invalidateQueries({ queryKey: ['resume'] });
+      // Invalidate next up (played status affects next episode suggestions)
+      queryClient.invalidateQueries({ queryKey: ['nextUp'] });
+      // Invalidate episodes (played status shown in episode lists)
+      queryClient.invalidateQueries({ queryKey: ['episodes'] });
     },
   });
 }

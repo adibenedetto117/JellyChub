@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { View } from 'react-native';
+import { View, Platform } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -14,6 +14,13 @@ import { MiniPlayer } from '@/components/player';
 import { BottomNav } from '@/components/navigation';
 import { colors } from '@/theme';
 import '../global.css';
+
+// Animation duration constants for consistent feel across the app
+const ANIMATION_DURATION = {
+  fast: 180,
+  normal: 250,
+  modal: 300,
+} as const;
 
 SplashScreen.preventAutoHideAsync();
 
@@ -82,7 +89,8 @@ function AppContent() {
           options={{
             animation: 'slide_from_bottom',
             animationDuration: 220,
-            presentation: 'modal',
+            presentation: 'transparentModal',
+            gestureEnabled: false,
           }}
         />
         <Stack.Screen

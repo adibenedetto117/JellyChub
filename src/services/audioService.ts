@@ -389,6 +389,12 @@ class AudioService {
       console.error('Error stopping audio:', error);
     }
 
+    // Clean up queue subscription to prevent memory leaks
+    if (this.queueSubscription) {
+      this.queueSubscription();
+      this.queueSubscription = null;
+    }
+
     await mediaSessionService.clear();
 
     this.player = null;
@@ -396,6 +402,7 @@ class AudioService {
     this.currentItemId = null;
     this.currentItem = null;
     this.playSessionId = null;
+    this.isInitialized = false;
 
     store.clearCurrentItem();
   }
@@ -410,6 +417,15 @@ class AudioService {
 
   isPlaying() {
     return usePlayerStore.getState().playerState === 'playing';
+  }
+
+  /**
+   * Fully destroys the audio service, cleaning up all resources.
+   * After calling this, initialize() must be called again before use.
+   */
+  async destroy() {
+    await this.stop();
+    this.currentUserId = null;
   }
 }
 

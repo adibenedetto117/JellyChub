@@ -1,6 +1,6 @@
 import { View, Text, SectionList, Pressable, RefreshControl, ScrollView, Dimensions, ActivityIndicator, StyleSheet } from 'react-native';
 import { Image } from 'expo-image';
-import { useState, useCallback, useMemo, useRef } from 'react';
+import { useState, useCallback, useMemo, useRef, memo } from 'react';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';

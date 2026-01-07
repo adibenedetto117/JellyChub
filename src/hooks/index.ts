@@ -1,4 +1,5 @@
 export { usePlayer } from './usePlayer';
+export { useDebounce } from './useDebounce';
 export {
   useResponsive,
   getResponsiveBreakpoints,

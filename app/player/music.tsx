@@ -633,6 +633,17 @@ export default function MusicPlayerScreen() {
     transform: [{ translateY: translateY.value }],
   }));
 
+  // Fade out background as you swipe down
+  const backgroundStyle = useAnimatedStyle(() => {
+    const opacity = interpolate(
+      translateY.value,
+      [0, 300],
+      [1, 0],
+      'clamp'
+    );
+    return { opacity };
+  });
+
   const brightnessIndicatorStyle = useAnimatedStyle(() => ({
     opacity: brightnessIndicatorOpacity.value,
   }));
@@ -687,20 +698,23 @@ export default function MusicPlayerScreen() {
 
   return (
     <GestureDetector gesture={composedGesture}>
-      <Animated.View style={[{ flex: 1, backgroundColor: '#000' }, containerStyle]}>
-        {albumArtUrl && (
-          <Image
-            source={{ uri: albumArtUrl }}
+      <Animated.View style={[{ flex: 1, backgroundColor: 'transparent' }, containerStyle]}>
+        {/* Background that fades out when swiping down */}
+        <Animated.View style={[{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#000' }, backgroundStyle]}>
+          {albumArtUrl && (
+            <Image
+              source={{ uri: albumArtUrl }}
+              style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+              resizeMode="cover"
+              blurRadius={80}
+            />
+          )}
+          <LinearGradient
+            colors={['rgba(0,0,0,0.3)', 'rgba(0,0,0,0.7)', 'rgba(0,0,0,0.95)']}
+            locations={[0, 0.5, 1]}
             style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-            resizeMode="cover"
-            blurRadius={80}
           />
-        )}
-        <LinearGradient
-          colors={['rgba(0,0,0,0.3)', 'rgba(0,0,0,0.7)', 'rgba(0,0,0,0.95)']}
-          locations={[0, 0.5, 1]}
-          style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-        />
+        </Animated.View>
 
         {/* Brightness Indicator (Left Side) */}
         {showBrightnessIndicator && (

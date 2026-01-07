@@ -736,7 +736,7 @@ export default function VideoPlayerScreen() {
 
     reportProgress();
 
-    progressReportInterval.current = setInterval(reportProgress, 10000);
+    progressReportInterval.current = setInterval(reportProgress, 30000); // Every 30 seconds
 
     return () => {
       if (progressReportInterval.current) clearInterval(progressReportInterval.current);
