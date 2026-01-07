@@ -38,10 +38,13 @@ class AudioService {
     this.queueSubscription = usePlayerStore.subscribe(
       (state) => state.currentQueueIndex,
       (newIndex, prevIndex) => {
+        console.log(`Queue subscription: index changed from ${prevIndex} to ${newIndex}`);
         if (newIndex !== prevIndex && newIndex >= 0) {
           const store = usePlayerStore.getState();
           const queueItem = store.queue[newIndex];
+          console.log(`Queue subscription: queueItem=${queueItem?.item?.Name}, currentUserId=${!!this.currentUserId}, currentItemId=${this.currentItemId}, newItemId=${queueItem?.item?.Id}`);
           if (queueItem && this.currentUserId && queueItem.item.Id !== this.currentItemId) {
+            console.log(`Queue subscription: Loading track "${queueItem.item.Name}"`);
             const mediaType = store.mediaType;
             this.loadAndPlay(
               queueItem.item,
@@ -49,6 +52,8 @@ class AudioService {
               undefined,
               mediaType === 'audiobook' ? 'audiobook' : 'audio'
             );
+          } else {
+            console.log(`Queue subscription: Skipping load - conditions not met (queueItem: ${!!queueItem}, userId: ${!!this.currentUserId}, sameId: ${queueItem?.item?.Id === this.currentItemId})`);
           }
         }
       }
@@ -73,10 +78,14 @@ class AudioService {
 
   async skipToPrevious() {
     const store = usePlayerStore.getState();
+    const currentIndex = store.currentQueueIndex;
+    const position = store.progress.position;
+
+    console.log(`Skip previous: currentIndex=${currentIndex}, position=${position}ms, queueLength=${store.queue.length}`);
 
     // If more than 3 seconds in, restart current track
-    if (store.progress.position > 3000) {
-      console.log('Skip previous: Restarting current track');
+    if (position > 3000) {
+      console.log('Skip previous: Restarting current track (position > 3000ms)');
       this.hasHandledTrackEnd = false;
 
       // Seek to beginning and ensure playback
@@ -92,14 +101,26 @@ class AudioService {
       return;
     }
 
-    // Otherwise go to previous track
-    if (store.currentQueueIndex > 0) {
-      console.log(`Skip previous: Going to track ${store.currentQueueIndex}`);
+    // Otherwise go to previous track if available
+    if (currentIndex > 0) {
+      const prevIndex = currentIndex - 1;
+      const prevItem = store.queue[prevIndex];
+      console.log(`Skip previous: Going to track index ${prevIndex} (was ${currentIndex}), item: ${prevItem?.item?.Name}`);
+
       this.hasHandledTrackEnd = false;
+
+      // Clear current item ID to ensure the subscription triggers a reload
+      // This prevents the subscription's ID check from blocking the load
+      this.currentItemId = null;
+
       store.playPrevious();
+
+      // Verify the index changed
+      const newIndex = usePlayerStore.getState().currentQueueIndex;
+      console.log(`Skip previous: Index after playPrevious: ${newIndex}`);
     } else {
       // At first track, just restart it
-      console.log('Skip previous: At first track, restarting');
+      console.log('Skip previous: At first track (index 0), restarting');
       if (this.player) {
         this.player.seekTo(0);
         if (!this.player.playing) {

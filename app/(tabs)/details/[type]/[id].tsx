@@ -827,7 +827,15 @@ export default function DetailScreen() {
                     >
                       <Pressable
                         className="flex-row items-center flex-1"
-                        onPress={() => router.push(`/player/music?itemId=${track.Id}`)}
+                        onPress={() => {
+                          const queueItems = tracks.Items.map((t, i) => ({
+                            id: t.Id,
+                            item: t,
+                            index: i,
+                          }));
+                          setQueue(queueItems, index);
+                          router.push(`/player/music?itemId=${track.Id}`);
+                        }}
                       >
                         <View className="w-10 items-center justify-center">
                           {isActive ? (

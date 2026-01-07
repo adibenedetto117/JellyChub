@@ -1205,14 +1205,14 @@ export default function VideoPlayerScreen() {
                       className="w-9 h-9 rounded-full items-center justify-center active:bg-white/20"
                       style={{ backgroundColor: isPortrait ? accentColor + '40' : 'rgba(255,255,255,0.1)', opacity: isRotationLocked ? 0.5 : 1 }}
                     >
-                      <RotateIcon size={16} />
+                      <Ionicons name="phone-landscape-outline" size={16} color="#fff" />
                     </Pressable>
 
                     <Pressable
                       onPress={() => videoViewRef.current?.startPictureInPicture()}
                       className="w-9 h-9 rounded-full bg-white/10 items-center justify-center active:bg-white/20"
                     >
-                      <PipIcon size={18} />
+                      <Ionicons name="browsers-outline" size={18} color="#fff" />
                     </Pressable>
                   </View>
                 )}
@@ -1224,14 +1224,14 @@ export default function VideoPlayerScreen() {
                       className="w-10 h-10 rounded-full items-center justify-center active:bg-white/20"
                       style={{ backgroundColor: isRotationLocked ? accentColor + '40' : 'rgba(255,255,255,0.1)' }}
                     >
-                      <LockIcon size={18} locked={isRotationLocked} />
+                      <Ionicons name={isRotationLocked ? "lock-closed" : "lock-open-outline"} size={18} color="#fff" />
                     </Pressable>
                     <Pressable
                       onPress={toggleOrientation}
                       className="w-10 h-10 rounded-full items-center justify-center active:bg-white/20"
                       style={{ backgroundColor: accentColor + '40', opacity: isRotationLocked ? 0.5 : 1 }}
                     >
-                      <RotateIcon size={18} />
+                      <Ionicons name="phone-landscape-outline" size={18} color="#fff" />
                     </Pressable>
                   </View>
                 )}
@@ -1255,9 +1255,9 @@ export default function VideoPlayerScreen() {
                   {showLoadingIndicator ? (
                     <ActivityIndicator color="#fff" size="large" />
                   ) : playerState === 'playing' ? (
-                    <PauseIcon size={36} />
+                    <Ionicons name="pause" size={36} color="#fff" />
                   ) : (
-                    <PlayIcon size={36} />
+                    <Ionicons name="play" size={36} color="#fff" />
                   )}
                 </Pressable>
               </Animated.View>
@@ -1402,7 +1402,7 @@ export default function VideoPlayerScreen() {
                     onPress={() => videoViewRef.current?.startPictureInPicture()}
                     className="w-10 h-10 rounded-full bg-white/10 items-center justify-center active:bg-white/20"
                   >
-                    <PipIcon size={20} />
+                    <Ionicons name="browsers-outline" size={20} color="#fff" />
                   </Pressable>
                 </View>
               )}
