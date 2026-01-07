@@ -1,6 +1,6 @@
 # JellyChub
 
-A modern Jellyfin client for Android that handles all your media - video, music, audiobooks, ebooks, and comics in one app.
+A modern Jellyfin client for Android that handles all your media - video, music, audiobooks, and ebooks in one app.
 
 <p align="center">
   <img src="assets/icon.png" alt="JellyChub" width="128" height="128"/>
@@ -19,53 +19,83 @@ Requires Android 8.0 (API 26) or higher.
 ## Features
 
 ### Video & TV Shows
-- Full video streaming with quality selection
-- Subtitle support (embedded & external) with style customization
-- Multiple audio track selection
+- Stream movies and TV shows
+- Subtitle formats: VTT, SRT, ASS, SSA
+- Subtitle customization: size, color, background color, opacity
+- Multiple audio track selection with 30+ language support
 - Picture-in-Picture mode
-- Skip intro and credits buttons
+- Skip intro button (uses Jellyfin media segments)
+- Skip credits button
 - Auto-play next episode
 - Continue watching with resume support
+- Gesture controls: swipe for volume/brightness, double-tap to seek
+- Orientation lock toggle
+- Offline playback for downloaded content
 
 ### Music
 - Background playback with lock screen controls
 - Queue management with drag-to-reorder
-- Shuffle and repeat modes
-- Lyrics display (synced and unsynced)
-- Playlist creation and management
+- Shuffle mode
+- Repeat modes: off, repeat all, repeat one
+- Synced lyrics display
+- Add to playlist
+- Add to favorites
 - Artist, album, and genre browsing
 - Gapless playback
 
 ### Audiobooks
-- Chapter navigation with visual progress
-- Sleep timer with shake-to-extend
-- Bookmarks with notes
-- Variable playback speed (0.5x - 2.0x)
-- M4B chapter parsing support
-- Resume position sync across devices
+- Chapter navigation with visual timeline
+- Sleep timer: 5min, 10min, 15min, 30min, 45min, 1hr, 1.5hr, 2hr
+- Bookmarks with labels
+- Variable playback speed: 0.5x, 0.75x, 1x, 1.25x, 1.5x, 1.75x, 2x
+- M4B chapter parsing
+- Background playback
+- Resume from last position
 
-### E-books & Comics
-- EPUB reader with customizable themes
-- PDF support with smooth scrolling
-- Comic/manga reader with page modes
-- Right-to-left reading for manga
+### EPUB Reader
+- Full EPUB rendering
+- Table of contents navigation
+- Three themes: Dark, Light, Sepia
+- Adjustable font size
+- Bookmarks
 - Reading progress tracking
-- Offline reading support
+- Swipe to turn pages
 
-### Downloads & Offline
-- Download video, music, and audiobooks for offline playback
-- Storage management with usage stats
-- WiFi-only download option
+### PDF Reader
+- Native PDF rendering
+- Page navigation
+- Reading progress tracking
+
+### Downloads
+- Download video, music, and audiobooks
+- Pause and resume downloads
 - Background download queue
-- Automatic cleanup of watched downloads
+- Storage usage stats
+- Delete downloads
+- Offline playback
 
-### Additional Features
-- **Jellyseerr Integration**: Browse and request new content directly from the app
-- **Multi-server Support**: Connect to multiple Jellyfin servers
-- **Quick Connect**: Easy server authentication via QR code
-- **Server Administration**: Basic admin controls for managing your server
-- **Favorites**: Quick access to your favorite content
-- **Search**: Global search across all libraries
+### Jellyseerr Integration
+- Browse trending and popular content
+- Request movies and TV shows
+- View request status
+- Genre browsing
+- Search Jellyseerr catalog
+
+### Server Features
+- Multi-server support
+- Quick Connect authentication
+- Server administration panel
+- User management
+- Activity logs
+- Scheduled tasks
+
+### Other
+- Favorites collection
+- Global search
+- Accent color themes
+- Continue watching row
+- Next up episodes
+- Recently added content
 
 ## Tech Stack
 
@@ -149,10 +179,17 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## Acknowledgments
 
-- [Jellyfin](https://jellyfin.org/) - The free software media system
+- [Jellyfin](https://jellyfin.org/) - The free software media system this app connects to
 - [Expo](https://expo.dev/) - React Native framework and tooling
+- [React Native](https://reactnative.dev/) - Mobile app framework
 - [Finamp](https://github.com/jmshrv/finamp) - Inspiration for music player features
 - [Jellyseerr](https://github.com/Fallenbagel/jellyseerr) - Request management integration
+- [TanStack Query](https://tanstack.com/query) - Data fetching and caching
+- [Zustand](https://github.com/pmndrs/zustand) - State management
+- [NativeWind](https://www.nativewind.dev/) - Tailwind CSS for React Native
+- [React Native Reanimated](https://docs.swmansion.com/react-native-reanimated/) - Animations
+- [MMKV](https://github.com/mrousavy/react-native-mmkv) - Fast key-value storage
+- [epub.js](https://github.com/futurepress/epub.js) - EPUB rendering
 
 ## License
 
