@@ -76,19 +76,23 @@ export default function HomeScreen() {
     staleTime: 1000 * 60 * 5,
   });
 
-  const { data: favoriteMovies, refetch: refetchFavoriteMovies } = useQuery({
-    queryKey: ['favoriteMovies', userId],
-    queryFn: () => getFavorites(userId, ['Movie'], 12),
+  // Combined favorites query - fetches both movies and series in a single API call
+  // We request 24 items total to ensure we have enough of each type after splitting
+  const { data: allFavorites, refetch: refetchFavorites } = useQuery({
+    queryKey: ['favorites', userId],
+    queryFn: () => getFavorites(userId, ['Movie', 'Series'], 24),
     enabled: !!userId,
     staleTime: 1000 * 60 * 5,
   });
 
-  const { data: favoriteSeries, refetch: refetchFavoriteSeries } = useQuery({
-    queryKey: ['favoriteSeries', userId],
-    queryFn: () => getFavorites(userId, ['Series'], 12),
-    enabled: !!userId,
-    staleTime: 1000 * 60 * 5,
-  });
+  // Split the combined favorites into movies and series for display
+  const { favoriteMovies, favoriteSeries } = useMemo(() => {
+    const items = allFavorites?.Items ?? [];
+    return {
+      favoriteMovies: items.filter((item) => item.Type === 'Movie').slice(0, 12),
+      favoriteSeries: items.filter((item) => item.Type === 'Series').slice(0, 12),
+    };
+  }, [allFavorites]);
 
   // Filter libraries to only include displayable ones
   const displayableLibraries = useMemo(() => {
@@ -103,6 +107,13 @@ export default function HomeScreen() {
   }, [libraries]);
 
   // Dynamically create queries for each library's latest media
+  // Note: Jellyfin's /Users/{userId}/Items/Latest endpoint does not support batch fetching
+  // across multiple libraries in a single request. Each library requires its own API call.
+  // Optimization strategy:
+  // - staleTime: Infinity prevents unnecessary refetches during navigation
+  // - refetchOnMount: false avoids redundant requests when returning to the home screen
+  // - React Query handles parallel execution efficiently
+  // - Manual refetch is only triggered via pull-to-refresh
   const latestMediaQueries = useQueries({
     queries: displayableLibraries.map((library) => ({
       queryKey: ['latestMedia', userId, library.Id],
@@ -130,12 +141,11 @@ export default function HomeScreen() {
       refetchResume(),
       refetchNextUp(),
       refetchSuggestions(),
-      refetchFavoriteMovies(),
-      refetchFavoriteSeries(),
+      refetchFavorites(),
       ...latestMediaQueries.map((query) => query.refetch()),
     ]);
     setRefreshing(false);
-  }, [refetchLibraries, refetchResume, refetchNextUp, refetchSuggestions, refetchFavoriteMovies, refetchFavoriteSeries, latestMediaQueries]);
+  }, [refetchLibraries, refetchResume, refetchNextUp, refetchSuggestions, refetchFavorites, latestMediaQueries]);
 
   const handleItemPress = useCallback((item: BaseItem) => {
     const type = item.Type?.toLowerCase();
@@ -229,19 +239,19 @@ export default function HomeScreen() {
         ) : null}
 
         {/* Favorite Movies */}
-        {(favoriteMovies?.Items?.length ?? 0) > 0 && (
+        {favoriteMovies.length > 0 && (
           <MediaRow
             title="Favorite Movies"
-            items={favoriteMovies?.Items ?? []}
+            items={favoriteMovies}
             onItemPress={handleItemPress}
           />
         )}
 
         {/* Favorite Shows */}
-        {(favoriteSeries?.Items?.length ?? 0) > 0 && (
+        {favoriteSeries.length > 0 && (
           <MediaRow
             title="Favorite Shows"
-            items={favoriteSeries?.Items ?? []}
+            items={favoriteSeries}
             onItemPress={handleItemPress}
           />
         )}
@@ -285,7 +295,7 @@ export default function HomeScreen() {
           })
         )}
 
-        <View style={{ height: isTablet ? 48 : 32 }} />
+        <View style={{ height: isTablet ? 100 : 100 }} />
       </ScrollView>
     </SafeAreaView>
   );

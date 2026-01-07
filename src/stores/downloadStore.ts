@@ -1,23 +1,8 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import { MMKV } from 'react-native-mmkv';
 import type { DownloadItem } from '@/types';
 import type { BaseItem } from '@/types/jellyfin';
-
-const storage = new MMKV({ id: 'download-storage' });
-
-const mmkvStorage = {
-  getItem: (name: string) => {
-    const value = storage.getString(name);
-    return value ?? null;
-  },
-  setItem: (name: string, value: string) => {
-    storage.set(name, value);
-  },
-  removeItem: (name: string) => {
-    storage.delete(name);
-  },
-};
+import { appStorage } from './storage';
 
 interface DownloadState {
   // Download queue
@@ -222,7 +207,7 @@ export const useDownloadStore = create<DownloadState>()(
     }),
     {
       name: 'download-storage',
-      storage: createJSONStorage(() => mmkvStorage),
+      storage: createJSONStorage(() => appStorage),
       partialize: (state) => ({
         downloads: state.downloads.filter((d) => d.status === 'completed'),
         usedStorage: state.usedStorage,

@@ -2,7 +2,7 @@ import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig } from 'ax
 import { useAuthStore } from '@/stores/authStore';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
-import { MMKV } from 'react-native-mmkv';
+import { APP_STORAGE } from '@/stores/storage';
 
 const APP_NAME = 'JellyChub';
 const APP_VERSION = Constants.expoConfig?.version ?? '1.0.0';
@@ -15,16 +15,15 @@ function getDeviceName(): string {
   });
 }
 
-// Persistent device ID storage
-const deviceStorage = new MMKV({ id: 'device-storage' });
+// Device ID key within consolidated app storage
 const DEVICE_ID_KEY = 'jellychub_device_id';
 
 function getDeviceId(): string {
-  let deviceId = deviceStorage.getString(DEVICE_ID_KEY);
+  let deviceId = APP_STORAGE.getString(DEVICE_ID_KEY);
   if (!deviceId) {
     // Create a stable device ID that persists across app restarts
     deviceId = `jellychub_${Platform.OS}_${Math.random().toString(36).substring(2, 15)}${Math.random().toString(36).substring(2, 15)}`;
-    deviceStorage.set(DEVICE_ID_KEY, deviceId);
+    APP_STORAGE.set(DEVICE_ID_KEY, deviceId);
   }
   return deviceId;
 }

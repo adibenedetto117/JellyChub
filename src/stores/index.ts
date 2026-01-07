@@ -22,3 +22,14 @@ export { usePlayerStore, selectIsPlaying, selectCurrentQueueItem, selectHasNext,
 export { useDownloadStore, selectPendingDownloads, selectActiveDownload, selectCompletedDownloads, selectDownloadsByType, selectStorageUsage } from './downloadStore';
 export { useReadingProgressStore, selectReadingProgress, selectRecentlyReading } from './readingProgressStore';
 export type { ReadingProgress, AudiobookBookmark } from './readingProgressStore';
+
+// Storage exports - centralized MMKV storage instances
+export {
+  AUTH_STORAGE,
+  APP_STORAGE,
+  QUERY_CACHE_STORAGE,
+  authStorage,
+  appStorage,
+  queryCacheStorage,
+  createZustandStorage,
+} from './storage';

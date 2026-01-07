@@ -30,11 +30,11 @@ interface BookCardProps {
   progress?: number;
 }
 
-function BookCard({ item, onPress, width = HORIZONTAL_BOOK_WIDTH, height = HORIZONTAL_BOOK_HEIGHT, progress }: BookCardProps) {
-  const imageUrl = item.ImageTags?.Primary
+const BookCard = memo(function BookCard({ item, onPress, width = HORIZONTAL_BOOK_WIDTH, height = HORIZONTAL_BOOK_HEIGHT, progress }: BookCardProps) {
+  const imageUrl = useMemo(() => item.ImageTags?.Primary
     ? getImageUrl(item.Id, 'Primary', { maxWidth: 400, tag: item.ImageTags.Primary })
-    : null;
-  const author = (item as any)?.AlbumArtist ?? (item as any)?.Artists?.[0] ?? '';
+    : null, [item.Id, item.ImageTags?.Primary]);
+  const author = useMemo(() => (item as any)?.AlbumArtist ?? (item as any)?.Artists?.[0] ?? '', [item]);
   const accentColor = useSettingsStore((s) => s.accentColor);
 
   return (
@@ -60,14 +60,14 @@ function BookCard({ item, onPress, width = HORIZONTAL_BOOK_WIDTH, height = HORIZ
       {author ? <Text style={[styles.bookAuthor, { width }]} numberOfLines={1}>{author}</Text> : null}
     </Pressable>
   );
-}
+});
 
-function BookRow({ item, onPress, isAudiobook = false, progress }: { item: BaseItem; onPress: () => void; isAudiobook?: boolean; progress?: number }) {
-  const imageUrl = item.ImageTags?.Primary
+const BookRow = memo(function BookRow({ item, onPress, isAudiobook = false, progress }: { item: BaseItem; onPress: () => void; isAudiobook?: boolean; progress?: number }) {
+  const imageUrl = useMemo(() => item.ImageTags?.Primary
     ? getImageUrl(item.Id, 'Primary', { maxWidth: 120, tag: item.ImageTags.Primary })
-    : null;
-  const author = (item as any)?.AlbumArtist ?? (item as any)?.Artists?.[0] ?? '';
-  const duration = item.RunTimeTicks ? Math.round(item.RunTimeTicks / 600000000) : null;
+    : null, [item.Id, item.ImageTags?.Primary]);
+  const author = useMemo(() => (item as any)?.AlbumArtist ?? (item as any)?.Artists?.[0] ?? '', [item]);
+  const duration = useMemo(() => item.RunTimeTicks ? Math.round(item.RunTimeTicks / 600000000) : null, [item.RunTimeTicks]);
   const accentColor = useSettingsStore((s) => s.accentColor);
 
   return (
@@ -98,13 +98,13 @@ function BookRow({ item, onPress, isAudiobook = false, progress }: { item: BaseI
       </View>
     </Pressable>
   );
-}
+});
 
-function ContinueReadingCard({ item, onPress, progress }: { item: BaseItem; onPress: () => void; progress: number }) {
-  const imageUrl = item.ImageTags?.Primary
+const ContinueReadingCard = memo(function ContinueReadingCard({ item, onPress, progress }: { item: BaseItem; onPress: () => void; progress: number }) {
+  const imageUrl = useMemo(() => item.ImageTags?.Primary
     ? getImageUrl(item.Id, 'Primary', { maxWidth: 300, tag: item.ImageTags.Primary })
-    : null;
-  const author = (item as any)?.AlbumArtist ?? (item as any)?.Artists?.[0] ?? '';
+    : null, [item.Id, item.ImageTags?.Primary]);
+  const author = useMemo(() => (item as any)?.AlbumArtist ?? (item as any)?.Artists?.[0] ?? '', [item]);
   const accentColor = useSettingsStore((s) => s.accentColor);
 
   return (
@@ -128,7 +128,7 @@ function ContinueReadingCard({ item, onPress, progress }: { item: BaseItem; onPr
       <Text style={styles.continueProgressText}>{progress}%</Text>
     </Pressable>
   );
-}
+});
 
 function AlphabetScroller({ availableLetters, onLetterPress, accentColor }: { availableLetters: string[]; onLetterPress: (letter: string) => void; accentColor: string }) {
   return (

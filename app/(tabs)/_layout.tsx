@@ -250,6 +250,8 @@ export default function TabLayout() {
           headerShown: false,
           tabBarStyle: { display: 'none' },
           lazy: true,
+          // Use fade animation for smooth tab transitions
+          animation: 'fade',
         }}
       >
         <Tabs.Screen name="home" />
@@ -279,6 +281,9 @@ export default function TabLayout() {
         headerShown: false,
         lazy: true,
         tabBarStyle: { display: 'none' },
+        // Use fade animation for smooth transitions between tabs and screens
+        // This provides a polished feel when navigating within the tab structure
+        animation: 'fade',
       }}
     >
       {orderedTabs.map((tab) => (
@@ -291,6 +296,7 @@ export default function TabLayout() {
           }}
         />
       ))}
+      {/* Detail screens hidden from tab bar but accessible via navigation */}
       <Tabs.Screen name="details/[type]/[id]" options={{ href: null }} />
       <Tabs.Screen name="playlist/[id]" options={{ href: null }} />
       <Tabs.Screen name="library/[id]" options={{ href: null }} />

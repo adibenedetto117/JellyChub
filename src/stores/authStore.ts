@@ -1,22 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import { MMKV } from 'react-native-mmkv';
 import type { JellyfinServer, JellyfinUser } from '@/types/jellyfin';
-
-const storage = new MMKV({ id: 'auth-storage' });
-
-const mmkvStorage = {
-  getItem: (name: string) => {
-    const value = storage.getString(name);
-    return value ?? null;
-  },
-  setItem: (name: string, value: string) => {
-    storage.set(name, value);
-  },
-  removeItem: (name: string) => {
-    storage.delete(name);
-  },
-};
+import { authStorage } from './storage';
 
 interface AuthState {
   // Hydration state
@@ -181,7 +166,7 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'auth-storage',
-      storage: createJSONStorage(() => mmkvStorage),
+      storage: createJSONStorage(() => authStorage),
       onRehydrateStorage: () => (state) => {
         state?.setHasHydrated(true);
       },

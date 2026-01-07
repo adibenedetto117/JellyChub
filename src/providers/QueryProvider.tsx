@@ -1,16 +1,8 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactNode } from 'react';
-import { MMKV } from 'react-native-mmkv';
 import { createSyncStoragePersister } from '@tanstack/query-sync-storage-persister';
 import { persistQueryClient } from '@tanstack/react-query-persist-client';
-
-const queryCache = new MMKV({ id: 'query-cache' });
-
-const mmkvStorage = {
-  getItem: (key: string) => queryCache.getString(key) ?? null,
-  setItem: (key: string, value: string) => queryCache.set(key, value),
-  removeItem: (key: string) => queryCache.delete(key),
-};
+import { queryCacheStorage } from '@/stores/storage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -29,7 +21,7 @@ const queryClient = new QueryClient({
 });
 
 const persister = createSyncStoragePersister({
-  storage: mmkvStorage,
+  storage: queryCacheStorage,
   key: 'JELLYCHUB_QUERY_CACHE',
 });
 

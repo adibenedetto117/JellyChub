@@ -113,8 +113,7 @@ export default function DetailScreen() {
       markAsFavorite(userId, itemId, favorite),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['item', userId, id] });
-      queryClient.invalidateQueries({ queryKey: ['favoriteMovies'] });
-      queryClient.invalidateQueries({ queryKey: ['favoriteSeries'] });
+      queryClient.invalidateQueries({ queryKey: ['favorites', userId] });
     },
   });
 

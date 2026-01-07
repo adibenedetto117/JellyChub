@@ -1,8 +1,8 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import { MMKV } from 'react-native-mmkv';
 import type { AppSettings, PlayerSettings } from '@/types';
 import { isTV } from '@/utils/platform';
+import { appStorage } from './storage';
 
 // Library sort types
 export type LibrarySortBy = 'SortName' | 'DateCreated' | 'PremiereDate' | 'CommunityRating' | 'Runtime';
@@ -15,8 +15,6 @@ export interface LibrarySortPreference {
 }
 
 export type LibrarySortPreferences = Record<LibraryCategory, LibrarySortPreference>;
-
-const storage = new MMKV({ id: 'settings-storage' });
 
 // Fixed tabs that are always available
 export type FixedTabId = 'home' | 'search' | 'library' | 'downloads' | 'settings';
@@ -67,19 +65,6 @@ export const ACCENT_COLOR_PRESETS = [
   { name: 'Red', color: '#ef4444' },
   { name: 'Pink', color: '#ec4899' },
 ] as const;
-
-const mmkvStorage = {
-  getItem: (name: string) => {
-    const value = storage.getString(name);
-    return value ?? null;
-  },
-  setItem: (name: string, value: string) => {
-    storage.set(name, value);
-  },
-  removeItem: (name: string) => {
-    storage.delete(name);
-  },
-};
 
 const defaultPlayerSettings: PlayerSettings = {
   autoPlay: true,
@@ -311,7 +296,7 @@ export const useSettingsStore = create<SettingsState>()(
     }),
     {
       name: 'settings-storage',
-      storage: createJSONStorage(() => mmkvStorage),
+      storage: createJSONStorage(() => appStorage),
       onRehydrateStorage: () => (state) => {
         state?.setHasHydrated(true);
       },

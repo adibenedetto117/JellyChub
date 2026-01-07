@@ -70,71 +70,129 @@ function AppContent() {
         screenOptions={{
           headerShown: false,
           contentStyle: { backgroundColor: colors.background.primary },
-          animation: 'fade',
-          animationDuration: 200,
+          // Default animation: slide from right for push, slide from left for back
+          animation: 'slide_from_right',
+          animationDuration: ANIMATION_DURATION.normal,
+          // Enable native gesture for going back with swipe
+          gestureEnabled: true,
+          gestureDirection: 'horizontal',
+          // Smooth native-feeling animation curves
+          ...(Platform.OS === 'ios' && {
+            // iOS-specific: use native spring animation for smoother feel
+            animationTypeForReplace: 'push',
+          }),
         }}
       >
-        <Stack.Screen name="(auth)" options={{ animation: 'fade' }} />
-        <Stack.Screen name="(tabs)" options={{ animation: 'fade' }} />
+        {/* Auth screens - crossfade for seamless transition */}
+        <Stack.Screen
+          name="(auth)"
+          options={{
+            animation: 'fade',
+            animationDuration: ANIMATION_DURATION.fast,
+            gestureEnabled: false,
+          }}
+        />
+
+        {/* Main tabs - fade transition for tab switches */}
+        <Stack.Screen
+          name="(tabs)"
+          options={{
+            animation: 'fade',
+            animationDuration: ANIMATION_DURATION.fast,
+            gestureEnabled: false,
+          }}
+        />
+
+        {/* Video player - fade in for immersive experience */}
         <Stack.Screen
           name="player/video"
           options={{
             animation: 'fade',
+            animationDuration: ANIMATION_DURATION.normal,
             presentation: 'fullScreenModal',
             gestureEnabled: false,
           }}
         />
+
+        {/* Music player - slide up modal with smooth animation */}
         <Stack.Screen
           name="player/music"
           options={{
             animation: 'slide_from_bottom',
-            animationDuration: 220,
+            animationDuration: ANIMATION_DURATION.modal,
             presentation: 'transparentModal',
-            gestureEnabled: false,
+            gestureEnabled: true,
+            gestureDirection: 'vertical',
           }}
         />
+
+        {/* Audiobook player - slide up modal */}
         <Stack.Screen
           name="player/audiobook"
           options={{
             animation: 'slide_from_bottom',
-            animationDuration: 220,
+            animationDuration: ANIMATION_DURATION.modal,
             presentation: 'modal',
+            gestureEnabled: true,
+            gestureDirection: 'vertical',
           }}
         />
+
+        {/* Reader screens - fade for immersive reading experience */}
         <Stack.Screen
           name="reader/epub"
           options={{
             animation: 'fade',
+            animationDuration: ANIMATION_DURATION.normal,
             presentation: 'fullScreenModal',
+            gestureEnabled: false,
           }}
         />
         <Stack.Screen
           name="reader/pdf"
           options={{
             animation: 'fade',
+            animationDuration: ANIMATION_DURATION.normal,
             presentation: 'fullScreenModal',
+            gestureEnabled: false,
           }}
         />
         <Stack.Screen
           name="reader/comic"
           options={{
             animation: 'fade',
+            animationDuration: ANIMATION_DURATION.normal,
             presentation: 'fullScreenModal',
+            gestureEnabled: false,
+          }}
+        />
+
+        {/* Settings screens - native slide animation */}
+        <Stack.Screen
+          name="settings/jellyseerr"
+          options={{
+            animation: 'slide_from_right',
+            animationDuration: ANIMATION_DURATION.normal,
+            gestureEnabled: true,
+            gestureDirection: 'horizontal',
           }}
         />
         <Stack.Screen
-          name="settings/jellyseerr"
-          options={{ animation: 'slide_from_right', animationDuration: 200 }}
-        />
-        <Stack.Screen
           name="settings/bottom-bar"
-          options={{ animation: 'slide_from_right', animationDuration: 200 }}
+          options={{
+            animation: 'slide_from_right',
+            animationDuration: ANIMATION_DURATION.normal,
+            gestureEnabled: true,
+            gestureDirection: 'horizontal',
+          }}
         />
+
+        {/* Search modal - slide up with vertical swipe to dismiss */}
         <Stack.Screen
           name="search"
           options={{
             animation: 'slide_from_bottom',
-            animationDuration: 220,
+            animationDuration: ANIMATION_DURATION.modal,
             presentation: 'modal',
             gestureEnabled: true,
             gestureDirection: 'vertical',
