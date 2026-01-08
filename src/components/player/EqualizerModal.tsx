@@ -1,6 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import { View, Text, Pressable, ScrollView, Modal, Dimensions } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { View, Text, Pressable, Modal, Dimensions } from 'react-native';
 import { GestureHandlerRootView, GestureDetector, Gesture } from 'react-native-gesture-handler';
 import Animated, {
   useSharedValue,
@@ -8,7 +7,6 @@ import Animated, {
   withSpring,
   withTiming,
   runOnJS,
-  interpolate,
 } from 'react-native-reanimated';
 import { useSettingsStore } from '@/stores';
 import {
@@ -247,59 +245,44 @@ export function EqualizerModal({ visible, onClose }: EqualizerModalProps) {
               </View>
 
               <View style={{ paddingHorizontal: 24, paddingBottom: 16 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <Text style={{ color: '#fff', fontSize: 20, fontWeight: '700' }}>Equalizer</Text>
-                  <View
-                    style={{
-                      paddingHorizontal: 10,
-                      paddingVertical: 4,
-                      borderRadius: 12,
-                      backgroundColor: 'rgba(255,165,0,0.2)',
-                    }}
-                  >
-                    <Text style={{ color: '#ffa500', fontSize: 11, fontWeight: '600' }}>
-                      Visual Only
-                    </Text>
-                  </View>
-                </View>
-                <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 13, marginTop: 4 }}>
-                  Audio processing requires native implementation
-                </Text>
+                <Text style={{ color: '#fff', fontSize: 20, fontWeight: '700' }}>Equalizer</Text>
               </View>
 
               <View style={{ paddingHorizontal: 24, marginBottom: 20 }}>
                 <Text style={{ color: 'rgba(255,255,255,0.7)', fontSize: 14, fontWeight: '600', marginBottom: 12 }}>
                   Presets
                 </Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                  <View style={{ flexDirection: 'row', gap: 8 }}>
-                    {EQUALIZER_PRESETS.map((preset) => {
-                      const isSelected = preset.id === equalizerPreset;
-                      return (
-                        <Pressable
-                          key={preset.id}
-                          onPress={() => handlePresetSelect(preset.id)}
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                  {EQUALIZER_PRESETS.map((preset) => {
+                    const isSelected = preset.id === equalizerPreset;
+                    return (
+                      <Pressable
+                        key={preset.id}
+                        onPress={() => handlePresetSelect(preset.id)}
+                        style={{
+                          width: (SCREEN_WIDTH - 48 - 16) / 3,
+                          paddingVertical: 14,
+                          borderRadius: 12,
+                          backgroundColor: isSelected ? accentColor : 'rgba(255,255,255,0.1)',
+                          alignItems: 'center',
+                          borderWidth: isSelected ? 0 : 1,
+                          borderColor: 'rgba(255,255,255,0.1)',
+                        }}
+                      >
+                        <Text
                           style={{
-                            paddingHorizontal: 16,
-                            paddingVertical: 10,
-                            borderRadius: 20,
-                            backgroundColor: isSelected ? accentColor : 'rgba(255,255,255,0.1)',
+                            color: isSelected ? '#fff' : 'rgba(255,255,255,0.7)',
+                            fontSize: 13,
+                            fontWeight: isSelected ? '600' : '500',
                           }}
+                          numberOfLines={1}
                         >
-                          <Text
-                            style={{
-                              color: isSelected ? '#fff' : 'rgba(255,255,255,0.7)',
-                              fontSize: 14,
-                              fontWeight: isSelected ? '600' : '400',
-                            }}
-                          >
-                            {preset.name}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                </ScrollView>
+                          {preset.name}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
               </View>
 
               <View style={{ paddingHorizontal: 24 }}>

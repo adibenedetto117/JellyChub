@@ -1,16 +1,15 @@
 import { createAudioPlayer, setAudioModeAsync, AudioPlayer, AudioStatus } from 'expo-audio';
 import * as FileSystem from 'expo-file-system/legacy';
 import { usePlayerStore } from '@/stores';
-import { useSettingsStore } from '@/stores/settingsStore';
 import { useDownloadStore } from '@/stores/downloadStore';
 import { getAudioStreamUrl, reportPlaybackStart, reportPlaybackStopped, generatePlaySessionId } from '@/api';
 import { ticksToMs, msToTicks } from '@/utils';
 import { mediaSessionService } from './mediaSessionService';
+import { encryptionService } from './encryptionService';
 import type { BaseItem } from '@/types/jellyfin';
 
 class AudioService {
   private player: AudioPlayer | null = null;
-  private crossfadePlayer: AudioPlayer | null = null;
   private preloadedPlayer: AudioPlayer | null = null;
   private preloadedItemId: string | null = null;
   private currentItemId: string | null = null;
@@ -20,11 +19,8 @@ class AudioService {
   private isLoading = false;
   private isSeeking = false;
   private hasHandledTrackEnd = false;
-  private isCrossfading = false;
   private isPreloading = false;
-  private crossfadeInterval: ReturnType<typeof setInterval> | null = null;
   private statusSubscription: { remove: () => void } | null = null;
-  private crossfadeStatusSubscription: { remove: () => void } | null = null;
   private queueSubscription: (() => void) | null = null;
   private currentUserId: string | null = null;
 
@@ -212,7 +208,6 @@ class AudioService {
       const container = item.MediaSources?.[0]?.Container?.toLowerCase();
       const useDirectStream = isAudiobook && (container === 'm4b' || container === 'm4a' || container === 'mp4');
 
-      // Check if the track is downloaded for offline playback
       let playbackUrl: string;
       let isLocalPlayback = false;
       const downloadStore = useDownloadStore.getState();
@@ -221,7 +216,11 @@ class AudioService {
       if (downloadedItem?.localPath) {
         const fileInfo = await FileSystem.getInfoAsync(downloadedItem.localPath);
         if (fileInfo.exists) {
-          playbackUrl = downloadedItem.localPath;
+          if (downloadedItem.localPath.endsWith('.enc')) {
+            playbackUrl = await encryptionService.getDecryptedUri(downloadedItem.localPath);
+          } else {
+            playbackUrl = downloadedItem.localPath;
+          }
           isLocalPlayback = true;
         } else {
           playbackUrl = getAudioStreamUrl(item.Id, { directStream: useDirectStream });
@@ -278,14 +277,13 @@ class AudioService {
     const bufferedMs = durationMs;
 
     if (store.mediaType === 'audio' && status.playing && durationMs > 0) {
-      this.checkCrossfadeTrigger(positionMs, durationMs);
       this.checkPreloadTrigger(positionMs, durationMs);
     }
 
     const isNearEnd = durationMs > 0 && positionMs >= durationMs - 500;
     const shouldTriggerEnd = status.didJustFinish || (isNearEnd && !status.playing);
 
-    if (shouldTriggerEnd && !this.hasHandledTrackEnd && !this.isCrossfading) {
+    if (shouldTriggerEnd && !this.hasHandledTrackEnd) {
       this.handleTrackEnd();
       return;
     }
@@ -320,154 +318,10 @@ class AudioService {
     }
   }
 
-  private getCrossfadeSettings() {
-    const settings = useSettingsStore.getState();
-    return {
-      enabled: settings.crossfadeEnabled,
-      duration: settings.crossfadeDuration * 1000,
-    };
-  }
-
-  private async startCrossfade(nextItem: BaseItem) {
-    const { enabled, duration } = this.getCrossfadeSettings();
-    if (!enabled || !this.player || this.isCrossfading) return false;
-
-    this.isCrossfading = true;
-
-    try {
-      const container = nextItem.MediaSources?.[0]?.Container?.toLowerCase();
-      const useDirectStream = container === 'm4b' || container === 'm4a' || container === 'mp4';
-
-      let playbackUrl: string;
-      const downloadStore = useDownloadStore.getState();
-      const downloadedItem = downloadStore.getDownloadedItem(nextItem.Id);
-
-      if (downloadedItem?.localPath) {
-        const fileInfo = await FileSystem.getInfoAsync(downloadedItem.localPath);
-        if (fileInfo.exists) {
-          playbackUrl = downloadedItem.localPath;
-        } else {
-          playbackUrl = getAudioStreamUrl(nextItem.Id, { directStream: useDirectStream });
-        }
-      } else {
-        playbackUrl = getAudioStreamUrl(nextItem.Id, { directStream: useDirectStream });
-      }
-
-      this.crossfadePlayer = createAudioPlayer({ uri: playbackUrl });
-      this.crossfadePlayer.volume = 0;
-      this.crossfadePlayer.play();
-
-      const steps = 20;
-      const stepDuration = duration / steps;
-      let step = 0;
-
-      this.crossfadeInterval = setInterval(() => {
-        step++;
-        const progress = step / steps;
-
-        if (this.player) {
-          this.player.volume = Math.max(0, 1 - progress);
-        }
-        if (this.crossfadePlayer) {
-          this.crossfadePlayer.volume = Math.min(1, progress);
-        }
-
-        if (step >= steps) {
-          this.completeCrossfade(nextItem);
-        }
-      }, stepDuration);
-
-      return true;
-    } catch (error) {
-      this.isCrossfading = false;
-      return false;
-    }
-  }
-
-  private completeCrossfade(nextItem: BaseItem) {
-    if (this.crossfadeInterval) {
-      clearInterval(this.crossfadeInterval);
-      this.crossfadeInterval = null;
-    }
-
-    if (this.player) {
-      this.statusSubscription?.remove();
-      this.player.remove();
-    }
-
-    this.player = this.crossfadePlayer;
-    this.crossfadePlayer = null;
-
-    if (this.player) {
-      this.player.volume = 1;
-      this.statusSubscription = this.player.addListener('playbackStatusUpdate', (status) => {
-        this.onPlaybackStatusUpdate(status);
-      });
-    }
-
-    this.currentItemId = nextItem.Id;
-    this.currentItem = nextItem;
-    this.hasHandledTrackEnd = false;
-    this.isCrossfading = false;
-
-    const store = usePlayerStore.getState();
-    const isAudiobook = nextItem.Type === 'AudioBook';
-    this.playSessionId = generatePlaySessionId();
-
-    store.setCurrentItem(
-      { item: nextItem, mediaSource: { Id: nextItem.Id } as any, streamUrl: '', playSessionId: this.playSessionId },
-      isAudiobook ? 'audiobook' : 'audio'
-    );
-
-    reportPlaybackStart({
-      ItemId: nextItem.Id,
-      MediaSourceId: nextItem.Id,
-      PlaySessionId: this.playSessionId,
-      PlayMethod: 'DirectStream',
-    });
-
-    const durationMs = ticksToMs(nextItem.RunTimeTicks ?? 0);
-    mediaSessionService.updateNowPlaying(nextItem, 0, durationMs);
-    mediaSessionService.updatePlaybackState('playing', 0);
-  }
-
-  private checkCrossfadeTrigger(positionMs: number, durationMs: number) {
-    const { enabled, duration } = this.getCrossfadeSettings();
-    if (!enabled || this.isCrossfading || this.hasHandledTrackEnd) return;
-
-    const store = usePlayerStore.getState();
-    const timeRemaining = durationMs - positionMs;
-
-    if (timeRemaining <= duration && timeRemaining > duration - 100) {
-      const hasNext = store.currentQueueIndex < store.queue.length - 1 || store.music.repeatMode === 'all';
-      if (hasNext && store.music.repeatMode !== 'one') {
-        let nextIndex = store.currentQueueIndex + 1;
-        if (nextIndex >= store.queue.length && store.music.repeatMode === 'all') {
-          nextIndex = 0;
-        }
-        const nextItem = store.queue[nextIndex]?.item;
-        if (nextItem) {
-          this.hasHandledTrackEnd = true;
-          this.startCrossfade(nextItem).then((started) => {
-            if (started) {
-              store.skipToIndex(nextIndex);
-            } else {
-              this.hasHandledTrackEnd = false;
-            }
-          });
-        }
-      }
-    }
-  }
-
   private async preloadNextTrack() {
     if (this.isPreloading || this.preloadedPlayer) return;
 
     const store = usePlayerStore.getState();
-    const { enabled: crossfadeEnabled } = this.getCrossfadeSettings();
-
-    if (crossfadeEnabled) return;
-
     const hasNext = store.currentQueueIndex < store.queue.length - 1 || store.music.repeatMode === 'all';
     if (!hasNext || store.music.repeatMode === 'one') return;
 
@@ -492,7 +346,11 @@ class AudioService {
       if (downloadedItem?.localPath) {
         const fileInfo = await FileSystem.getInfoAsync(downloadedItem.localPath);
         if (fileInfo.exists) {
-          playbackUrl = downloadedItem.localPath;
+          if (downloadedItem.localPath.endsWith('.enc')) {
+            playbackUrl = await encryptionService.getDecryptedUri(downloadedItem.localPath);
+          } else {
+            playbackUrl = downloadedItem.localPath;
+          }
         } else {
           playbackUrl = getAudioStreamUrl(nextItem.Id, { directStream: useDirectStream });
         }
@@ -531,9 +389,6 @@ class AudioService {
   }
 
   private checkPreloadTrigger(positionMs: number, durationMs: number) {
-    const { enabled: crossfadeEnabled } = this.getCrossfadeSettings();
-    if (crossfadeEnabled) return;
-
     const timeRemaining = durationMs - positionMs;
     const preloadThreshold = 10000;
 
@@ -595,20 +450,6 @@ class AudioService {
   async stop() {
     const store = usePlayerStore.getState();
 
-    if (this.crossfadeInterval) {
-      clearInterval(this.crossfadeInterval);
-      this.crossfadeInterval = null;
-    }
-
-    if (this.crossfadePlayer) {
-      try {
-        this.crossfadeStatusSubscription?.remove();
-        this.crossfadePlayer.remove();
-      } catch (e) {}
-      this.crossfadePlayer = null;
-      this.crossfadeStatusSubscription = null;
-    }
-
     this.clearPreloadedPlayer();
 
     try {
@@ -641,7 +482,6 @@ class AudioService {
     this.currentItem = null;
     this.playSessionId = null;
     this.isInitialized = false;
-    this.isCrossfading = false;
     this.isPreloading = false;
 
     store.clearCurrentItem();

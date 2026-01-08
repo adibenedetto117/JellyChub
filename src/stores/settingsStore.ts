@@ -136,10 +136,6 @@ interface SettingsState extends Omit<AppSettings, 'servers'> {
   equalizerPreset: string;
   customEqualizerBands: number[];
 
-  // Crossfade settings
-  crossfadeEnabled: boolean;
-  crossfadeDuration: number; // seconds (0-12)
-
   // OpenSubtitles
   openSubtitlesApiKey: string | null;
 
@@ -194,9 +190,6 @@ interface SettingsState extends Omit<AppSettings, 'servers'> {
   setEqualizerPreset: (presetId: string) => void;
   setCustomEqualizerBands: (bands: number[]) => void;
 
-  setCrossfadeEnabled: (enabled: boolean) => void;
-  setCrossfadeDuration: (seconds: number) => void;
-
   setOpenSubtitlesApiKey: (apiKey: string | null) => void;
 
   setRadarrCredentials: (url: string | null, apiKey: string | null) => void;
@@ -232,8 +225,6 @@ const initialState = {
   librarySortPreferences: defaultLibrarySortPreferences,
   equalizerPreset: DEFAULT_EQUALIZER_PRESET,
   customEqualizerBands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-  crossfadeEnabled: false,
-  crossfadeDuration: 3,
   openSubtitlesApiKey: null,
   radarrUrl: null,
   radarrApiKey: null,
@@ -380,10 +371,6 @@ export const useSettingsStore = create<SettingsState>()(
       setEqualizerPreset: (equalizerPreset) => set({ equalizerPreset }),
 
       setCustomEqualizerBands: (customEqualizerBands) => set({ customEqualizerBands }),
-
-      setCrossfadeEnabled: (crossfadeEnabled) => set({ crossfadeEnabled }),
-
-      setCrossfadeDuration: (crossfadeDuration) => set({ crossfadeDuration: Math.max(0, Math.min(12, crossfadeDuration)) }),
 
       setOpenSubtitlesApiKey: (openSubtitlesApiKey) => set({ openSubtitlesApiKey }),
 

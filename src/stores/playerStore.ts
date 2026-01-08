@@ -9,6 +9,7 @@ import type {
   SubtitleTrack,
   AudioTrackInfo,
   RepeatMode,
+  ShuffleMode,
   Bookmark,
   Lyrics,
   VideoSleepTimer,
@@ -53,12 +54,13 @@ interface PlayerActions {
   // Music-specific
   setShuffle: (enabled: boolean) => void;
   toggleShuffle: () => void;
+  setShuffleMode: (mode: ShuffleMode) => void;
+  cycleShuffleMode: () => void;
   setRepeatMode: (mode: RepeatMode) => void;
   cycleRepeatMode: () => void;
   setLyrics: (lyrics: Lyrics | undefined) => void;
   setShowLyrics: (show: boolean) => void;
   setMusicSleepTimer: (minutes: number | undefined) => void;
-  setCrossfade: (enabled: boolean, duration?: number) => void;
 
   // Audiobook-specific
   setPlaybackSpeed: (speed: number) => void;
@@ -99,11 +101,10 @@ const initialState: PlayerStoreState = {
   },
   music: {
     shuffle: false,
+    shuffleMode: 'off' as ShuffleMode,
     repeatMode: 'off',
     showLyrics: false,
     visualizerEnabled: false,
-    crossfadeEnabled: false,
-    crossfadeDuration: 3,
   },
   video: {
     aspectRatio: 'auto',
@@ -249,16 +250,62 @@ export const usePlayerStore = create<PlayerStore>()(
       set((state) => {
         if (state.queue.length <= 1) return state;
 
-        const currentItem = state.queue[state.currentQueueIndex];
-
-        // Get items before and after current (we'll shuffle the upcoming items)
         const upcomingItems = state.queue.slice(state.currentQueueIndex + 1);
+        const shuffleMode = state.music.shuffleMode || 'all';
+        let shuffled: typeof upcomingItems;
 
-        // Fisher-Yates shuffle for upcoming items
-        const shuffled = [...upcomingItems];
-        for (let i = shuffled.length - 1; i > 0; i--) {
-          const j = Math.floor(Math.random() * (i + 1));
-          [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+        // Fisher-Yates shuffle helper
+        const fisherYates = <T>(arr: T[]): T[] => {
+          const result = [...arr];
+          for (let i = result.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [result[i], result[j]] = [result[j], result[i]];
+          }
+          return result;
+        };
+
+        switch (shuffleMode) {
+          case 'album': {
+            // Group tracks by album, shuffle albums, keep track order within albums
+            const albumGroups = new Map<string, typeof upcomingItems>();
+            upcomingItems.forEach((item) => {
+              const albumId = (item.item as any)?.AlbumId || 'unknown';
+              if (!albumGroups.has(albumId)) {
+                albumGroups.set(albumId, []);
+              }
+              albumGroups.get(albumId)!.push(item);
+            });
+
+            // Shuffle the album order
+            const albums = fisherYates(Array.from(albumGroups.keys()));
+
+            // Rebuild with shuffled albums but tracks in original order
+            shuffled = albums.flatMap((albumId) => albumGroups.get(albumId) || []);
+            break;
+          }
+
+          case 'avoid_recent': {
+            // Get recently played track IDs from the played portion of queue
+            const recentIds = new Set(
+              state.queue.slice(Math.max(0, state.currentQueueIndex - 10), state.currentQueueIndex + 1)
+                .map((item) => item.id)
+            );
+
+            // Separate recent and non-recent tracks
+            const notRecent = upcomingItems.filter((item) => !recentIds.has(item.id));
+            const recent = upcomingItems.filter((item) => recentIds.has(item.id));
+
+            // Shuffle non-recent first, then add recent tracks at the end
+            shuffled = [...fisherYates(notRecent), ...fisherYates(recent)];
+            break;
+          }
+
+          case 'all':
+          default: {
+            // Standard Fisher-Yates shuffle
+            shuffled = fisherYates(upcomingItems);
+            break;
+          }
         }
 
         // Rebuild queue: keep items up to and including current, then shuffled upcoming
@@ -360,6 +407,29 @@ export const usePlayerStore = create<PlayerStore>()(
         music: { ...state.music, shuffle: !state.music.shuffle },
       })),
 
+    setShuffleMode: (shuffleMode) =>
+      set((state) => ({
+        music: {
+          ...state.music,
+          shuffleMode,
+          shuffle: shuffleMode !== 'off',
+        },
+      })),
+
+    cycleShuffleMode: () =>
+      set((state) => {
+        const modes: ShuffleMode[] = ['off', 'all', 'album', 'avoid_recent'];
+        const currentIndex = modes.indexOf(state.music.shuffleMode);
+        const nextMode = modes[(currentIndex + 1) % modes.length];
+        return {
+          music: {
+            ...state.music,
+            shuffleMode: nextMode,
+            shuffle: nextMode !== 'off',
+          },
+        };
+      }),
+
     setRepeatMode: (repeatMode) =>
       set((state) => ({
         music: { ...state.music, repeatMode },
@@ -391,15 +461,6 @@ export const usePlayerStore = create<PlayerStore>()(
           ...state.music,
           sleepTimerMinutes: minutes,
           sleepTimerEndTime: minutes ? Date.now() + minutes * 60 * 1000 : undefined,
-        },
-      })),
-
-    setCrossfade: (enabled, duration) =>
-      set((state) => ({
-        music: {
-          ...state.music,
-          crossfadeEnabled: enabled,
-          crossfadeDuration: duration ?? state.music.crossfadeDuration,
         },
       })),
 

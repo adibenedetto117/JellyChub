@@ -103,18 +103,17 @@ export interface Lyrics {
   source?: string;
 }
 
+export type ShuffleMode = 'off' | 'all' | 'album' | 'avoid_recent';
+
 export interface MusicPlayerState {
-  shuffle: boolean;
+  shuffle: boolean; // Legacy - kept for compatibility
+  shuffleMode: ShuffleMode;
   repeatMode: RepeatMode;
   showLyrics: boolean;
   lyrics?: Lyrics;
   visualizerEnabled: boolean;
-  // Sleep timer
   sleepTimerEndTime?: number;
   sleepTimerMinutes?: number;
-  // Crossfade
-  crossfadeEnabled: boolean;
-  crossfadeDuration: number; // in seconds (0-12)
 }
 
 export type VideoSleepTimerType = 'duration' | 'end_of_episode' | 'custom';
