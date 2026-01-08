@@ -16,6 +16,8 @@ import {
   shouldUseSquareVariant,
   groupLibrariesByType,
   getLatestMediaFromMultipleLibraries,
+  getRecentlyPlayed,
+  getMostPlayed,
   COLLECTION_TYPE_CONFIG,
 } from '@/api';
 import { MediaRow } from '@/components/media/MediaRow';
@@ -105,6 +107,22 @@ export default function HomeScreen() {
     };
   }, [allFavorites]);
 
+  // Recently played music
+  const { data: recentlyPlayed, refetch: refetchRecentlyPlayed } = useQuery({
+    queryKey: ['recentlyPlayedMusic', userId],
+    queryFn: () => getRecentlyPlayed(userId, 20, ['Audio']),
+    enabled: !!userId,
+    staleTime: 1000 * 60 * 5,
+  });
+
+  // Most played music
+  const { data: mostPlayed, refetch: refetchMostPlayed } = useQuery({
+    queryKey: ['mostPlayedMusic', userId],
+    queryFn: () => getMostPlayed(userId, 20, ['Audio']),
+    enabled: !!userId,
+    staleTime: 1000 * 60 * 5,
+  });
+
   // Group libraries by collection type for consolidated display
   const groupedLibraries = useMemo(() => {
     if (!libraries) return [];
@@ -150,10 +168,12 @@ export default function HomeScreen() {
       refetchNextUp(),
       refetchSuggestions(),
       refetchFavorites(),
+      refetchRecentlyPlayed(),
+      refetchMostPlayed(),
       ...latestMediaQueries.map((query) => query.refetch()),
     ]);
     setRefreshing(false);
-  }, [refetchLibraries, refetchResume, refetchNextUp, refetchSuggestions, refetchFavorites, latestMediaQueries]);
+  }, [refetchLibraries, refetchResume, refetchNextUp, refetchSuggestions, refetchFavorites, refetchRecentlyPlayed, refetchMostPlayed, latestMediaQueries]);
 
   const handleItemPress = useCallback((item: BaseItem) => {
     const type = item.Type?.toLowerCase();
@@ -163,6 +183,8 @@ export default function HomeScreen() {
       router.push(`/(tabs)/details/series/${item.Id}`);
     } else if (type === 'musicalbum') {
       router.push(`/(tabs)/details/album/${item.Id}`);
+    } else if (type === 'audio') {
+      router.push(`/player/music?itemId=${item.Id}`);
     } else if (type === 'audiobook') {
       router.push(`/player/audiobook?itemId=${item.Id}`);
     } else if (type === 'book') {
@@ -336,6 +358,26 @@ export default function HomeScreen() {
             icon="sparkles"
           />
         ) : null}
+
+        {(recentlyPlayed?.Items?.length ?? 0) > 0 && (
+          <MediaRow
+            title="Recently Played"
+            items={recentlyPlayed?.Items ?? []}
+            onItemPress={handleItemPress}
+            icon="time"
+            variant="square"
+          />
+        )}
+
+        {(mostPlayed?.Items?.length ?? 0) > 0 && (
+          <MediaRow
+            title="Most Played"
+            items={mostPlayed?.Items ?? []}
+            onItemPress={handleItemPress}
+            icon="trending-up"
+            variant="square"
+          />
+        )}
 
         {libraryLatestMedia.length === 0 && latestMediaQueries.some(q => q.isLoading) ? (
           <>

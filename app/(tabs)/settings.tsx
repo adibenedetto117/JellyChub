@@ -220,8 +220,6 @@ export default function SettingsScreen() {
     reduceMotion,
     hapticsEnabled,
     equalizerPreset,
-    crossfadeEnabled,
-    crossfadeDuration,
     setDownloadQuality,
     setDownloadOverWifiOnly,
     setAutoRemoveWatchedDownloads,
@@ -232,8 +230,6 @@ export default function SettingsScreen() {
     setReduceMotion,
     setHapticsEnabled,
     setEqualizerPreset,
-    setCrossfadeEnabled,
-    setCrossfadeDuration,
     openSubtitlesApiKey,
     setOpenSubtitlesApiKey,
     notifications,
@@ -659,39 +655,6 @@ export default function SettingsScreen() {
               <Text className="text-text-tertiary">{'>'}</Text>
             }
           />
-          <SettingsRow
-            title="Crossfade"
-            subtitle={crossfadeEnabled ? `${crossfadeDuration}s between tracks` : 'Disabled'}
-            rightElement={
-              <Switch
-                value={crossfadeEnabled}
-                onValueChange={setCrossfadeEnabled}
-                trackColor={{ false: '#3a3a3a', true: accentColor }}
-              />
-            }
-          />
-          {crossfadeEnabled && (
-            <View className="px-4 py-3">
-              <Text className="text-text-secondary text-sm mb-2">Duration: {crossfadeDuration}s</Text>
-              <View className="flex-row justify-between mt-1">
-                {[1, 3, 5, 8, 12].map((d) => (
-                  <Pressable
-                    key={d}
-                    onPress={() => setCrossfadeDuration(d)}
-                    className="px-4 py-2 rounded-full"
-                    style={{ backgroundColor: crossfadeDuration === d ? accentColor : 'rgba(255,255,255,0.1)' }}
-                  >
-                    <Text className="text-white text-sm">{d}s</Text>
-                  </Pressable>
-                ))}
-              </View>
-            </View>
-          )}
-          <View className="py-3 px-1">
-            <Text className="text-text-tertiary text-xs">
-              Audio features require native implementation
-            </Text>
-          </View>
         </SettingsSection>
 
         <SettingsSection title="Downloads">
@@ -809,21 +772,41 @@ export default function SettingsScreen() {
         {!offlineMode && (
           <SettingsSection title="Radarr / Sonarr">
             <SettingsRow
-              title="Radarr"
+              title="Radarr Settings"
               subtitle={radarrApiKey ? 'Connected' : 'Not configured'}
               onPress={() => router.push('/settings/radarr')}
               rightElement={
                 <Text className="text-text-tertiary">{'>'}</Text>
               }
             />
+            {radarrApiKey && (
+              <SettingsRow
+                title="Manage Radarr"
+                subtitle="Library, queue, and add movies"
+                onPress={() => router.push('/settings/radarr-manage')}
+                rightElement={
+                  <Text className="text-text-tertiary">{'>'}</Text>
+                }
+              />
+            )}
             <SettingsRow
-              title="Sonarr"
+              title="Sonarr Settings"
               subtitle={sonarrApiKey ? 'Connected' : 'Not configured'}
               onPress={() => router.push('/settings/sonarr')}
               rightElement={
                 <Text className="text-text-tertiary">{'>'}</Text>
               }
             />
+            {sonarrApiKey && (
+              <SettingsRow
+                title="Manage Sonarr"
+                subtitle="Library, queue, and add series"
+                onPress={() => router.push('/settings/sonarr-manage')}
+                rightElement={
+                  <Text className="text-text-tertiary">{'>'}</Text>
+                }
+              />
+            )}
             {(radarrApiKey || sonarrApiKey) && (
               <SettingsRow
                 title="Download Queue"

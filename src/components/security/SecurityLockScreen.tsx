@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { View, AppState, AppStateStatus, Platform } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { useSecurityStore } from '@/stores/securityStore';
@@ -10,10 +10,12 @@ interface SecurityLockScreenProps {
 }
 
 export function SecurityLockScreen({ children }: SecurityLockScreenProps) {
-  const appState = useRef(AppState.currentState);
+  const appStateRef = useRef(AppState.currentState);
   const backgroundTime = useRef<number | null>(null);
+  const [currentAppState, setCurrentAppState] = useState(AppState.currentState);
 
   const {
+    _hasHydrated,
     isLocked,
     settings,
     checkAutoLock,
@@ -24,23 +26,27 @@ export function SecurityLockScreen({ children }: SecurityLockScreenProps) {
   } = useSecurityStore();
 
   useEffect(() => {
-    checkBiometricAvailability();
-  }, [checkBiometricAvailability]);
+    if (_hasHydrated) {
+      checkBiometricAvailability();
+    }
+  }, [_hasHydrated, checkBiometricAvailability]);
 
   useEffect(() => {
-    if (settings.pinEnabled) {
+    if (_hasHydrated && settings.pinEnabled) {
       checkAutoLock();
     }
-  }, [settings.pinEnabled, checkAutoLock]);
+  }, [_hasHydrated, settings.pinEnabled, checkAutoLock]);
 
   const handleAppStateChange = useCallback(
     (nextAppState: AppStateStatus) => {
+      setCurrentAppState(nextAppState);
+
       if (!settings.pinEnabled) {
-        appState.current = nextAppState;
+        appStateRef.current = nextAppState;
         return;
       }
 
-      if (appState.current === 'active' && nextAppState.match(/inactive|background/)) {
+      if (appStateRef.current === 'active' && nextAppState.match(/inactive|background/)) {
         backgroundTime.current = Date.now();
         updateLastActiveTime();
 
@@ -49,14 +55,14 @@ export function SecurityLockScreen({ children }: SecurityLockScreenProps) {
         }
       }
 
-      if (appState.current.match(/inactive|background/) && nextAppState === 'active') {
+      if (appStateRef.current.match(/inactive|background/) && nextAppState === 'active') {
         if (backgroundTime.current) {
           checkAutoLock();
           backgroundTime.current = null;
         }
       }
 
-      appState.current = nextAppState;
+      appStateRef.current = nextAppState;
     },
     [settings.pinEnabled, settings.autoLockTimeout, lock, checkAutoLock, updateLastActiveTime]
   );
@@ -70,13 +76,13 @@ export function SecurityLockScreen({ children }: SecurityLockScreenProps) {
     unlock();
   }, [unlock]);
 
-  const showBlur = settings.hideInAppSwitcher && appState.current !== 'active';
+  const showBlur = settings.hideInAppSwitcher && currentAppState !== 'active';
 
   return (
     <View style={{ flex: 1 }}>
       {children}
 
-      {isLocked && settings.pinEnabled && (
+      {_hasHydrated && isLocked && settings.pinEnabled && (
         <View
           style={{
             position: 'absolute',

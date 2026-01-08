@@ -35,6 +35,8 @@ export {
 export type { ChannelSortOption, ChannelFilterOption, EPGViewMode } from './liveTvStore';
 export { useSecurityStore, selectSecuritySettings, selectIsLocked, selectBiometricType } from './securityStore';
 export type { SecuritySettings, AutoLockTimeout } from './securityStore';
+export { useVideoPreferencesStore, selectSubtitleOffset } from './videoPreferencesStore';
+export type { VideoPreferences } from './videoPreferencesStore';
 
 // Storage exports - centralized MMKV storage instances
 export {

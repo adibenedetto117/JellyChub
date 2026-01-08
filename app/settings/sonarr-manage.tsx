@@ -17,42 +17,48 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { radarrService } from '@/services';
+import { sonarrService } from '@/services';
 import type {
-  RadarrMovie,
-  RadarrLookupResult,
-  RadarrQueueItem,
-  RadarrRootFolder,
-  RadarrQualityProfile,
-} from '@/services/radarrService';
+  SonarrSeries,
+  SonarrLookupResult,
+  SonarrQueueItem,
+  SonarrRootFolder,
+  SonarrQualityProfile,
+} from '@/services/sonarrService';
 import { colors, spacing, borderRadius } from '@/theme';
 import { formatBytes } from '@/utils';
 import { Skeleton } from '@/components/ui';
 
 type TabType = 'library' | 'queue' | 'search';
 type ViewMode = 'list' | 'grid';
-type FilterType = 'all' | 'downloaded' | 'missing' | 'unmonitored';
+type FilterType = 'all' | 'complete' | 'partial' | 'missing' | 'unmonitored';
 
-interface MovieCardProps {
-  movie: RadarrMovie;
+interface SeriesCardProps {
+  series: SonarrSeries;
   accentColor: string;
   viewMode: ViewMode;
   gridItemWidth: number;
 }
 
-function MovieCard({ movie, accentColor, viewMode, gridItemWidth }: MovieCardProps) {
-  const poster = movie.images.find((i) => i.coverType === 'poster');
+function SeriesCard({ series, accentColor, viewMode, gridItemWidth }: SeriesCardProps) {
+  const poster = series.images.find((i) => i.coverType === 'poster');
   const posterUrl = poster?.remoteUrl || poster?.url;
 
+  const episodeCount = series.statistics?.episodeFileCount ?? 0;
+  const totalEpisodes = series.statistics?.episodeCount ?? 0;
+  const percentComplete = series.statistics?.percentOfEpisodes ?? 0;
+
   const getStatusColor = () => {
-    if (movie.hasFile) return colors.status.success;
-    if (movie.monitored) return colors.status.warning;
+    if (percentComplete >= 100) return colors.status.success;
+    if (series.monitored && percentComplete > 0) return colors.status.info;
+    if (series.monitored) return colors.status.warning;
     return colors.text.tertiary;
   };
 
   const getStatusText = () => {
-    if (movie.hasFile) return 'Downloaded';
-    if (movie.monitored) return 'Missing';
+    if (percentComplete >= 100) return 'Complete';
+    if (series.monitored && percentComplete > 0) return 'Partial';
+    if (series.monitored) return 'Missing';
     return 'Unmonitored';
   };
 
@@ -65,13 +71,18 @@ function MovieCard({ movie, accentColor, viewMode, gridItemWidth }: MovieCardPro
             <Image source={{ uri: posterUrl }} style={styles.gridPoster} contentFit="cover" />
           ) : (
             <View style={styles.noPosterGrid}>
-              <Ionicons name="film-outline" size={32} color={colors.text.muted} />
+              <Ionicons name="tv-outline" size={32} color={colors.text.muted} />
             </View>
           )}
           <View style={[styles.gridStatusBadge, { backgroundColor: getStatusColor() }]} />
+          {percentComplete > 0 && percentComplete < 100 && (
+            <View style={styles.gridProgressContainer}>
+              <View style={[styles.gridProgressFill, { width: `${percentComplete}%`, backgroundColor: accentColor }]} />
+            </View>
+          )}
         </View>
-        <Text style={styles.gridTitle} numberOfLines={2}>{movie.title}</Text>
-        <Text style={styles.gridYear}>{movie.year}</Text>
+        <Text style={styles.gridTitle} numberOfLines={2}>{series.title}</Text>
+        <Text style={styles.gridYear}>{series.year}</Text>
       </View>
     );
   }
@@ -82,18 +93,31 @@ function MovieCard({ movie, accentColor, viewMode, gridItemWidth }: MovieCardPro
         <Image source={{ uri: posterUrl }} style={styles.listPoster} contentFit="cover" />
       ) : (
         <View style={[styles.listPoster, styles.noPoster]}>
-          <Ionicons name="film-outline" size={24} color={colors.text.muted} />
+          <Ionicons name="tv-outline" size={24} color={colors.text.muted} />
         </View>
       )}
       <View style={styles.listInfo}>
-        <Text style={styles.listTitle} numberOfLines={1}>{movie.title}</Text>
-        <Text style={styles.listSubtitle}>{movie.year}</Text>
+        <Text style={styles.listTitle} numberOfLines={1}>{series.title}</Text>
+        <Text style={styles.listSubtitle}>
+          {series.year} - {series.statistics?.seasonCount ?? 0} Seasons
+        </Text>
+        <View style={styles.episodeProgress}>
+          <View style={styles.miniProgressBar}>
+            <View
+              style={[
+                styles.miniProgressFill,
+                { width: `${percentComplete}%`, backgroundColor: accentColor },
+              ]}
+            />
+          </View>
+          <Text style={styles.episodeCount}>{episodeCount}/{totalEpisodes}</Text>
+        </View>
         <View style={styles.statusRow}>
           <View style={[styles.statusDot, { backgroundColor: getStatusColor() }]} />
           <Text style={[styles.statusText, { color: getStatusColor() }]}>{getStatusText()}</Text>
         </View>
-        {movie.sizeOnDisk > 0 && (
-          <Text style={styles.sizeText}>{formatBytes(movie.sizeOnDisk)}</Text>
+        {series.statistics?.sizeOnDisk > 0 && (
+          <Text style={styles.sizeText}>{formatBytes(series.statistics.sizeOnDisk)}</Text>
         )}
       </View>
     </View>
@@ -101,13 +125,13 @@ function MovieCard({ movie, accentColor, viewMode, gridItemWidth }: MovieCardPro
 }
 
 interface SearchResultCardProps {
-  result: RadarrLookupResult;
+  result: SonarrLookupResult;
   accentColor: string;
-  onAdd: (result: RadarrLookupResult) => void;
-  existingMovie?: RadarrMovie;
+  onAdd: (result: SonarrLookupResult) => void;
+  existingSeries?: SonarrSeries;
 }
 
-function SearchResultCard({ result, accentColor, onAdd, existingMovie }: SearchResultCardProps) {
+function SearchResultCard({ result, accentColor, onAdd, existingSeries }: SearchResultCardProps) {
   const poster = result.images.find((i) => i.coverType === 'poster');
   const posterUrl = result.remotePoster || poster?.remoteUrl || poster?.url;
 
@@ -117,12 +141,17 @@ function SearchResultCard({ result, accentColor, onAdd, existingMovie }: SearchR
         <Image source={{ uri: posterUrl }} style={styles.searchPoster} contentFit="cover" />
       ) : (
         <View style={[styles.searchPoster, styles.noPoster]}>
-          <Ionicons name="film-outline" size={24} color={colors.text.muted} />
+          <Ionicons name="tv-outline" size={24} color={colors.text.muted} />
         </View>
       )}
       <View style={styles.searchInfo}>
         <Text style={styles.searchTitle} numberOfLines={2}>{result.title}</Text>
-        <Text style={styles.searchSubtitle}>{result.year}</Text>
+        <Text style={styles.searchSubtitle}>
+          {result.year} - {result.seasons?.length ?? 0} Seasons
+        </Text>
+        {result.network && (
+          <Text style={styles.networkText}>{result.network}</Text>
+        )}
         {result.overview && (
           <Text style={styles.searchOverview} numberOfLines={2}>{result.overview}</Text>
         )}
@@ -130,7 +159,7 @@ function SearchResultCard({ result, accentColor, onAdd, existingMovie }: SearchR
           <Text style={styles.genreText}>{result.genres.slice(0, 3).join(', ')}</Text>
         )}
       </View>
-      {existingMovie ? (
+      {existingSeries ? (
         <View style={styles.addedBadge}>
           <Ionicons name="checkmark" size={16} color={colors.status.success} />
         </View>
@@ -150,7 +179,7 @@ function SearchResultCard({ result, accentColor, onAdd, existingMovie }: SearchR
 }
 
 interface QueueItemCardProps {
-  item: RadarrQueueItem;
+  item: SonarrQueueItem;
   accentColor: string;
   onRemove: (id: number) => void;
 }
@@ -184,10 +213,21 @@ function QueueItemCard({ item, accentColor, onRemove }: QueueItemCardProps) {
     return `${m}m`;
   };
 
+  const episodeInfo = item.episode
+    ? `S${String(item.episode.seasonNumber).padStart(2, '0')}E${String(item.episode.episodeNumber).padStart(2, '0')}`
+    : '';
+
   return (
     <View style={styles.queueCard}>
       <View style={styles.queueHeader}>
-        <Text style={styles.queueTitle} numberOfLines={1}>{item.movie?.title || item.title}</Text>
+        <View style={styles.queueTitleRow}>
+          <Text style={styles.queueTitle} numberOfLines={1}>{item.series?.title || item.title}</Text>
+          {episodeInfo && (
+            <View style={styles.episodeBadge}>
+              <Text style={styles.episodeBadgeText}>{episodeInfo}</Text>
+            </View>
+          )}
+        </View>
         <Pressable
           onPress={() => onRemove(item.id)}
           style={({ pressed }) => [styles.removeBtn, { opacity: pressed ? 0.5 : 1 }]}
@@ -195,6 +235,9 @@ function QueueItemCard({ item, accentColor, onRemove }: QueueItemCardProps) {
           <Ionicons name="close-circle" size={22} color={colors.text.tertiary} />
         </Pressable>
       </View>
+      {item.episode?.title && (
+        <Text style={styles.episodeTitle} numberOfLines={1}>{item.episode.title}</Text>
+      )}
       <View style={styles.queueMeta}>
         <View style={[styles.statusDot, { backgroundColor: getStatusColor() }]} />
         <Text style={[styles.statusText, { color: getStatusColor() }]}>{getStatusText()}</Text>
@@ -228,8 +271,9 @@ function SkeletonListCard() {
       <Skeleton width={60} height={90} borderRadius={8} />
       <View style={[styles.listInfo, { gap: 8 }]}>
         <Skeleton width="70%" height={16} borderRadius={4} />
-        <Skeleton width="30%" height={14} borderRadius={4} />
-        <Skeleton width="40%" height={12} borderRadius={4} />
+        <Skeleton width="40%" height={14} borderRadius={4} />
+        <Skeleton width="100%" height={4} borderRadius={2} />
+        <Skeleton width="35%" height={12} borderRadius={4} />
       </View>
     </View>
   );
@@ -252,7 +296,10 @@ function SkeletonQueueCard() {
   return (
     <View style={styles.queueCard}>
       <View style={{ gap: 12 }}>
-        <Skeleton width="60%" height={18} borderRadius={4} />
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Skeleton width="50%" height={18} borderRadius={4} />
+          <Skeleton width={50} height={20} borderRadius={4} />
+        </View>
         <Skeleton width="40%" height={14} borderRadius={4} />
         <Skeleton width="100%" height={6} borderRadius={3} />
         <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
@@ -264,30 +311,36 @@ function SkeletonQueueCard() {
   );
 }
 
-interface AddMovieModalProps {
+interface AddSeriesModalProps {
   visible: boolean;
-  movie: RadarrLookupResult | null;
+  series: SonarrLookupResult | null;
   accentColor: string;
-  rootFolders: RadarrRootFolder[];
-  qualityProfiles: RadarrQualityProfile[];
+  rootFolders: SonarrRootFolder[];
+  qualityProfiles: SonarrQualityProfile[];
   onClose: () => void;
-  onAdd: (options: { qualityProfileId: number; rootFolderPath: string; searchForMovie: boolean }) => void;
+  onAdd: (options: {
+    qualityProfileId: number;
+    rootFolderPath: string;
+    searchForMissingEpisodes: boolean;
+    seriesType: 'standard' | 'daily' | 'anime';
+  }) => void;
   isAdding: boolean;
 }
 
-function AddMovieModal({
+function AddSeriesModal({
   visible,
-  movie,
+  series,
   accentColor,
   rootFolders,
   qualityProfiles,
   onClose,
   onAdd,
   isAdding,
-}: AddMovieModalProps) {
+}: AddSeriesModalProps) {
   const [selectedQuality, setSelectedQuality] = useState<number>(qualityProfiles[0]?.id ?? 0);
   const [selectedFolder, setSelectedFolder] = useState<string>(rootFolders[0]?.path ?? '');
-  const [searchForMovie, setSearchForMovie] = useState(true);
+  const [searchForMissing, setSearchForMissing] = useState(true);
+  const [seriesType, setSeriesType] = useState<'standard' | 'daily' | 'anime'>('standard');
 
   useEffect(() => {
     if (qualityProfiles.length > 0 && !selectedQuality) {
@@ -296,19 +349,22 @@ function AddMovieModal({
     if (rootFolders.length > 0 && !selectedFolder) {
       setSelectedFolder(rootFolders[0].path);
     }
-  }, [qualityProfiles, rootFolders]);
+    if (series) {
+      setSeriesType(series.seriesType || 'standard');
+    }
+  }, [qualityProfiles, rootFolders, series]);
 
-  if (!movie) return null;
+  if (!series) return null;
 
-  const poster = movie.images.find((i) => i.coverType === 'poster');
-  const posterUrl = movie.remotePoster || poster?.remoteUrl || poster?.url;
+  const poster = series.images.find((i) => i.coverType === 'poster');
+  const posterUrl = series.remotePoster || poster?.remoteUrl || poster?.url;
 
   return (
     <Modal visible={visible} animationType="slide" transparent>
       <View style={styles.modalOverlay}>
         <View style={styles.modalContent}>
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Add Movie</Text>
+            <Text style={styles.modalTitle}>Add Series</Text>
             <Pressable onPress={onClose} style={styles.closeButton}>
               <Ionicons name="close" size={24} color="#fff" />
             </Pressable>
@@ -318,17 +374,20 @@ function AddMovieModal({
             data={[{ key: 'content' }]}
             renderItem={() => (
               <View style={styles.modalScroll}>
-                <View style={styles.moviePreview}>
+                <View style={styles.seriesPreview}>
                   {posterUrl ? (
                     <Image source={{ uri: posterUrl }} style={styles.previewPoster} contentFit="cover" />
                   ) : (
                     <View style={[styles.previewPoster, styles.noPoster]}>
-                      <Ionicons name="film-outline" size={32} color={colors.text.muted} />
+                      <Ionicons name="tv-outline" size={32} color={colors.text.muted} />
                     </View>
                   )}
                   <View style={styles.previewInfo}>
-                    <Text style={styles.previewTitle}>{movie.title}</Text>
-                    <Text style={styles.previewYear}>{movie.year}</Text>
+                    <Text style={styles.previewTitle}>{series.title}</Text>
+                    <Text style={styles.previewYear}>{series.year}</Text>
+                    {series.network && (
+                      <Text style={styles.previewNetwork}>{series.network}</Text>
+                    )}
                   </View>
                 </View>
 
@@ -349,6 +408,29 @@ function AddMovieModal({
                       onPress={() => setSelectedQuality(profile.id)}
                     >
                       <Text style={styles.optionText}>{profile.name}</Text>
+                    </Pressable>
+                  )}
+                />
+
+                <Text style={styles.sectionLabel}>Series Type</Text>
+                <FlatList
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  data={['standard', 'daily', 'anime'] as const}
+                  keyExtractor={(item) => item}
+                  contentContainerStyle={styles.optionScroll}
+                  renderItem={({ item: type }) => (
+                    <Pressable
+                      style={({ pressed }) => [
+                        styles.optionButton,
+                        seriesType === type && { backgroundColor: accentColor },
+                        pressed && { opacity: 0.8 },
+                      ]}
+                      onPress={() => setSeriesType(type)}
+                    >
+                      <Text style={styles.optionText}>
+                        {type.charAt(0).toUpperCase() + type.slice(1)}
+                      </Text>
                     </Pressable>
                   )}
                 />
@@ -378,14 +460,14 @@ function AddMovieModal({
 
                 <Pressable
                   style={({ pressed }) => [styles.searchToggle, pressed && { opacity: 0.8 }]}
-                  onPress={() => setSearchForMovie(!searchForMovie)}
+                  onPress={() => setSearchForMissing(!searchForMissing)}
                 >
                   <Ionicons
-                    name={searchForMovie ? 'checkbox' : 'square-outline'}
+                    name={searchForMissing ? 'checkbox' : 'square-outline'}
                     size={22}
                     color={accentColor}
                   />
-                  <Text style={styles.searchToggleText}>Search for movie after adding</Text>
+                  <Text style={styles.searchToggleText}>Search for missing episodes</Text>
                 </Pressable>
               </View>
             )}
@@ -393,16 +475,21 @@ function AddMovieModal({
 
           <Pressable
             style={({ pressed }) => [
-              styles.addMovieButton,
+              styles.addSeriesButton,
               { backgroundColor: accentColor, opacity: pressed ? 0.8 : 1 },
             ]}
-            onPress={() => onAdd({ qualityProfileId: selectedQuality, rootFolderPath: selectedFolder, searchForMovie })}
+            onPress={() => onAdd({
+              qualityProfileId: selectedQuality,
+              rootFolderPath: selectedFolder,
+              searchForMissingEpisodes: searchForMissing,
+              seriesType,
+            })}
             disabled={isAdding}
           >
             {isAdding ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.addMovieButtonText}>Add Movie</Text>
+              <Text style={styles.addSeriesButtonText}>Add Series</Text>
             )}
           </Pressable>
         </View>
@@ -411,10 +498,10 @@ function AddMovieModal({
   );
 }
 
-export default function RadarrManageScreen() {
+export default function SonarrManageScreen() {
   const { width: screenWidth } = useWindowDimensions();
   const { accentColor } = useSettingsStore();
-  const isConfigured = radarrService.isConfigured();
+  const isConfigured = sonarrService.isConfigured();
 
   const [activeTab, setActiveTab] = useState<TabType>('library');
   const [viewMode, setViewMode] = useState<ViewMode>('list');
@@ -423,13 +510,13 @@ export default function RadarrManageScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
 
-  const [movies, setMovies] = useState<RadarrMovie[]>([]);
-  const [searchResults, setSearchResults] = useState<RadarrLookupResult[]>([]);
-  const [queue, setQueue] = useState<RadarrQueueItem[]>([]);
-  const [rootFolders, setRootFolders] = useState<RadarrRootFolder[]>([]);
-  const [qualityProfiles, setQualityProfiles] = useState<RadarrQualityProfile[]>([]);
+  const [seriesList, setSeriesList] = useState<SonarrSeries[]>([]);
+  const [searchResults, setSearchResults] = useState<SonarrLookupResult[]>([]);
+  const [queue, setQueue] = useState<SonarrQueueItem[]>([]);
+  const [rootFolders, setRootFolders] = useState<SonarrRootFolder[]>([]);
+  const [qualityProfiles, setQualityProfiles] = useState<SonarrQualityProfile[]>([]);
 
-  const [selectedMovie, setSelectedMovie] = useState<RadarrLookupResult | null>(null);
+  const [selectedSeries, setSelectedSeries] = useState<SonarrLookupResult | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
 
@@ -447,14 +534,14 @@ export default function RadarrManageScreen() {
     if (showLoader) setIsLoading(true);
 
     try {
-      const [moviesData, queueData, foldersData, profilesData] = await Promise.all([
-        radarrService.getMovies(),
-        radarrService.getQueue(1, 50),
-        radarrService.getRootFolders(),
-        radarrService.getQualityProfiles(),
+      const [seriesData, queueData, foldersData, profilesData] = await Promise.all([
+        sonarrService.getSeries(),
+        sonarrService.getQueue(1, 50),
+        sonarrService.getRootFolders(),
+        sonarrService.getQualityProfiles(),
       ]);
 
-      setMovies(moviesData);
+      setSeriesList(seriesData);
       setQueue(queueData.records);
       setRootFolders(foldersData);
       setQualityProfiles(profilesData);
@@ -480,7 +567,7 @@ export default function RadarrManageScreen() {
 
     setIsSearching(true);
     try {
-      const results = await radarrService.searchMovies(searchQuery.trim());
+      const results = await sonarrService.searchSeries(searchQuery.trim());
       setSearchResults(results);
     } catch (e: any) {
       Alert.alert('Error', e?.message || 'Search failed');
@@ -489,75 +576,79 @@ export default function RadarrManageScreen() {
     }
   }, [searchQuery]);
 
-  const handleAddMovie = useCallback((result: RadarrLookupResult) => {
-    setSelectedMovie(result);
+  const handleAddSeries = useCallback((result: SonarrLookupResult) => {
+    setSelectedSeries(result);
     setShowAddModal(true);
   }, []);
 
   const handleConfirmAdd = useCallback(async (options: {
     qualityProfileId: number;
     rootFolderPath: string;
-    searchForMovie: boolean;
+    searchForMissingEpisodes: boolean;
+    seriesType: 'standard' | 'daily' | 'anime';
   }) => {
-    if (!selectedMovie) return;
+    if (!selectedSeries) return;
 
     setIsAdding(true);
     try {
-      await radarrService.addMovie({
-        tmdbId: selectedMovie.tmdbId,
-        title: selectedMovie.title,
+      await sonarrService.addSeries({
+        tvdbId: selectedSeries.tvdbId,
+        title: selectedSeries.title,
         qualityProfileId: options.qualityProfileId,
         rootFolderPath: options.rootFolderPath,
-        searchForMovie: options.searchForMovie,
+        searchForMissingEpisodes: options.searchForMissingEpisodes,
+        seriesType: options.seriesType,
       });
-      Alert.alert('Success', `${selectedMovie.title} has been added to Radarr`);
+      Alert.alert('Success', `${selectedSeries.title} has been added to Sonarr`);
       setShowAddModal(false);
-      setSelectedMovie(null);
+      setSelectedSeries(null);
       loadData(false);
     } catch (e: any) {
-      Alert.alert('Error', e?.message || 'Failed to add movie');
+      Alert.alert('Error', e?.message || 'Failed to add series');
     } finally {
       setIsAdding(false);
     }
-  }, [selectedMovie, loadData]);
+  }, [selectedSeries, loadData]);
 
   const handleRemoveFromQueue = useCallback(async (id: number) => {
     try {
-      await radarrService.removeFromQueue(id);
+      await sonarrService.removeFromQueue(id);
       setQueue((prev) => prev.filter((item) => item.id !== id));
     } catch (e: any) {
       Alert.alert('Error', e?.message || 'Failed to remove from queue');
     }
   }, []);
 
-  const filteredMovies = useMemo(() => {
-    return movies.filter((movie) => {
-      if (filter === 'downloaded') return movie.hasFile;
-      if (filter === 'missing') return movie.monitored && !movie.hasFile;
-      if (filter === 'unmonitored') return !movie.monitored;
+  const filteredSeries = useMemo(() => {
+    return seriesList.filter((series) => {
+      const percent = series.statistics?.percentOfEpisodes ?? 0;
+      if (filter === 'complete') return percent >= 100;
+      if (filter === 'partial') return series.monitored && percent > 0 && percent < 100;
+      if (filter === 'missing') return series.monitored && percent === 0;
+      if (filter === 'unmonitored') return !series.monitored;
       return true;
     });
-  }, [movies, filter]);
+  }, [seriesList, filter]);
 
-  const renderLibraryItem = useCallback(({ item }: { item: RadarrMovie }) => (
-    <MovieCard
-      movie={item}
+  const renderLibraryItem = useCallback(({ item }: { item: SonarrSeries }) => (
+    <SeriesCard
+      series={item}
       accentColor={accentColor}
       viewMode={viewMode}
       gridItemWidth={gridItemWidth}
     />
   ), [accentColor, viewMode, gridItemWidth]);
 
-  const renderSearchItem = useCallback(({ item }: { item: RadarrLookupResult }) => (
+  const renderSearchItem = useCallback(({ item }: { item: SonarrLookupResult }) => (
     <SearchResultCard
       result={item}
       accentColor={accentColor}
-      onAdd={handleAddMovie}
-      existingMovie={movies.find((m) => m.tmdbId === item.tmdbId)}
+      onAdd={handleAddSeries}
+      existingSeries={seriesList.find((s) => s.tvdbId === item.tvdbId)}
     />
-  ), [accentColor, handleAddMovie, movies]);
+  ), [accentColor, handleAddSeries, seriesList]);
 
-  const renderQueueItem = useCallback(({ item }: { item: RadarrQueueItem }) => (
+  const renderQueueItem = useCallback(({ item }: { item: SonarrQueueItem }) => (
     <QueueItemCard
       item={item}
       accentColor={accentColor}
@@ -595,7 +686,7 @@ export default function RadarrManageScreen() {
         <Stack.Screen
           options={{
             headerShown: true,
-            headerTitle: 'Radarr',
+            headerTitle: 'Sonarr',
             headerStyle: { backgroundColor: colors.background.primary },
             headerTintColor: '#fff',
             headerBackTitle: 'Settings',
@@ -603,18 +694,18 @@ export default function RadarrManageScreen() {
         />
         <View style={styles.notConfigured}>
           <View style={styles.notConfiguredIcon}>
-            <Ionicons name="film-outline" size={48} color={colors.text.muted} />
+            <Ionicons name="tv-outline" size={48} color={colors.text.muted} />
           </View>
-          <Text style={styles.notConfiguredTitle}>Radarr not configured</Text>
-          <Text style={styles.notConfiguredSubtitle}>Set up Radarr to manage your movies</Text>
+          <Text style={styles.notConfiguredTitle}>Sonarr not configured</Text>
+          <Text style={styles.notConfiguredSubtitle}>Set up Sonarr to manage your TV shows</Text>
           <Pressable
             style={({ pressed }) => [
               styles.configureButton,
               { backgroundColor: accentColor, opacity: pressed ? 0.8 : 1 },
             ]}
-            onPress={() => router.push('/settings/radarr')}
+            onPress={() => router.push('/settings/sonarr')}
           >
-            <Text style={styles.configureButtonText}>Configure Radarr</Text>
+            <Text style={styles.configureButtonText}>Configure Sonarr</Text>
           </Pressable>
         </View>
       </SafeAreaView>
@@ -626,7 +717,7 @@ export default function RadarrManageScreen() {
       <Stack.Screen
         options={{
           headerShown: true,
-          headerTitle: 'Radarr',
+          headerTitle: 'Sonarr',
           headerStyle: { backgroundColor: colors.background.primary },
           headerTintColor: '#fff',
           headerBackTitle: 'Settings',
@@ -653,9 +744,9 @@ export default function RadarrManageScreen() {
               <Text style={[styles.tabText, activeTab === tab && { color: accentColor }]}>
                 {tab === 'library' ? `Library` : tab === 'queue' ? `Queue` : 'Search'}
               </Text>
-              {tab === 'library' && movies.length > 0 && (
+              {tab === 'library' && seriesList.length > 0 && (
                 <View style={[styles.countBadge, activeTab === tab && { backgroundColor: accentColor }]}>
-                  <Text style={styles.countText}>{movies.length}</Text>
+                  <Text style={styles.countText}>{seriesList.length}</Text>
                 </View>
               )}
               {tab === 'queue' && queue.length > 0 && (
@@ -674,7 +765,7 @@ export default function RadarrManageScreen() {
             <Ionicons name="search" size={18} color={colors.text.tertiary} />
             <TextInput
               style={styles.searchInput}
-              placeholder="Search for movies..."
+              placeholder="Search for TV shows..."
               placeholderTextColor={colors.text.tertiary}
               value={searchQuery}
               onChangeText={setSearchQuery}
@@ -704,7 +795,7 @@ export default function RadarrManageScreen() {
           <FlatList
             horizontal
             showsHorizontalScrollIndicator={false}
-            data={['all', 'downloaded', 'missing', 'unmonitored'] as FilterType[]}
+            data={['all', 'complete', 'partial', 'missing', 'unmonitored'] as FilterType[]}
             keyExtractor={(item) => item}
             contentContainerStyle={styles.filterContainer}
             renderItem={({ item: f }) => (
@@ -742,17 +833,17 @@ export default function RadarrManageScreen() {
       {activeTab === 'library' && (
         isLoading ? (
           viewMode === 'grid' ? renderSkeletonGrid() : renderSkeletonList()
-        ) : filteredMovies.length === 0 ? (
+        ) : filteredSeries.length === 0 ? (
           <View style={styles.emptyState}>
-            <Ionicons name="film-outline" size={56} color={colors.text.muted} />
-            <Text style={styles.emptyTitle}>No movies found</Text>
+            <Ionicons name="tv-outline" size={56} color={colors.text.muted} />
+            <Text style={styles.emptyTitle}>No series found</Text>
             <Text style={styles.emptySubtitle}>
-              {filter !== 'all' ? 'Try changing your filter' : 'Add movies from the search tab'}
+              {filter !== 'all' ? 'Try changing your filter' : 'Add series from the search tab'}
             </Text>
           </View>
         ) : viewMode === 'grid' ? (
           <FlatList
-            data={filteredMovies}
+            data={filteredSeries}
             keyExtractor={(item) => item.id.toString()}
             numColumns={numColumns}
             key={`grid-${numColumns}`}
@@ -764,7 +855,7 @@ export default function RadarrManageScreen() {
           />
         ) : (
           <FlatList
-            data={filteredMovies}
+            data={filteredSeries}
             keyExtractor={(item) => item.id.toString()}
             renderItem={renderLibraryItem}
             contentContainerStyle={styles.listContent}
@@ -803,28 +894,28 @@ export default function RadarrManageScreen() {
         ) : searchResults.length === 0 ? (
           <View style={styles.emptyState}>
             <Ionicons name="search-outline" size={56} color={colors.text.muted} />
-            <Text style={styles.emptyTitle}>Search for movies</Text>
-            <Text style={styles.emptySubtitle}>Find movies to add to your library</Text>
+            <Text style={styles.emptyTitle}>Search for TV shows</Text>
+            <Text style={styles.emptySubtitle}>Find shows to add to your library</Text>
           </View>
         ) : (
           <FlatList
             data={searchResults}
-            keyExtractor={(item) => item.tmdbId.toString()}
+            keyExtractor={(item) => item.tvdbId.toString()}
             renderItem={renderSearchItem}
             contentContainerStyle={styles.listContent}
           />
         )
       )}
 
-      <AddMovieModal
+      <AddSeriesModal
         visible={showAddModal}
-        movie={selectedMovie}
+        series={selectedSeries}
         accentColor={accentColor}
         rootFolders={rootFolders}
         qualityProfiles={qualityProfiles}
         onClose={() => {
           setShowAddModal(false);
-          setSelectedMovie(null);
+          setSelectedSeries(null);
         }}
         onAdd={handleConfirmAdd}
         isAdding={isAdding}
@@ -993,6 +1084,28 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginTop: spacing[0.5],
   },
+  episodeProgress: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: spacing[2],
+    gap: spacing[2],
+  },
+  miniProgressBar: {
+    flex: 1,
+    height: 4,
+    backgroundColor: colors.surface.elevated,
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  miniProgressFill: {
+    height: '100%',
+    borderRadius: 2,
+  },
+  episodeCount: {
+    color: colors.text.tertiary,
+    fontSize: 11,
+    fontWeight: '500',
+  },
   gridCard: {
     padding: spacing[2],
   },
@@ -1020,6 +1133,17 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     borderWidth: 2,
     borderColor: colors.background.primary,
+  },
+  gridProgressContainer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 4,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  gridProgressFill: {
+    height: '100%',
   },
   gridTitle: {
     color: '#fff',
@@ -1080,6 +1204,11 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginTop: spacing[0.5],
   },
+  networkText: {
+    color: colors.text.muted,
+    fontSize: 12,
+    marginTop: spacing[0.5],
+  },
   searchOverview: {
     color: colors.text.secondary,
     fontSize: 12,
@@ -1119,13 +1248,35 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: spacing[2],
+    marginBottom: spacing[1],
+  },
+  queueTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: spacing[2],
   },
   queueTitle: {
     color: '#fff',
     fontSize: 15,
     fontWeight: '600',
     flex: 1,
+  },
+  episodeBadge: {
+    backgroundColor: colors.surface.elevated,
+    paddingHorizontal: spacing[2],
+    paddingVertical: spacing[0.5],
+    borderRadius: borderRadius.sm,
+  },
+  episodeBadgeText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  episodeTitle: {
+    color: colors.text.secondary,
+    fontSize: 13,
+    marginBottom: spacing[2],
   },
   removeBtn: {
     padding: spacing[1],
@@ -1270,7 +1421,7 @@ const styles = StyleSheet.create({
   modalScroll: {
     padding: spacing[4],
   },
-  moviePreview: {
+  seriesPreview: {
     flexDirection: 'row',
     marginBottom: spacing[6],
     gap: spacing[4],
@@ -1293,6 +1444,11 @@ const styles = StyleSheet.create({
   previewYear: {
     color: colors.text.tertiary,
     fontSize: 14,
+    marginTop: spacing[1],
+  },
+  previewNetwork: {
+    color: colors.text.muted,
+    fontSize: 13,
     marginTop: spacing[1],
   },
   sectionLabel: {
@@ -1354,13 +1510,13 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 14,
   },
-  addMovieButton: {
+  addSeriesButton: {
     margin: spacing[4],
     paddingVertical: spacing[4],
     borderRadius: borderRadius.lg,
     alignItems: 'center',
   },
-  addMovieButtonText: {
+  addSeriesButtonText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',

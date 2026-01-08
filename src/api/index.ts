@@ -54,6 +54,9 @@ export {
   getLibraryIdsByType,
   getLatestMediaFromMultipleLibraries,
   getItemsFromMultipleLibraries,
+  getInstantMix,
+  getRecentlyPlayed,
+  getMostPlayed,
 } from './library';
 
 export type { LibraryQueryParams, LibraryConfig, Genre, CreatePlaylistResult, PersonDetails, GroupedLibraries } from './library';

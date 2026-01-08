@@ -686,6 +686,105 @@ export async function getLatestMediaFromMultipleLibraries(
   return allItems.slice(0, limit);
 }
 
+/**
+ * Get an instant mix (similar tracks) based on a seed item (song, album, artist, playlist)
+ * Uses Jellyfin's InstantMix algorithm to find similar tracks
+ */
+export async function getInstantMix(
+  itemId: string,
+  userId: string,
+  limit: number = 50
+): Promise<ItemsResponse<AudioTrack>> {
+  const fields = [
+    'Artists',
+    'AlbumArtist',
+    'Album',
+    'AlbumId',
+    'AlbumPrimaryImageTag',
+    'UserData',
+    'RunTimeTicks',
+    'MediaSources',
+  ];
+
+  const params = new URLSearchParams();
+  params.set('UserId', userId);
+  params.set('Limit', limit.toString());
+  params.set('Fields', fields.join(','));
+
+  const response = await jellyfinClient.api.get<ItemsResponse<AudioTrack>>(
+    `/Items/${itemId}/InstantMix?${params.toString()}`
+  );
+  return response.data;
+}
+
+/**
+ * Get recently played items for a user
+ */
+export async function getRecentlyPlayed(
+  userId: string,
+  limit: number = 50,
+  itemTypes: string[] = ['Audio']
+): Promise<ItemsResponse<BaseItem>> {
+  const fields = [
+    'Artists',
+    'AlbumArtist',
+    'Album',
+    'AlbumId',
+    'AlbumPrimaryImageTag',
+    'UserData',
+    'RunTimeTicks',
+  ];
+
+  const params = new URLSearchParams();
+  params.set('UserId', userId);
+  params.set('IncludeItemTypes', itemTypes.join(','));
+  params.set('SortBy', 'DatePlayed');
+  params.set('SortOrder', 'Descending');
+  params.set('Filters', 'IsPlayed');
+  params.set('Recursive', 'true');
+  params.set('Limit', limit.toString());
+  params.set('Fields', fields.join(','));
+
+  const response = await jellyfinClient.api.get<ItemsResponse<BaseItem>>(
+    `/Users/${userId}/Items?${params.toString()}`
+  );
+  return response.data;
+}
+
+/**
+ * Get most played items for a user (sorted by play count)
+ */
+export async function getMostPlayed(
+  userId: string,
+  limit: number = 50,
+  itemTypes: string[] = ['Audio']
+): Promise<ItemsResponse<BaseItem>> {
+  const fields = [
+    'Artists',
+    'AlbumArtist',
+    'Album',
+    'AlbumId',
+    'AlbumPrimaryImageTag',
+    'UserData',
+    'RunTimeTicks',
+  ];
+
+  const params = new URLSearchParams();
+  params.set('UserId', userId);
+  params.set('IncludeItemTypes', itemTypes.join(','));
+  params.set('SortBy', 'PlayCount');
+  params.set('SortOrder', 'Descending');
+  params.set('Filters', 'IsPlayed');
+  params.set('Recursive', 'true');
+  params.set('Limit', limit.toString());
+  params.set('Fields', fields.join(','));
+
+  const response = await jellyfinClient.api.get<ItemsResponse<BaseItem>>(
+    `/Users/${userId}/Items?${params.toString()}`
+  );
+  return response.data;
+}
+
 export async function getItemsFromMultipleLibraries<T extends BaseItem = BaseItem>(
   userId: string,
   parentIds: string[],
