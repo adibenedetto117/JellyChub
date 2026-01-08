@@ -21,7 +21,7 @@ export type LibrarySortPreferences = Record<LibraryCategory, LibrarySortPreferen
 export type FixedTabId = 'home' | 'search' | 'library' | 'downloads' | 'settings';
 
 // Tab IDs for ordering
-export type TabId = 'home' | 'search' | 'library' | 'downloads' | 'requests' | 'admin' | 'settings' | 'livetv' | 'more' | string;
+export type TabId = 'home' | 'search' | 'library' | 'downloads' | 'jellyseerr' | 'admin' | 'settings' | 'livetv' | 'more' | 'radarr' | 'sonarr' | 'favorites' | string;
 
 // Default tab order (library IDs are appended dynamically)
 export const DEFAULT_TAB_ORDER: TabId[] = [
@@ -38,8 +38,13 @@ export interface BottomBarConfig {
   showLibrary: boolean;
   showDownloads: boolean;
   showAdmin: boolean;
-  showRequests: boolean;
+  showJellyseerr: boolean;
+  showRadarr: boolean;
+  showSonarr: boolean;
+  showFavorites: boolean;
+  showLiveTV: boolean;
   showMore: boolean;
+  moreMenuTabs: TabId[];
   selectedLibraryIds: string[];
   tabOrder: TabId[];
   landingPage: TabId;
@@ -50,8 +55,13 @@ export const DEFAULT_BOTTOM_BAR_CONFIG: BottomBarConfig = {
   showLibrary: true,
   showDownloads: true,
   showAdmin: true,
-  showRequests: true,
+  showJellyseerr: true,
+  showRadarr: false,
+  showSonarr: false,
+  showFavorites: false,
+  showLiveTV: false,
   showMore: true,
+  moreMenuTabs: ['radarr', 'sonarr', 'favorites', 'livetv'],
   selectedLibraryIds: [],
   tabOrder: DEFAULT_TAB_ORDER,
   landingPage: 'home',
@@ -420,13 +430,35 @@ export const useSettingsStore = create<SettingsState>()(
         const persisted = persistedState as Partial<SettingsState> | undefined;
         if (!persisted) return currentState;
 
+        // Get persisted tab order or default
+        let tabOrder = persisted.bottomBarConfig?.tabOrder ?? DEFAULT_TAB_ORDER;
+
+        // Migrate 'requests' to 'jellyseerr' in tab order
+        tabOrder = tabOrder.map((t) => (t === 'requests' ? 'jellyseerr' : t));
+
+        // Ensure 'more' tab exists in tab order for existing users
+        if (!tabOrder.includes('more')) {
+          const settingsIndex = tabOrder.indexOf('settings');
+          if (settingsIndex !== -1) {
+            tabOrder = [...tabOrder.slice(0, settingsIndex), 'more', ...tabOrder.slice(settingsIndex)];
+          } else {
+            tabOrder = [...tabOrder, 'more'];
+          }
+        }
+
+        // Migrate showRequests to showJellyseerr
+        const persistedConfig = persisted.bottomBarConfig as any;
+        const showJellyseerr = persistedConfig?.showJellyseerr ?? persistedConfig?.showRequests ?? true;
+
         // Merge bottomBarConfig with defaults to handle missing fields
         const mergedBottomBarConfig: BottomBarConfig = {
           ...DEFAULT_BOTTOM_BAR_CONFIG,
           ...persisted.bottomBarConfig,
+          showJellyseerr,
           // Ensure arrays are never undefined
           selectedLibraryIds: persisted.bottomBarConfig?.selectedLibraryIds ?? [],
-          tabOrder: persisted.bottomBarConfig?.tabOrder ?? DEFAULT_TAB_ORDER,
+          moreMenuTabs: persisted.bottomBarConfig?.moreMenuTabs ?? DEFAULT_BOTTOM_BAR_CONFIG.moreMenuTabs,
+          tabOrder,
           landingPage: persisted.bottomBarConfig?.landingPage ?? 'home',
         };
 

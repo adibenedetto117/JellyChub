@@ -183,13 +183,13 @@ export default function TabLayout() {
         isLandingPage: landingPage === 'downloads',
       };
     }
-    if (tabId === 'requests') {
+    if (tabId === 'jellyseerr' || tabId === 'requests') {
       return {
         name: 'requests',
-        title: 'Requests',
+        title: 'Jellyseerr',
         iconName: 'requests',
-        href: hasJellyseerr && bottomBarConfig.showRequests ? undefined : null,
-        isLandingPage: landingPage === 'requests',
+        href: hasJellyseerr && bottomBarConfig.showJellyseerr ? undefined : null,
+        isLandingPage: landingPage === 'requests' || landingPage === 'jellyseerr',
       };
     }
     if (tabId === 'admin') {

@@ -1,11 +1,11 @@
 import { View, Text, Pressable, StyleSheet, Modal } from 'react-native';
 import { memo, useCallback, useMemo, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
-import Animated, { useSharedValue, useAnimatedStyle, withSpring, FadeIn, FadeOut, SlideInDown, SlideOutDown } from 'react-native-reanimated';
+import Animated, { useSharedValue, useAnimatedStyle, withSpring, withTiming, runOnJS } from 'react-native-reanimated';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useRouter, usePathname } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useSettingsStore, useAuthStore } from '@/stores';
 import { selectHasJellyseerr, DEFAULT_TAB_ORDER, type TabId } from '@/stores/settingsStore';
 import { getLibraries } from '@/api';
@@ -102,91 +102,160 @@ const TAB_ICONS: Record<string, { outline: IconName; filled: IconName }> = {
   music: { outline: 'musical-notes-outline', filled: 'musical-notes' },
   books: { outline: 'book-outline', filled: 'book' },
   downloads: { outline: 'cloud-download-outline', filled: 'cloud-download' },
-  requests: { outline: 'add-circle-outline', filled: 'add-circle' },
+  jellyseerr: { outline: 'add-circle-outline', filled: 'add-circle' },
   admin: { outline: 'shield-outline', filled: 'shield' },
   settings: { outline: 'settings-outline', filled: 'settings' },
   more: { outline: 'ellipsis-horizontal-circle-outline', filled: 'ellipsis-horizontal-circle' },
+  radarr: { outline: 'film-outline', filled: 'film' },
+  sonarr: { outline: 'tv-outline', filled: 'tv' },
+  favorites: { outline: 'heart-outline', filled: 'heart' },
+  livetv: { outline: 'radio-outline', filled: 'radio' },
 };
 
-interface MoreMenuItem {
-  id: string;
-  name: string;
-  icon: IconName;
-  route: string;
-  color: string;
-  description?: string;
-}
+const TAB_COLORS: Record<string, string> = {
+  radarr: '#ffc230',
+  sonarr: '#35c5f4',
+  favorites: '#ef4444',
+  livetv: '#a855f7',
+  jellyseerr: '#7c3aed',
+};
 
-const MORE_MENU_ITEMS: MoreMenuItem[] = [
-  { id: 'radarr', name: 'Radarr', icon: 'film', route: '/settings/radarr-manage', color: '#ffc230', description: 'Movie management' },
-  { id: 'sonarr', name: 'Sonarr', icon: 'tv', route: '/settings/sonarr-manage', color: '#35c5f4', description: 'TV series management' },
-  { id: 'favorites', name: 'Favorites', icon: 'heart', route: '/(tabs)/favorites', color: '#ef4444', description: 'Your favorite media' },
-  { id: 'livetv', name: 'Live TV', icon: 'radio', route: '/(tabs)/live-tv', color: '#a855f7', description: 'Watch live channels' },
-];
+const TAB_ROUTES: Record<string, string> = {
+  home: '/(tabs)/home',
+  library: '/(tabs)/library',
+  downloads: '/(tabs)/downloads',
+  jellyseerr: '/(tabs)/requests',
+  admin: '/(tabs)/admin',
+  settings: '/(tabs)/settings',
+  radarr: '/settings/radarr-manage',
+  sonarr: '/settings/sonarr-manage',
+  favorites: '/(tabs)/favorites',
+  livetv: '/(tabs)/live-tv',
+};
+
+const TAB_NAMES: Record<string, string> = {
+  home: 'Home',
+  library: 'Library',
+  downloads: 'Downloads',
+  jellyseerr: 'Jellyseerr',
+  admin: 'Admin',
+  settings: 'Settings',
+  radarr: 'Radarr',
+  sonarr: 'Sonarr',
+  favorites: 'Favorites',
+  livetv: 'Live TV',
+  more: 'More',
+};
 
 interface MoreMenuProps {
   visible: boolean;
   onClose: () => void;
-  accentColor: string;
   onNavigate: (route: string) => void;
+  moreMenuTabs: string[];
   hasRadarr: boolean;
   hasSonarr: boolean;
+  hasJellyseerr: boolean;
+  hasLiveTV: boolean;
 }
 
-const MoreMenu = memo(function MoreMenu({ visible, onClose, accentColor, onNavigate, hasRadarr, hasSonarr }: MoreMenuProps) {
-  const insets = useSafeAreaInsets();
+const MoreMenu = memo(function MoreMenu({
+  visible,
+  onClose,
+  onNavigate,
+  moreMenuTabs,
+  hasRadarr,
+  hasSonarr,
+  hasJellyseerr,
+  hasLiveTV,
+}: MoreMenuProps) {
+  const translateY = useSharedValue(0);
 
   const visibleItems = useMemo(() => {
-    return MORE_MENU_ITEMS.filter((item) => {
-      if (item.id === 'radarr' && !hasRadarr) return false;
-      if (item.id === 'sonarr' && !hasSonarr) return false;
+    return moreMenuTabs.filter((tabId) => {
+      if (tabId === 'radarr' && !hasRadarr) return false;
+      if (tabId === 'sonarr' && !hasSonarr) return false;
+      if (tabId === 'jellyseerr' && !hasJellyseerr) return false;
+      if (tabId === 'livetv' && !hasLiveTV) return false;
       return true;
     });
-  }, [hasRadarr, hasSonarr]);
+  }, [moreMenuTabs, hasRadarr, hasSonarr, hasJellyseerr, hasLiveTV]);
 
-  if (!visible) return null;
+  const panGesture = Gesture.Pan()
+    .onUpdate((e) => {
+      if (e.translationY > 0) {
+        translateY.value = e.translationY;
+      }
+    })
+    .onEnd((e) => {
+      if (e.translationY > 80 || e.velocityY > 500) {
+        translateY.value = withTiming(400, { duration: 200 });
+        runOnJS(onClose)();
+      } else {
+        translateY.value = withSpring(0, { damping: 20, stiffness: 300 });
+      }
+    });
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: translateY.value }],
+  }));
+
+  // Reset translateY when modal opens
+  if (visible && translateY.value !== 0) {
+    translateY.value = 0;
+  }
+
+  if (!visible || visibleItems.length === 0) return null;
 
   return (
-    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
-      <Pressable style={moreStyles.overlay} onPress={onClose}>
-        <Animated.View
-          entering={FadeIn.duration(150)}
-          exiting={FadeOut.duration(100)}
-          style={moreStyles.backdropFade}
-        />
-      </Pressable>
-      <Animated.View
-        entering={SlideInDown.springify().damping(20)}
-        exiting={SlideOutDown.duration(200)}
-        style={[moreStyles.container, { paddingBottom: insets.bottom + 16 }]}
-      >
-        <View style={moreStyles.handle} />
-        <Text style={moreStyles.title}>More</Text>
-        <View style={moreStyles.grid}>
-          {visibleItems.map((item) => (
-            <Pressable
-              key={item.id}
-              style={({ pressed }) => [
-                moreStyles.menuItem,
-                { opacity: pressed ? 0.8 : 1 },
-              ]}
-              onPress={() => {
-                haptics.light();
-                onClose();
-                setTimeout(() => onNavigate(item.route), 150);
-              }}
-            >
-              <View style={[moreStyles.iconContainer, { backgroundColor: `${item.color}20` }]}>
-                <Ionicons name={item.icon} size={24} color={item.color} />
-              </View>
-              <Text style={moreStyles.itemName}>{item.name}</Text>
-              {item.description && (
-                <Text style={moreStyles.itemDescription}>{item.description}</Text>
-              )}
-            </Pressable>
-          ))}
-        </View>
-      </Animated.View>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={moreStyles.overlay}>
+        <Pressable style={moreStyles.overlayPress} onPress={onClose} />
+
+        <GestureDetector gesture={panGesture}>
+          <Animated.View style={[moreStyles.sheet, animatedStyle]}>
+            {/* Handle */}
+            <View style={moreStyles.handleContainer}>
+              <View style={moreStyles.handle} />
+            </View>
+
+            {/* Header */}
+            <View style={moreStyles.header}>
+              <Text style={moreStyles.headerTitle}>More</Text>
+            </View>
+
+            {/* Menu Items */}
+            <View style={moreStyles.itemsContainer}>
+              {visibleItems.map((tabId, index) => {
+                const icons = TAB_ICONS[tabId];
+                const name = TAB_NAMES[tabId] || tabId;
+                const route = TAB_ROUTES[tabId];
+                const isLast = index === visibleItems.length - 1;
+
+                if (!route) return null;
+
+                return (
+                  <View key={tabId} style={!isLast ? moreStyles.itemWrapper : undefined}>
+                    <Pressable
+                      style={({ pressed }) => [
+                        moreStyles.menuItem,
+                        pressed && moreStyles.menuItemPressed,
+                      ]}
+                      onPress={() => {
+                        haptics.light();
+                        onClose();
+                        setTimeout(() => onNavigate(route), 100);
+                      }}
+                    >
+                      <Ionicons name={icons?.outline || 'ellipse-outline'} size={22} color="rgba(255,255,255,0.6)" />
+                      <Text style={moreStyles.itemName}>{name}</Text>
+                    </Pressable>
+                  </View>
+                );
+              })}
+            </View>
+          </Animated.View>
+        </GestureDetector>
+      </View>
     </Modal>
   );
 });
@@ -229,6 +298,7 @@ export const BottomNav = memo(function BottomNav() {
 
   const hasRadarr = !!(radarrUrl && radarrApiKey);
   const hasSonarr = !!(sonarrUrl && sonarrApiKey);
+  const moreMenuTabs = bottomBarConfig.moreMenuTabs ?? [];
 
   // Memoize admin check
   const isAdmin = useMemo(
@@ -243,6 +313,12 @@ export const BottomNav = memo(function BottomNav() {
     staleTime: Infinity,
     refetchOnMount: false,
   });
+
+  // Check if user has live TV libraries
+  const hasLiveTV = useMemo(
+    () => libraries?.some((lib) => lib.CollectionType === 'livetv') ?? false,
+    [libraries]
+  );
 
   const baseHeight = platformSelect({ mobile: 56, tablet: 52, tv: 0 });
   const height = baseHeight + insets.bottom;
@@ -288,14 +364,34 @@ export const BottomNav = memo(function BottomNav() {
         ? { id: 'downloads', name: 'Downloads', icon: icons.downloads.outline, iconFilled: icons.downloads.filled, route: '/(tabs)/downloads' }
         : null;
     }
-    if (tabId === 'requests') {
-      return hasJellyseerr && bottomBarConfig.showRequests
-        ? { id: 'requests', name: 'Requests', icon: icons.requests.outline, iconFilled: icons.requests.filled, route: '/(tabs)/requests' }
+    if (tabId === 'jellyseerr') {
+      return hasJellyseerr && bottomBarConfig.showJellyseerr
+        ? { id: 'jellyseerr', name: 'Jellyseerr', icon: icons.jellyseerr.outline, iconFilled: icons.jellyseerr.filled, route: '/(tabs)/requests' }
         : null;
     }
     if (tabId === 'admin') {
       return isAdmin && bottomBarConfig.showAdmin
         ? { id: 'admin', name: 'Admin', icon: icons.admin.outline, iconFilled: icons.admin.filled, route: '/(tabs)/admin' }
+        : null;
+    }
+    if (tabId === 'radarr') {
+      return hasRadarr && bottomBarConfig.showRadarr
+        ? { id: 'radarr', name: 'Radarr', icon: icons.radarr.outline, iconFilled: icons.radarr.filled, route: '/settings/radarr-manage' }
+        : null;
+    }
+    if (tabId === 'sonarr') {
+      return hasSonarr && bottomBarConfig.showSonarr
+        ? { id: 'sonarr', name: 'Sonarr', icon: icons.sonarr.outline, iconFilled: icons.sonarr.filled, route: '/settings/sonarr-manage' }
+        : null;
+    }
+    if (tabId === 'favorites') {
+      return bottomBarConfig.showFavorites
+        ? { id: 'favorites', name: 'Favorites', icon: icons.favorites.outline, iconFilled: icons.favorites.filled, route: '/(tabs)/favorites' }
+        : null;
+    }
+    if (tabId === 'livetv') {
+      return hasLiveTV && bottomBarConfig.showLiveTV
+        ? { id: 'livetv', name: 'Live TV', icon: icons.livetv.outline, iconFilled: icons.livetv.filled, route: '/(tabs)/live-tv' }
         : null;
     }
     if (tabId === 'settings') {
@@ -317,7 +413,7 @@ export const BottomNav = memo(function BottomNav() {
     }
 
     return null;
-  }, [offlineMode, bottomBarConfig, hasJellyseerr, isAdmin, libraries]);
+  }, [offlineMode, bottomBarConfig, hasJellyseerr, isAdmin, libraries, hasRadarr, hasSonarr, hasLiveTV]);
 
   // Memoize the entire tabs array computation
   const tabs = useMemo(() => {
@@ -348,9 +444,7 @@ export const BottomNav = memo(function BottomNav() {
     router.navigate(route as any);
   }, [router]);
 
-  // Early return after all hooks
-  if (shouldHide) return null;
-
+  // Handle tab press - must be before early return
   const handleTabPress = useCallback((tab: TabConfig) => {
     if (tab.id === 'more') {
       haptics.light();
@@ -359,6 +453,9 @@ export const BottomNav = memo(function BottomNav() {
       handleNavigate(tab.route);
     }
   }, [handleNavigate]);
+
+  // Early return after all hooks
+  if (shouldHide) return null;
 
   return (
     <>
@@ -386,10 +483,12 @@ export const BottomNav = memo(function BottomNav() {
       <MoreMenu
         visible={showMoreMenu}
         onClose={() => setShowMoreMenu(false)}
-        accentColor={accentColor}
         onNavigate={(route) => router.navigate(route as any)}
+        moreMenuTabs={moreMenuTabs}
         hasRadarr={hasRadarr}
         hasSonarr={hasSonarr}
+        hasJellyseerr={hasJellyseerr}
+        hasLiveTV={hasLiveTV}
       />
     </>
   );
@@ -441,66 +540,60 @@ const styles = StyleSheet.create({
 const moreStyles = StyleSheet.create({
   overlay: {
     flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'flex-end',
   },
-  backdropFade: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.6)',
+  overlayPress: {
+    flex: 1,
   },
-  container: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: '#1a1a1a',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 16,
+  sheet: {
+    backgroundColor: '#121212',
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    paddingBottom: 90,
+  },
+  handleContainer: {
+    paddingVertical: 12,
+    alignItems: 'center',
   },
   handle: {
-    width: 40,
-    height: 4,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    borderRadius: 2,
-    alignSelf: 'center',
-    marginBottom: 16,
+    width: 36,
+    height: 5,
+    backgroundColor: 'rgba(255,255,255,0.25)',
+    borderRadius: 3,
   },
-  title: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#fff',
-    marginBottom: 20,
-    paddingHorizontal: 4,
+  header: {
+    paddingHorizontal: 16,
+    paddingBottom: 8,
   },
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
+  headerTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.5)',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  itemsContainer: {
+    paddingHorizontal: 0,
+  },
+  itemWrapper: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#2a2a2a',
+    marginHorizontal: 20,
   },
   menuItem: {
-    width: '47%',
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-  },
-  iconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 14,
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 4,
+    gap: 16,
+  },
+  menuItemPressed: {
+    opacity: 0.5,
   },
   itemName: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 17,
+    fontWeight: '400',
     color: '#fff',
-  },
-  itemDescription: {
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.5)',
-    marginTop: 4,
   },
 });
