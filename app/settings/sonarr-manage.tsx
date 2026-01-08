@@ -139,14 +139,14 @@ function HeaderSection({ stats, isLoading }: { stats: Stats; isLoading: boolean 
         >
           <StatsCard
             icon="tv"
-            label="Total Series"
+            label="Series"
             value={stats.totalSeries}
             color={SONARR_BLUE}
             delay={100}
           />
           <StatsCard
             icon="checkmark-circle"
-            label="Downloaded"
+            label="Have"
             value={stats.episodesDownloaded}
             color={colors.status.success}
             delay={200}
@@ -160,7 +160,7 @@ function HeaderSection({ stats, isLoading }: { stats: Stats; isLoading: boolean 
           />
           <StatsCard
             icon="cloud-download"
-            label="In Queue"
+            label="Queue"
             value={stats.queueCount}
             color={colors.status.info}
             delay={400}

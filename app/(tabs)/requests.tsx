@@ -33,7 +33,7 @@ const JELLYSEERR_PURPLE_DARK = '#4f46e5';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 type TabType = 'discover' | 'requests' | 'manage';
-type FilterType = 'all' | 'pending' | 'approved' | 'available' | 'declined';
+type FilterType = 'all' | 'pending' | 'approved' | 'available';
 
 function StatCard({
   icon,
@@ -212,7 +212,7 @@ export default function RequestsScreen() {
     fetchNextPage: fetchNextAllRequests,
     hasNextPage: hasNextAllRequests,
     isFetchingNextPage: isFetchingNextAllRequests,
-  } = useAllRequests(requestFilter === 'all' ? 'all' : requestFilter);
+  } = useAllRequests(requestFilter);
   const { data: pendingRequests } = usePendingRequests();
 
   const myRequestsList = useMemo(
@@ -483,21 +483,27 @@ export default function RequestsScreen() {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.filterRow}
         >
-          {([
-            { key: 'all', label: 'All' },
-            { key: 'pending', label: 'Pending', count: stats.pending },
-            { key: 'approved', label: 'Approved' },
-            { key: 'available', label: 'Available' },
-            { key: 'declined', label: 'Declined' },
-          ] as const).map((filter) => (
-            <FilterPill
-              key={filter.key}
-              label={filter.label}
-              isActive={requestFilter === filter.key}
-              count={filter.count}
-              onPress={() => setRequestFilter(filter.key)}
-            />
-          ))}
+          <FilterPill
+            label="All"
+            isActive={requestFilter === 'all'}
+            onPress={() => setRequestFilter('all')}
+          />
+          <FilterPill
+            label="Pending"
+            isActive={requestFilter === 'pending'}
+            count={stats.pending}
+            onPress={() => setRequestFilter('pending')}
+          />
+          <FilterPill
+            label="Approved"
+            isActive={requestFilter === 'approved'}
+            onPress={() => setRequestFilter('approved')}
+          />
+          <FilterPill
+            label="Available"
+            isActive={requestFilter === 'available'}
+            onPress={() => setRequestFilter('available')}
+          />
         </ScrollView>
       </Animated.View>
 

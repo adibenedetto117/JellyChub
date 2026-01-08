@@ -1,10 +1,11 @@
-import { View, Text, Pressable, StyleSheet } from 'react-native';
-import { memo, useCallback, useMemo } from 'react';
+import { View, Text, Pressable, StyleSheet, Modal } from 'react-native';
+import { memo, useCallback, useMemo, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
-import Animated, { useSharedValue, useAnimatedStyle, withSpring } from 'react-native-reanimated';
+import Animated, { useSharedValue, useAnimatedStyle, withSpring, FadeIn, FadeOut, SlideInDown, SlideOutDown } from 'react-native-reanimated';
 import { useRouter, usePathname } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useSettingsStore, useAuthStore } from '@/stores';
 import { selectHasJellyseerr, DEFAULT_TAB_ORDER, type TabId } from '@/stores/settingsStore';
 import { getLibraries } from '@/api';
@@ -104,7 +105,91 @@ const TAB_ICONS: Record<string, { outline: IconName; filled: IconName }> = {
   requests: { outline: 'add-circle-outline', filled: 'add-circle' },
   admin: { outline: 'shield-outline', filled: 'shield' },
   settings: { outline: 'settings-outline', filled: 'settings' },
+  more: { outline: 'ellipsis-horizontal-circle-outline', filled: 'ellipsis-horizontal-circle' },
 };
+
+interface MoreMenuItem {
+  id: string;
+  name: string;
+  icon: IconName;
+  route: string;
+  color: string;
+  description?: string;
+}
+
+const MORE_MENU_ITEMS: MoreMenuItem[] = [
+  { id: 'radarr', name: 'Radarr', icon: 'film', route: '/settings/radarr-manage', color: '#ffc230', description: 'Movie management' },
+  { id: 'sonarr', name: 'Sonarr', icon: 'tv', route: '/settings/sonarr-manage', color: '#35c5f4', description: 'TV series management' },
+  { id: 'favorites', name: 'Favorites', icon: 'heart', route: '/(tabs)/favorites', color: '#ef4444', description: 'Your favorite media' },
+  { id: 'livetv', name: 'Live TV', icon: 'radio', route: '/(tabs)/live-tv', color: '#a855f7', description: 'Watch live channels' },
+];
+
+interface MoreMenuProps {
+  visible: boolean;
+  onClose: () => void;
+  accentColor: string;
+  onNavigate: (route: string) => void;
+  hasRadarr: boolean;
+  hasSonarr: boolean;
+}
+
+const MoreMenu = memo(function MoreMenu({ visible, onClose, accentColor, onNavigate, hasRadarr, hasSonarr }: MoreMenuProps) {
+  const insets = useSafeAreaInsets();
+
+  const visibleItems = useMemo(() => {
+    return MORE_MENU_ITEMS.filter((item) => {
+      if (item.id === 'radarr' && !hasRadarr) return false;
+      if (item.id === 'sonarr' && !hasSonarr) return false;
+      return true;
+    });
+  }, [hasRadarr, hasSonarr]);
+
+  if (!visible) return null;
+
+  return (
+    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
+      <Pressable style={moreStyles.overlay} onPress={onClose}>
+        <Animated.View
+          entering={FadeIn.duration(150)}
+          exiting={FadeOut.duration(100)}
+          style={moreStyles.backdropFade}
+        />
+      </Pressable>
+      <Animated.View
+        entering={SlideInDown.springify().damping(20)}
+        exiting={SlideOutDown.duration(200)}
+        style={[moreStyles.container, { paddingBottom: insets.bottom + 16 }]}
+      >
+        <View style={moreStyles.handle} />
+        <Text style={moreStyles.title}>More</Text>
+        <View style={moreStyles.grid}>
+          {visibleItems.map((item) => (
+            <Pressable
+              key={item.id}
+              style={({ pressed }) => [
+                moreStyles.menuItem,
+                { opacity: pressed ? 0.8 : 1 },
+              ]}
+              onPress={() => {
+                haptics.light();
+                onClose();
+                setTimeout(() => onNavigate(item.route), 150);
+              }}
+            >
+              <View style={[moreStyles.iconContainer, { backgroundColor: `${item.color}20` }]}>
+                <Ionicons name={item.icon} size={24} color={item.color} />
+              </View>
+              <Text style={moreStyles.itemName}>{item.name}</Text>
+              {item.description && (
+                <Text style={moreStyles.itemDescription}>{item.description}</Text>
+              )}
+            </Pressable>
+          ))}
+        </View>
+      </Animated.View>
+    </Modal>
+  );
+});
 
 const HIDDEN_PATHS = [
   '/player/',
@@ -134,8 +219,16 @@ export const BottomNav = memo(function BottomNav() {
   const offlineMode = useSettingsStore((s) => s.offlineMode);
   const reduceMotion = useSettingsStore((s) => s.reduceMotion);
   const hasJellyseerr = useSettingsStore(selectHasJellyseerr);
+  const radarrUrl = useSettingsStore((s) => s.radarrUrl);
+  const radarrApiKey = useSettingsStore((s) => s.radarrApiKey);
+  const sonarrUrl = useSettingsStore((s) => s.sonarrUrl);
+  const sonarrApiKey = useSettingsStore((s) => s.sonarrApiKey);
   const currentUser = useAuthStore((s) => s.currentUser);
   const userId = currentUser?.Id ?? '';
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
+
+  const hasRadarr = !!(radarrUrl && radarrApiKey);
+  const hasSonarr = !!(sonarrUrl && sonarrApiKey);
 
   // Memoize admin check
   const isAdmin = useMemo(
@@ -208,6 +301,11 @@ export const BottomNav = memo(function BottomNav() {
     if (tabId === 'settings') {
       return { id: 'settings', name: 'Settings', icon: icons.settings.outline, iconFilled: icons.settings.filled, route: '/(tabs)/settings' };
     }
+    if (tabId === 'more') {
+      return bottomBarConfig.showMore
+        ? { id: 'more', name: 'More', icon: icons.more.outline, iconFilled: icons.more.filled, route: 'more' }
+        : null;
+    }
 
     const library = libraries?.find((l) => l.Id === tabId);
     if (library) {
@@ -253,28 +351,47 @@ export const BottomNav = memo(function BottomNav() {
   // Early return after all hooks
   if (shouldHide) return null;
 
+  const handleTabPress = useCallback((tab: TabConfig) => {
+    if (tab.id === 'more') {
+      haptics.light();
+      setShowMoreMenu(true);
+    } else {
+      handleNavigate(tab.route);
+    }
+  }, [handleNavigate]);
+
   return (
-    <View
-      style={[styles.container, { height, paddingBottom: insets.bottom }]}
-      accessible={true}
-      accessibilityRole="tablist"
-      accessibilityLabel="Main navigation"
-    >
-      <View style={styles.tabsContainer}>
-        {tabs.map((tab) => (
-          <NavTab
-            key={tab.id}
-            icon={tab.icon}
-            iconFilled={tab.iconFilled}
-            name={tab.name}
-            isActive={isTabActive(tab.route)}
-            accentColor={accentColor}
-            onPress={() => handleNavigate(tab.route)}
-            reduceMotion={reduceMotion}
-          />
-        ))}
+    <>
+      <View
+        style={[styles.container, { height, paddingBottom: insets.bottom }]}
+        accessible={true}
+        accessibilityRole="tablist"
+        accessibilityLabel="Main navigation"
+      >
+        <View style={styles.tabsContainer}>
+          {tabs.map((tab) => (
+            <NavTab
+              key={tab.id}
+              icon={tab.icon}
+              iconFilled={tab.iconFilled}
+              name={tab.name}
+              isActive={tab.id === 'more' ? showMoreMenu : isTabActive(tab.route)}
+              accentColor={accentColor}
+              onPress={() => handleTabPress(tab)}
+              reduceMotion={reduceMotion}
+            />
+          ))}
+        </View>
       </View>
-    </View>
+      <MoreMenu
+        visible={showMoreMenu}
+        onClose={() => setShowMoreMenu(false)}
+        accentColor={accentColor}
+        onNavigate={(route) => router.navigate(route as any)}
+        hasRadarr={hasRadarr}
+        hasSonarr={hasSonarr}
+      />
+    </>
   );
 });
 
@@ -318,5 +435,72 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '500',
     marginTop: 2,
+  },
+});
+
+const moreStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  backdropFade: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+  },
+  container: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#1a1a1a',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 16,
+  },
+  handle: {
+    width: 40,
+    height: 4,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: 16,
+  },
+  title: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#fff',
+    marginBottom: 20,
+    paddingHorizontal: 4,
+  },
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  menuItem: {
+    width: '47%',
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  iconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  itemName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  itemDescription: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.5)',
+    marginTop: 4,
   },
 });

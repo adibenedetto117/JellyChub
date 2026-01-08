@@ -986,7 +986,12 @@ export default function RadarrManageScreen() {
               <Ionicons name="film" size={24} color="#000" />
               <Text style={styles.headerTitle}>Radarr</Text>
             </View>
-            <View style={{ width: 40 }} />
+            <Pressable
+              style={styles.calendarBtn}
+              onPress={() => router.push('/settings/radarr-calendar')}
+            >
+              <Ionicons name="calendar" size={22} color="#000" />
+            </Pressable>
           </View>
         </LinearGradient>
       </RNAnimated.View>
@@ -1005,8 +1010,8 @@ export default function RadarrManageScreen() {
         }
       >
         <View style={styles.statsContainer}>
-          <StatCard label="Total" value={stats.total} icon="film" color={RADARR_ORANGE} delay={0} />
-          <StatCard label="Downloaded" value={stats.downloaded} icon="checkmark-circle" color={colors.status.success} delay={50} />
+          <StatCard label="Movies" value={stats.total} icon="film" color={RADARR_ORANGE} delay={0} />
+          <StatCard label="Have" value={stats.downloaded} icon="checkmark-circle" color={colors.status.success} delay={50} />
           <StatCard label="Missing" value={stats.missing} icon="time" color={colors.status.warning} delay={100} />
           <StatCard label="Queue" value={stats.queue} icon="cloud-download" color={colors.status.info} delay={150} />
         </View>
@@ -1248,6 +1253,14 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   backBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  calendarBtn: {
     width: 40,
     height: 40,
     borderRadius: 20,

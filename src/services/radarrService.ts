@@ -149,6 +149,34 @@ export interface RadarrRelease {
   rejections?: string[];
 }
 
+export interface RadarrCalendarMovie {
+  id: number;
+  title: string;
+  sortTitle: string;
+  year: number;
+  tmdbId: number;
+  imdbId?: string;
+  overview: string;
+  runtime: number;
+  hasFile: boolean;
+  monitored: boolean;
+  physicalRelease?: string;
+  digitalRelease?: string;
+  inCinemas?: string;
+  images: Array<{
+    coverType: string;
+    url: string;
+    remoteUrl?: string;
+  }>;
+  genres: string[];
+  ratings: {
+    imdb?: { value: number; votes: number };
+    tmdb?: { value: number; votes: number };
+  };
+  status: string;
+  grabbed?: boolean;
+}
+
 class RadarrService {
   private getBaseUrl(): string | null {
     return useSettingsStore.getState().radarrUrl;
@@ -303,6 +331,12 @@ class RadarrService {
       method: 'POST',
       body: JSON.stringify({ guid, indexerId }),
     });
+  }
+
+  async getCalendar(startDate: string, endDate: string): Promise<RadarrCalendarMovie[]> {
+    return this.request<RadarrCalendarMovie[]>(
+      `/calendar?start=${startDate}&end=${endDate}&unmonitored=false`
+    );
   }
 
   isConfigured(): boolean {

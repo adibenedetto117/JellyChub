@@ -188,7 +188,7 @@ export default function JellyseerrDetailsScreen() {
     return (tvData as any).externalIds?.tvdbId ?? undefined;
   }, [type, details]);
 
-  const rawBackdropUrl = jellyseerrClient.getImageUrl(details?.backdropPath, 'w1280');
+  const rawBackdropUrl = jellyseerrClient.getImageUrl(details?.backdropPath, 'w780');
   const rawPosterUrl = jellyseerrClient.getImageUrl(details?.posterPath, 'w500');
   const itemId = String(numericTmdbId || '0');
   const backdropUrl = getDisplayImageUrl(itemId, rawBackdropUrl, hideMedia, 'Backdrop');

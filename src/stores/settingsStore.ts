@@ -21,16 +21,14 @@ export type LibrarySortPreferences = Record<LibraryCategory, LibrarySortPreferen
 export type FixedTabId = 'home' | 'search' | 'library' | 'downloads' | 'settings';
 
 // Tab IDs for ordering
-export type TabId = 'home' | 'search' | 'library' | 'downloads' | 'requests' | 'admin' | 'settings' | 'livetv' | string;
+export type TabId = 'home' | 'search' | 'library' | 'downloads' | 'requests' | 'admin' | 'settings' | 'livetv' | 'more' | string;
 
 // Default tab order (library IDs are appended dynamically)
 export const DEFAULT_TAB_ORDER: TabId[] = [
   'home',
   'library',
-  'livetv',
   'downloads',
-  'requests',
-  'admin',
+  'more',
   'settings',
 ];
 
@@ -41,6 +39,7 @@ export interface BottomBarConfig {
   showDownloads: boolean;
   showAdmin: boolean;
   showRequests: boolean;
+  showMore: boolean;
   selectedLibraryIds: string[];
   tabOrder: TabId[];
   landingPage: TabId;
@@ -52,6 +51,7 @@ export const DEFAULT_BOTTOM_BAR_CONFIG: BottomBarConfig = {
   showDownloads: true,
   showAdmin: true,
   showRequests: true,
+  showMore: true,
   selectedLibraryIds: [],
   tabOrder: DEFAULT_TAB_ORDER,
   landingPage: 'home',
