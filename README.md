@@ -24,19 +24,18 @@ Requires Android 8.0 (API 26) or higher.
 - Multiple audio track selection (30+ languages)
 - Picture-in-Picture mode
 - Skip intro/credits buttons (Jellyfin media segments)
-- Volume/brightness swipe gestures
 - Auto-play next episode
 - Trickplay thumbnail previews while seeking
 - Hardware acceleration
 - External player support (VLC, Infuse, nPlayer)
 - Chromecast support
 
-### Live TV
+### Live TV (Beta)
 - Live channel streaming
 - EPG (Electronic Program Guide) with grid view
 - Channel groups and favorites
 - Program details and scheduling
-- Recording support (via Jellyfin DVR)
+- *Note: Still in testing*
 
 ### Music
 - Background playback with lock screen controls
@@ -62,9 +61,12 @@ Requires Android 8.0 (API 26) or higher.
 - Bookmarks with sync to Jellyfin
 - Progress tracking
 
-### PDF & Comic Reader
+### PDF Reader
 - Native PDF rendering with progress tracking
+
+### Comic Reader (Beta)
 - Comic/manga reader support
+- *Note: Still in testing*
 
 ### Downloads & Offline Mode
 - Download movies, TV shows, music, and audiobooks
@@ -94,12 +96,13 @@ Requires Android 8.0 (API 26) or higher.
 - Activity logs
 - Server restart/shutdown
 
-### Android TV Support
+### Android TV Support (In Development)
 - Full D-pad/remote navigation
 - TV-optimized UI with sidebar navigation
 - Large artwork and readable text
 - Focus-based navigation
 - TV-specific player controls
+- *Note: Work in progress, not fully optimized yet*
 
 ### Security
 - PIN lock for app access
