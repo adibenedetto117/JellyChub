@@ -156,6 +156,7 @@ interface MoreMenuProps {
   hasSonarr: boolean;
   hasJellyseerr: boolean;
   hasLiveTV: boolean;
+  libraries: Library[] | undefined;
 }
 
 const MoreMenu = memo(function MoreMenu({
@@ -167,8 +168,10 @@ const MoreMenu = memo(function MoreMenu({
   hasSonarr,
   hasJellyseerr,
   hasLiveTV,
+  libraries,
 }: MoreMenuProps) {
   const translateY = useSharedValue(0);
+  const insets = useSafeAreaInsets();
 
   const visibleItems = useMemo(() => {
     return moreMenuTabs.filter((tabId) => {
@@ -176,22 +179,60 @@ const MoreMenu = memo(function MoreMenu({
       if (tabId === 'sonarr' && !hasSonarr) return false;
       if (tabId === 'jellyseerr' && !hasJellyseerr) return false;
       if (tabId === 'livetv' && !hasLiveTV) return false;
+      // Check if tabId is a library ID (not in TAB_ICONS) and verify the library exists
+      if (!(tabId in TAB_ICONS)) {
+        const libraryExists = libraries?.some((lib) => lib.Id === tabId);
+        if (!libraryExists) return false;
+      }
       return true;
     });
-  }, [moreMenuTabs, hasRadarr, hasSonarr, hasJellyseerr, hasLiveTV]);
+  }, [moreMenuTabs, hasRadarr, hasSonarr, hasJellyseerr, hasLiveTV, libraries]);
+
+  // Helper function to get item info for both regular tabs and libraries
+  const getItemInfo = useCallback((tabId: string): { icon: IconName; name: string; route: string } | null => {
+    // Check if it's a library ID (not in TAB_ICONS)
+    if (!(tabId in TAB_ICONS)) {
+      const library = libraries?.find((lib) => lib.Id === tabId);
+      if (library) {
+        const screenName = getLibraryScreenName(library.CollectionType);
+        const icons = TAB_ICONS[screenName] || TAB_ICONS.library;
+        return {
+          icon: icons.outline,
+          name: library.Name,
+          route: `/(tabs)/library/${library.Id}`,
+        };
+      }
+      return null;
+    }
+
+    // Regular tab
+    const icons = TAB_ICONS[tabId];
+    const route = TAB_ROUTES[tabId];
+    if (!route) return null;
+
+    return {
+      icon: icons?.outline || 'ellipse-outline',
+      name: TAB_NAMES[tabId] || tabId,
+      route,
+    };
+  }, [libraries]);
 
   const panGesture = Gesture.Pan()
     .onUpdate((e) => {
+      // Only allow dragging down
       if (e.translationY > 0) {
         translateY.value = e.translationY;
       }
     })
     .onEnd((e) => {
-      if (e.translationY > 80 || e.velocityY > 500) {
-        translateY.value = withTiming(400, { duration: 200 });
-        runOnJS(onClose)();
+      // Dismiss if dragged down enough or with enough velocity
+      if (e.translationY > 100 || e.velocityY > 800) {
+        translateY.value = withTiming(500, { duration: 200 }, () => {
+          runOnJS(onClose)();
+        });
       } else {
-        translateY.value = withSpring(0, { damping: 20, stiffness: 300 });
+        // Spring back to original position
+        translateY.value = withSpring(0, { damping: 25, stiffness: 400 });
       }
     });
 
@@ -212,44 +253,41 @@ const MoreMenu = memo(function MoreMenu({
         <Pressable style={moreStyles.overlayPress} onPress={onClose} />
 
         <GestureDetector gesture={panGesture}>
-          <Animated.View style={[moreStyles.sheet, animatedStyle]}>
-            {/* Handle */}
+          <Animated.View style={[moreStyles.sheet, { paddingBottom: insets.bottom + 20 }, animatedStyle]}>
+            {/* Drag Handle */}
             <View style={moreStyles.handleContainer}>
               <View style={moreStyles.handle} />
             </View>
 
-            {/* Header */}
-            <View style={moreStyles.header}>
-              <Text style={moreStyles.headerTitle}>More</Text>
-            </View>
+            {/* Title */}
+            <Text style={moreStyles.title}>More</Text>
 
             {/* Menu Items */}
             <View style={moreStyles.itemsContainer}>
-              {visibleItems.map((tabId, index) => {
-                const icons = TAB_ICONS[tabId];
-                const name = TAB_NAMES[tabId] || tabId;
-                const route = TAB_ROUTES[tabId];
-                const isLast = index === visibleItems.length - 1;
+              {visibleItems.map((tabId) => {
+                const itemInfo = getItemInfo(tabId);
 
-                if (!route) return null;
+                if (!itemInfo) return null;
 
                 return (
-                  <View key={tabId} style={!isLast ? moreStyles.itemWrapper : undefined}>
-                    <Pressable
-                      style={({ pressed }) => [
-                        moreStyles.menuItem,
-                        pressed && moreStyles.menuItemPressed,
-                      ]}
-                      onPress={() => {
-                        haptics.light();
-                        onClose();
-                        setTimeout(() => onNavigate(route), 100);
-                      }}
-                    >
-                      <Ionicons name={icons?.outline || 'ellipse-outline'} size={22} color="rgba(255,255,255,0.6)" />
-                      <Text style={moreStyles.itemName}>{name}</Text>
-                    </Pressable>
-                  </View>
+                  <Pressable
+                    key={tabId}
+                    style={({ pressed }) => [
+                      moreStyles.menuItem,
+                      pressed && moreStyles.menuItemPressed,
+                    ]}
+                    onPress={() => {
+                      haptics.light();
+                      onClose();
+                      setTimeout(() => onNavigate(itemInfo.route), 100);
+                    }}
+                  >
+                    <Ionicons name={itemInfo.icon} size={22} color="rgba(255,255,255,0.6)" />
+                    <Text style={moreStyles.itemName}>{itemInfo.name}</Text>
+                    <View style={moreStyles.chevronContainer}>
+                      <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.3)" />
+                    </View>
+                  </Pressable>
                 );
               })}
             </View>
@@ -489,6 +527,7 @@ export const BottomNav = memo(function BottomNav() {
         hasSonarr={hasSonarr}
         hasJellyseerr={hasJellyseerr}
         hasLiveTV={hasLiveTV}
+        libraries={libraries}
       />
     </>
   );
@@ -547,53 +586,52 @@ const moreStyles = StyleSheet.create({
     flex: 1,
   },
   sheet: {
-    backgroundColor: '#121212',
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    paddingBottom: 90,
+    backgroundColor: '#1c1c1e',
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
   },
   handleContainer: {
-    paddingVertical: 12,
+    paddingTop: 8,
+    paddingBottom: 4,
     alignItems: 'center',
   },
   handle: {
     width: 36,
     height: 5,
-    backgroundColor: 'rgba(255,255,255,0.25)',
-    borderRadius: 3,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+    borderRadius: 2.5,
   },
-  header: {
-    paddingHorizontal: 16,
-    paddingBottom: 8,
-  },
-  headerTitle: {
-    fontSize: 13,
+  title: {
+    fontSize: 17,
     fontWeight: '600',
-    color: 'rgba(255,255,255,0.5)',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    color: '#fff',
+    textAlign: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(255,255,255,0.1)',
+    marginBottom: 4,
   },
   itemsContainer: {
-    paddingHorizontal: 0,
-  },
-  itemWrapper: {
-    borderBottomWidth: 1,
-    borderBottomColor: '#2a2a2a',
-    marginHorizontal: 20,
+    paddingTop: 4,
+    paddingBottom: 8,
   },
   menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 4,
-    gap: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    gap: 14,
   },
   menuItemPressed: {
-    opacity: 0.5,
+    backgroundColor: 'rgba(255,255,255,0.08)',
   },
   itemName: {
+    flex: 1,
     fontSize: 17,
     fontWeight: '400',
     color: '#fff',
+  },
+  chevronContainer: {
+    marginLeft: 'auto',
   },
 });
