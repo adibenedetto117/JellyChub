@@ -166,6 +166,71 @@ export interface SonarrAddSeriesOptions {
   seasons?: Array<{ seasonNumber: number; monitored: boolean }>;
 }
 
+export interface SonarrEpisode {
+  id: number;
+  seriesId: number;
+  tvdbId: number;
+  episodeNumber: number;
+  seasonNumber: number;
+  title: string;
+  airDate?: string;
+  airDateUtc?: string;
+  overview?: string;
+  hasFile: boolean;
+  monitored: boolean;
+  absoluteEpisodeNumber?: number;
+  sceneAbsoluteEpisodeNumber?: number;
+  sceneEpisodeNumber?: number;
+  sceneSeasonNumber?: number;
+  unverifiedSceneNumbering: boolean;
+  episodeFileId?: number;
+}
+
+export interface SonarrCalendarEpisode {
+  id: number;
+  seriesId: number;
+  tvdbId: number;
+  episodeNumber: number;
+  seasonNumber: number;
+  title: string;
+  airDate: string;
+  airDateUtc: string;
+  overview?: string;
+  hasFile: boolean;
+  monitored: boolean;
+  grabbed: boolean;
+  series: SonarrSeries;
+}
+
+export interface SonarrRelease {
+  guid: string;
+  quality: {
+    quality: {
+      id: number;
+      name: string;
+    };
+    revision: { version: number; real: number };
+  };
+  title: string;
+  size: number;
+  indexer: string;
+  indexerId: number;
+  seeders?: number;
+  leechers?: number;
+  protocol: string;
+  age: number;
+  ageHours: number;
+  ageMinutes: number;
+  publishDate: string;
+  downloadUrl?: string;
+  rejected: boolean;
+  rejections?: string[];
+  seriesId?: number;
+  episodeId?: number;
+  seasonNumber?: number;
+  fullSeason: boolean;
+}
+
 class SonarrService {
   private getBaseUrl(): string | null {
     return useSettingsStore.getState().sonarrUrl;
@@ -278,6 +343,90 @@ class SonarrService {
   async removeFromQueue(id: number, removeFromClient = true, blocklist = false): Promise<void> {
     await this.request(`/queue/${id}?removeFromClient=${removeFromClient}&blocklist=${blocklist}`, {
       method: 'DELETE',
+    });
+  }
+
+  async triggerSeriesSearch(seriesId: number): Promise<void> {
+    await this.request('/command', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: 'SeriesSearch',
+        seriesId: seriesId,
+      }),
+    });
+  }
+
+  async getSeriesDetails(seriesId: number): Promise<SonarrSeries> {
+    return this.request<SonarrSeries>(`/series/${seriesId}`);
+  }
+
+  async toggleSeriesMonitored(seriesId: number, monitored: boolean): Promise<SonarrSeries> {
+    const series = await this.getSeriesDetails(seriesId);
+    return this.request<SonarrSeries>(`/series/${seriesId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ ...series, monitored }),
+    });
+  }
+
+  async toggleSeasonMonitored(seriesId: number, seasonNumber: number, monitored: boolean): Promise<SonarrSeries> {
+    const series = await this.getSeriesDetails(seriesId);
+    const updatedSeasons = series.seasons.map((season) =>
+      season.seasonNumber === seasonNumber ? { ...season, monitored } : season
+    );
+    return this.request<SonarrSeries>(`/series/${seriesId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ ...series, seasons: updatedSeasons }),
+    });
+  }
+
+  async deleteSeries(seriesId: number, deleteFiles = false): Promise<void> {
+    await this.request(`/series/${seriesId}?deleteFiles=${deleteFiles}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async refreshSeries(seriesId: number): Promise<void> {
+    await this.request('/command', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: 'RefreshSeries',
+        seriesId,
+      }),
+    });
+  }
+
+  async getEpisodes(seriesId: number): Promise<SonarrEpisode[]> {
+    return this.request<SonarrEpisode[]>(`/episode?seriesId=${seriesId}`);
+  }
+
+  async getCalendar(startDate: string, endDate: string): Promise<SonarrCalendarEpisode[]> {
+    return this.request<SonarrCalendarEpisode[]>(
+      `/calendar?start=${startDate}&end=${endDate}&includeSeries=true&includeEpisodeFile=true`
+    );
+  }
+
+  async searchEpisode(episodeId: number): Promise<void> {
+    await this.request('/command', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: 'EpisodeSearch',
+        episodeIds: [episodeId],
+      }),
+    });
+  }
+
+  async manualSearchSeries(seriesId: number): Promise<SonarrRelease[]> {
+    return this.request<SonarrRelease[]>(`/release?seriesId=${seriesId}`);
+  }
+
+  async manualSearchSeason(seriesId: number, seasonNumber: number): Promise<SonarrRelease[]> {
+    return this.request<SonarrRelease[]>(`/release?seriesId=${seriesId}&seasonNumber=${seasonNumber}`);
+  }
+
+  async downloadRelease(guid: string, indexerId: number): Promise<void> {
+    await this.request('/release', {
+      method: 'POST',
+      body: JSON.stringify({ guid, indexerId }),
     });
   }
 

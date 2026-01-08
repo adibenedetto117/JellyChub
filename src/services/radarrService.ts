@@ -124,6 +124,31 @@ export interface RadarrAddMovieOptions {
   minimumAvailability?: 'announced' | 'inCinemas' | 'released' | 'tba';
 }
 
+export interface RadarrRelease {
+  guid: string;
+  quality: {
+    quality: {
+      id: number;
+      name: string;
+    };
+    revision: { version: number; real: number };
+  };
+  title: string;
+  size: number;
+  indexer: string;
+  indexerId: number;
+  seeders?: number;
+  leechers?: number;
+  protocol: string;
+  age: number;
+  ageHours: number;
+  ageMinutes: number;
+  publishDate: string;
+  downloadUrl?: string;
+  rejected: boolean;
+  rejections?: string[];
+}
+
 class RadarrService {
   private getBaseUrl(): string | null {
     return useSettingsStore.getState().radarrUrl;
@@ -228,6 +253,55 @@ class RadarrService {
   async removeFromQueue(id: number, removeFromClient = true, blocklist = false): Promise<void> {
     await this.request(`/queue/${id}?removeFromClient=${removeFromClient}&blocklist=${blocklist}`, {
       method: 'DELETE',
+    });
+  }
+
+  async triggerMovieSearch(movieId: number): Promise<void> {
+    await this.request('/command', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: 'MoviesSearch',
+        movieIds: [movieId],
+      }),
+    });
+  }
+
+  async getMovieDetails(movieId: number): Promise<RadarrMovie> {
+    return this.request<RadarrMovie>(`/movie/${movieId}`);
+  }
+
+  async toggleMonitored(movieId: number, monitored: boolean): Promise<RadarrMovie> {
+    const movie = await this.getMovieDetails(movieId);
+    return this.request<RadarrMovie>(`/movie/${movieId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ ...movie, monitored }),
+    });
+  }
+
+  async deleteMovie(movieId: number, deleteFiles = false): Promise<void> {
+    await this.request(`/movie/${movieId}?deleteFiles=${deleteFiles}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async refreshMovie(movieId: number): Promise<void> {
+    await this.request('/command', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: 'RefreshMovie',
+        movieIds: [movieId],
+      }),
+    });
+  }
+
+  async manualSearchMovie(movieId: number): Promise<RadarrRelease[]> {
+    return this.request<RadarrRelease[]>(`/release?movieId=${movieId}`);
+  }
+
+  async downloadRelease(guid: string, indexerId: number): Promise<void> {
+    await this.request('/release', {
+      method: 'POST',
+      body: JSON.stringify({ guid, indexerId }),
     });
   }
 
