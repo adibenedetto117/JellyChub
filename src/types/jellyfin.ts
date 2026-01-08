@@ -238,6 +238,7 @@ export type CollectionType =
   | 'boxsets'
   | 'playlists'
   | 'mixed'
+  | 'livetv'
   | null
   | undefined;
 

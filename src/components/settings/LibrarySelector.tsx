@@ -18,11 +18,85 @@ const ICON_MAP: Record<string, string> = {
   list: '\u2630',
   library: '\u25A6',
   star: '\u2606',
+  heart: '\u2665',
   shield: '\u2318',
   download: '\u2193',
   search: '\u26B2',
   settings: '\u2699',
+  more: '\u2026',
+  radio: '\u25CE',
 };
+
+type TabPlacement = 'bottomBar' | 'more' | 'hidden';
+
+interface TabPlacementRowProps {
+  icon: string;
+  title: string;
+  placement: TabPlacement;
+  accentColor: string;
+  onPlacementChange: (placement: TabPlacement) => void;
+}
+
+function TabPlacementRow({ icon, title, placement, accentColor, onPlacementChange }: TabPlacementRowProps) {
+  const placements: { value: TabPlacement; label: string }[] = [
+    { value: 'bottomBar', label: 'Bar' },
+    { value: 'more', label: 'More' },
+    { value: 'hidden', label: 'Hide' },
+  ];
+
+  return (
+    <View
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 10,
+        borderBottomWidth: 1,
+        borderBottomColor: colors.surface.default,
+      }}
+    >
+      <View
+        style={{
+          width: 36,
+          height: 36,
+          borderRadius: 8,
+          alignItems: 'center',
+          justifyContent: 'center',
+          marginRight: 10,
+          backgroundColor: placement !== 'hidden' ? accentColor : 'rgba(255,255,255,0.1)',
+        }}
+      >
+        <Text style={{ fontSize: 16, color: placement !== 'hidden' ? '#fff' : 'rgba(255,255,255,0.5)' }}>
+          {ICON_MAP[icon] ?? '?'}
+        </Text>
+      </View>
+      <Text style={{ flex: 1, color: '#fff', fontSize: 14, fontWeight: '500' }}>{title}</Text>
+      <View style={{ flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 8, padding: 2 }}>
+        {placements.map((p) => (
+          <Pressable
+            key={p.value}
+            onPress={() => onPlacementChange(p.value)}
+            style={{
+              paddingHorizontal: 10,
+              paddingVertical: 6,
+              borderRadius: 6,
+              backgroundColor: placement === p.value ? accentColor : 'transparent',
+            }}
+          >
+            <Text
+              style={{
+                fontSize: 12,
+                fontWeight: '500',
+                color: placement === p.value ? '#fff' : 'rgba(255,255,255,0.5)',
+              }}
+            >
+              {p.label}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+    </View>
+  );
+}
 
 interface SpecialRowProps {
   icon: string;
@@ -245,8 +319,13 @@ const CORE_TAB_INFO: Record<string, { icon: string; title: string }> = {
   search: { icon: 'search', title: 'Search' },
   library: { icon: 'library', title: 'Library' },
   downloads: { icon: 'download', title: 'Downloads' },
-  requests: { icon: 'star', title: 'Requests' },
+  jellyseerr: { icon: 'star', title: 'Jellyseerr' },
   admin: { icon: 'shield', title: 'Admin' },
+  radarr: { icon: 'film', title: 'Radarr' },
+  sonarr: { icon: 'tv', title: 'Sonarr' },
+  favorites: { icon: 'heart', title: 'Favorites' },
+  livetv: { icon: 'radio', title: 'Live TV' },
+  more: { icon: 'more', title: 'More' },
   settings: { icon: 'settings', title: 'Settings' },
 };
 
@@ -271,14 +350,13 @@ export function LibrarySelector() {
   const toggleLibraryOnBottomBar = useSettingsStore((s) => s.toggleLibraryOnBottomBar);
   const moveTabInOrder = useSettingsStore((s) => s.moveTabInOrder);
   const hasJellyseerr = useSettingsStore(selectHasJellyseerr);
+  const radarrUrl = useSettingsStore((s) => s.radarrUrl);
+  const radarrApiKey = useSettingsStore((s) => s.radarrApiKey);
+  const sonarrUrl = useSettingsStore((s) => s.sonarrUrl);
+  const sonarrApiKey = useSettingsStore((s) => s.sonarrApiKey);
 
-  const bottomBarConfig = {
-    ...DEFAULT_BOTTOM_BAR_CONFIG,
-    ...rawBottomBarConfig,
-    selectedLibraryIds: rawBottomBarConfig?.selectedLibraryIds ?? [],
-    tabOrder: rawBottomBarConfig?.tabOrder ?? DEFAULT_TAB_ORDER,
-    landingPage: rawBottomBarConfig?.landingPage ?? 'home',
-  };
+  const hasRadarr = !!(radarrUrl && radarrApiKey);
+  const hasSonarr = !!(sonarrUrl && sonarrApiKey);
 
   const { data: libraries, isLoading } = useQuery({
     queryKey: ['libraries', userId],
@@ -294,6 +372,17 @@ export function LibrarySelector() {
     return true;
   }) ?? [];
 
+  const hasLiveTV = libraries?.some((lib) => lib.CollectionType === 'livetv') ?? false;
+
+  const bottomBarConfig = {
+    ...DEFAULT_BOTTOM_BAR_CONFIG,
+    ...rawBottomBarConfig,
+    selectedLibraryIds: rawBottomBarConfig?.selectedLibraryIds ?? [],
+    tabOrder: rawBottomBarConfig?.tabOrder ?? DEFAULT_TAB_ORDER,
+    moreMenuTabs: rawBottomBarConfig?.moreMenuTabs ?? DEFAULT_BOTTOM_BAR_CONFIG.moreMenuTabs,
+    landingPage: rawBottomBarConfig?.landingPage ?? 'home',
+  };
+
   const selectedCount = bottomBarConfig.selectedLibraryIds.length;
   const canSelectMore = selectedCount < MAX_LIBRARY_TABS;
 
@@ -304,8 +393,13 @@ export function LibrarySelector() {
       if (tabId === 'home') return bottomBarConfig.showHome;
       if (tabId === 'library') return bottomBarConfig.showLibrary;
       if (tabId === 'downloads') return bottomBarConfig.showDownloads;
-      if (tabId === 'requests') return hasJellyseerr && bottomBarConfig.showRequests;
+      if (tabId === 'jellyseerr') return hasJellyseerr && bottomBarConfig.showJellyseerr;
       if (tabId === 'admin') return isAdmin && bottomBarConfig.showAdmin;
+      if (tabId === 'radarr') return hasRadarr && bottomBarConfig.showRadarr;
+      if (tabId === 'sonarr') return hasSonarr && bottomBarConfig.showSonarr;
+      if (tabId === 'favorites') return bottomBarConfig.showFavorites;
+      if (tabId === 'livetv') return hasLiveTV && bottomBarConfig.showLiveTV;
+      if (tabId === 'more') return bottomBarConfig.showMore ?? true;
       if (tabId === 'settings') return true;
       return bottomBarConfig.selectedLibraryIds.includes(tabId);
     });
@@ -322,6 +416,37 @@ export function LibrarySelector() {
     return library ? getLibraryScreenName(library.CollectionType) : tabId;
   };
 
+  // Helper to get tab placement
+  const getTabPlacement = (tabId: string, showKey: string): TabPlacement => {
+    const isInMore = bottomBarConfig.moreMenuTabs.includes(tabId);
+    if (isInMore) return 'more';
+    const showValue = (bottomBarConfig as Record<string, unknown>)[showKey];
+    if (showValue) return 'bottomBar';
+    return 'hidden';
+  };
+
+  // Helper to set tab placement
+  const setTabPlacement = (tabId: string, showKey: string, placement: TabPlacement) => {
+    const currentMoreTabs = bottomBarConfig.moreMenuTabs.filter((t) => t !== tabId);
+
+    if (placement === 'more') {
+      setBottomBarConfig({
+        [showKey]: false,
+        moreMenuTabs: [...currentMoreTabs, tabId],
+      });
+    } else if (placement === 'bottomBar') {
+      setBottomBarConfig({
+        [showKey]: true,
+        moreMenuTabs: currentMoreTabs,
+      });
+    } else {
+      setBottomBarConfig({
+        [showKey]: false,
+        moreMenuTabs: currentMoreTabs,
+      });
+    }
+  };
+
   if (isLoading) {
     return (
       <View style={{ paddingVertical: 32, alignItems: 'center' }}>
@@ -333,73 +458,148 @@ export function LibrarySelector() {
   return (
     <View>
       <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 12, marginBottom: 12 }}>
-        Choose which tabs appear on the bottom bar. Only Settings is always visible.
+        Choose where each tab appears: Bottom Bar, More menu, or Hidden.
       </Text>
 
       <View style={{ marginBottom: 16 }}>
         <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11, fontWeight: '600', textTransform: 'uppercase', marginBottom: 8 }}>
-          Core Tabs
+          Tabs
         </Text>
-        <SpecialRow
+        <TabPlacementRow
           icon="home"
           title="Home"
-          subtitle="Continue watching, recommendations"
-          isSelected={bottomBarConfig.showHome}
+          placement={getTabPlacement('home', 'showHome')}
           accentColor={accentColor}
-          onToggle={() => setBottomBarConfig({ showHome: !bottomBarConfig.showHome })}
+          onPlacementChange={(p) => setTabPlacement('home', 'showHome', p)}
         />
-        <SpecialRow
+        <TabPlacementRow
           icon="library"
           title="Library"
-          subtitle="Browse all your libraries"
-          isSelected={bottomBarConfig.showLibrary}
+          placement={getTabPlacement('library', 'showLibrary')}
           accentColor={accentColor}
-          onToggle={() => setBottomBarConfig({ showLibrary: !bottomBarConfig.showLibrary })}
+          onPlacementChange={(p) => setTabPlacement('library', 'showLibrary', p)}
         />
-        <SpecialRow
+        <TabPlacementRow
           icon="download"
           title="Downloads"
-          subtitle="Offline content"
-          isSelected={bottomBarConfig.showDownloads}
+          placement={getTabPlacement('downloads', 'showDownloads')}
           accentColor={accentColor}
-          onToggle={() => setBottomBarConfig({ showDownloads: !bottomBarConfig.showDownloads })}
+          onPlacementChange={(p) => setTabPlacement('downloads', 'showDownloads', p)}
+        />
+        <TabPlacementRow
+          icon="heart"
+          title="Favorites"
+          placement={getTabPlacement('favorites', 'showFavorites')}
+          accentColor={accentColor}
+          onPlacementChange={(p) => setTabPlacement('favorites', 'showFavorites', p)}
         />
         {hasJellyseerr && (
-          <SpecialRow
+          <TabPlacementRow
             icon="star"
-            title="Requests"
-            subtitle="Jellyseerr media requests"
-            isSelected={bottomBarConfig.showRequests}
+            title="Jellyseerr"
+            placement={getTabPlacement('jellyseerr', 'showJellyseerr')}
             accentColor={accentColor}
-            onToggle={() => setBottomBarConfig({ showRequests: !bottomBarConfig.showRequests })}
+            onPlacementChange={(p) => setTabPlacement('jellyseerr', 'showJellyseerr', p)}
+          />
+        )}
+        {hasRadarr && (
+          <TabPlacementRow
+            icon="film"
+            title="Radarr"
+            placement={getTabPlacement('radarr', 'showRadarr')}
+            accentColor={accentColor}
+            onPlacementChange={(p) => setTabPlacement('radarr', 'showRadarr', p)}
+          />
+        )}
+        {hasSonarr && (
+          <TabPlacementRow
+            icon="tv"
+            title="Sonarr"
+            placement={getTabPlacement('sonarr', 'showSonarr')}
+            accentColor={accentColor}
+            onPlacementChange={(p) => setTabPlacement('sonarr', 'showSonarr', p)}
+          />
+        )}
+        {hasLiveTV && (
+          <TabPlacementRow
+            icon="radio"
+            title="Live TV"
+            placement={getTabPlacement('livetv', 'showLiveTV')}
+            accentColor={accentColor}
+            onPlacementChange={(p) => setTabPlacement('livetv', 'showLiveTV', p)}
           />
         )}
         {isAdmin && (
-          <SpecialRow
+          <TabPlacementRow
             icon="shield"
             title="Admin"
-            subtitle="Server administration"
-            isSelected={bottomBarConfig.showAdmin}
+            placement={getTabPlacement('admin', 'showAdmin')}
             accentColor={accentColor}
-            onToggle={() => setBottomBarConfig({ showAdmin: !bottomBarConfig.showAdmin })}
+            onPlacementChange={(p) => setTabPlacement('admin', 'showAdmin', p)}
           />
         )}
+        <SpecialRow
+          icon="more"
+          title="More"
+          subtitle="Additional tabs in a popup menu"
+          isSelected={bottomBarConfig.showMore ?? true}
+          accentColor={accentColor}
+          onToggle={() => setBottomBarConfig({ showMore: !(bottomBarConfig.showMore ?? true) })}
+        />
       </View>
 
       <View>
         <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11, fontWeight: '600', textTransform: 'uppercase', marginBottom: 8 }}>
-          Libraries ({selectedCount}/{MAX_LIBRARY_TABS} on bottom bar)
+          Libraries
         </Text>
         {browsableLibraries.map((library) => {
-          const isSelected = bottomBarConfig.selectedLibraryIds.includes(library.Id);
+          const iconName = getLibraryIcon(library.CollectionType);
+          const isOnBar = bottomBarConfig.selectedLibraryIds.includes(library.Id);
+          const isInMore = bottomBarConfig.moreMenuTabs.includes(library.Id);
+          const placement: TabPlacement = isInMore ? 'more' : isOnBar ? 'bottomBar' : 'hidden';
+
           return (
-            <LibraryRow
+            <TabPlacementRow
               key={library.Id}
-              library={library}
-              isSelected={isSelected}
-              canSelect={canSelectMore}
+              icon={iconName}
+              title={library.Name}
+              placement={placement}
               accentColor={accentColor}
-              onToggle={() => toggleLibraryOnBottomBar(library.Id)}
+              onPlacementChange={(p) => {
+                const currentMoreTabs = bottomBarConfig.moreMenuTabs.filter((t) => t !== library.Id);
+                const currentSelectedIds = bottomBarConfig.selectedLibraryIds.filter((id) => id !== library.Id);
+                const currentTabOrder = bottomBarConfig.tabOrder.filter((t) => t !== library.Id);
+
+                if (p === 'more') {
+                  setBottomBarConfig({
+                    selectedLibraryIds: currentSelectedIds,
+                    moreMenuTabs: [...currentMoreTabs, library.Id],
+                    tabOrder: currentTabOrder,
+                  });
+                } else if (p === 'bottomBar') {
+                  if (currentSelectedIds.length >= MAX_LIBRARY_TABS) {
+                    return; // Can't add more libraries to bottom bar
+                  }
+                  const settingsIndex = currentTabOrder.indexOf('settings');
+                  const newTabOrder = [...currentTabOrder];
+                  if (settingsIndex !== -1) {
+                    newTabOrder.splice(settingsIndex, 0, library.Id);
+                  } else {
+                    newTabOrder.push(library.Id);
+                  }
+                  setBottomBarConfig({
+                    selectedLibraryIds: [...currentSelectedIds, library.Id],
+                    moreMenuTabs: currentMoreTabs,
+                    tabOrder: newTabOrder,
+                  });
+                } else {
+                  setBottomBarConfig({
+                    selectedLibraryIds: currentSelectedIds,
+                    moreMenuTabs: currentMoreTabs,
+                    tabOrder: currentTabOrder,
+                  });
+                }
+              }}
             />
           );
         })}
@@ -408,6 +608,9 @@ export function LibrarySelector() {
             No libraries found
           </Text>
         )}
+        <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11, marginTop: 8 }}>
+          Max {MAX_LIBRARY_TABS} libraries on bottom bar ({selectedCount}/{MAX_LIBRARY_TABS} used)
+        </Text>
       </View>
 
       <View style={{ marginTop: 24 }}>
