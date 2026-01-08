@@ -209,16 +209,12 @@ export interface MediaSegmentsResponse {
 export async function getMediaSegments(itemId: string): Promise<MediaSegmentsResponse> {
   const items: MediaSegment[] = [];
 
-  console.log('[IntroSkipper] Fetching segments for:', itemId);
-
   // Try the Intro Skipper plugin endpoint first (most common)
   // Endpoint: /Episode/{itemId}/IntroTimestamps
   try {
     const response = await jellyfinClient.api.get<IntroSkipperResponse | IntroSkipperSegments>(
       `/Episode/${itemId}/IntroTimestamps`
     );
-
-    console.log('[IntroSkipper] Raw response:', JSON.stringify(response.data));
 
     if (response.data) {
       // Check if it's the segmented format (Introduction/Credits keys)
@@ -250,29 +246,24 @@ export async function getMediaSegments(itemId: string): Promise<MediaSegmentsRes
       }
 
       if (items.length > 0) {
-        console.log('[IntroSkipper] Parsed segments:', items);
         return { Items: items };
       }
     }
-  } catch (e: any) {
-    console.log('[IntroSkipper] Error or not available:', e?.message || e);
+  } catch {
+    // IntroSkipper plugin not available
   }
 
   // Try the standard Media Segments API (Jellyfin 10.9+)
   try {
-    console.log('[MediaSegments] Trying MediaSegments API...');
     const response = await jellyfinClient.api.get<MediaSegmentsResponse>(
       `/MediaSegments/${itemId}?IncludeSegmentTypes=Intro,Outro`
     );
-    console.log('[MediaSegments] Raw response:', JSON.stringify(response.data));
     if (response.data?.Items?.length) {
-      console.log('[MediaSegments] Found segments:', response.data.Items);
       return response.data;
     }
-  } catch (e: any) {
-    console.log('[MediaSegments] Error or not available:', e?.message || e);
+  } catch {
+    // MediaSegments API not available
   }
 
-  console.log('[IntroSkipper] No segments found for:', itemId);
   return { Items: [] };
 }

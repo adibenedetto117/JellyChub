@@ -153,6 +153,7 @@ const DEFAULT_FIELDS = [
   'SeriesPrimaryImageTag',
   'Chapters',
   'BackdropImageTags',
+  'Trickplay',
 ];
 
 function buildQueryParams(params: LibraryQueryParams): URLSearchParams {

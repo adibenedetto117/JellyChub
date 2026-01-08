@@ -257,5 +257,46 @@ export function getSubtitleUrl(
     params.set('api_key', server.accessToken);
   }
 
-  return `${jellyfinClient.url}/Videos/${itemId}/${mediaSourceId}/Subtitles/${subtitleIndex}/Stream.${format}?${params.toString()}`;
+  params.set('startPositionTicks', '0');
+
+  return `${jellyfinClient.url}/Videos/${itemId}/${mediaSourceId}/Subtitles/${subtitleIndex}/0/Stream.${format}?${params.toString()}`;
+}
+
+export interface TrickplayInfo {
+  Width: number;
+  Height: number;
+  TileWidth: number;
+  TileHeight: number;
+  ThumbnailCount: number;
+  Interval: number;
+  Bandwidth: number;
+}
+
+export interface TrickplayData {
+  [mediaSourceId: string]: {
+    [resolution: string]: TrickplayInfo;
+  };
+}
+
+export function getTrickplayTileUrl(
+  itemId: string,
+  mediaSourceId: string,
+  resolution: number,
+  tileIndex: number
+): string {
+  if (!jellyfinClient.isInitialized()) {
+    return '';
+  }
+
+  const state = useAuthStore.getState();
+  const server = state.getActiveServer();
+  const params = new URLSearchParams();
+
+  if (server?.accessToken) {
+    params.set('api_key', server.accessToken);
+  }
+
+  params.set('MediaSourceId', mediaSourceId);
+
+  return `${jellyfinClient.url}/Videos/${itemId}/Trickplay/${resolution}/${tileIndex}.jpg?${params.toString()}`;
 }

@@ -1,4 +1,5 @@
-export { jellyfinClient, getImageUrl, getStreamUrl, getAudioStreamUrl, getBookDownloadUrl, getSubtitleUrl } from './client';
+export { jellyfinClient, getImageUrl, getStreamUrl, getAudioStreamUrl, getBookDownloadUrl, getSubtitleUrl, getTrickplayTileUrl } from './client';
+export type { TrickplayInfo, TrickplayData } from './client';
 
 export {
   getServerInfo,
@@ -94,3 +95,22 @@ export type {
 } from './admin';
 
 export { jellyseerrClient } from './jellyseerr';
+
+export {
+  getLiveTvInfo,
+  getGuideInfo,
+  getChannels,
+  getChannel,
+  getPrograms,
+  getRecommendedPrograms,
+  getProgram,
+  getRecordings,
+  getTimers,
+  createTimer,
+  deleteTimer,
+  setChannelFavorite,
+  getChannelImageUrl,
+  getProgramImageUrl,
+  getLiveStreamUrl,
+  getLiveHlsStreamUrl,
+} from './livetv';

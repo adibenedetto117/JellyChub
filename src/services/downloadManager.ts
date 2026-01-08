@@ -1,7 +1,10 @@
 import * as FileSystem from 'expo-file-system/legacy';
+import * as Network from 'expo-network';
 import { useDownloadStore } from '@/stores/downloadStore';
 import { useAuthStore } from '@/stores/authStore';
+import { useSettingsStore } from '@/stores/settingsStore';
 import { getStreamUrl, getAudioStreamUrl, getBookDownloadUrl } from '@/api';
+import { notificationService } from './notificationService';
 import type { BaseItem } from '@/types/jellyfin';
 
 const DOWNLOAD_DIR = `${FileSystem.documentDirectory}jellychub/downloads/`;
@@ -14,12 +17,39 @@ interface DownloadTask {
 class DownloadManager {
   private activeTasks: Map<string, DownloadTask> = new Map();
   private isProcessing = false;
+  private isPaused = false;
 
   async ensureDownloadDirectory(): Promise<void> {
     const dirInfo = await FileSystem.getInfoAsync(DOWNLOAD_DIR);
     if (!dirInfo.exists) {
       await FileSystem.makeDirectoryAsync(DOWNLOAD_DIR, { intermediates: true });
     }
+  }
+
+  async checkWifiConnection(): Promise<boolean> {
+    try {
+      const networkState = await Network.getNetworkStateAsync();
+      return networkState.type === Network.NetworkStateType.WIFI;
+    } catch {
+      return true;
+    }
+  }
+
+  async canStartDownload(): Promise<{ canStart: boolean; reason?: string }> {
+    const settings = useSettingsStore.getState();
+
+    if (this.isPaused) {
+      return { canStart: false, reason: 'Downloads are paused' };
+    }
+
+    if (settings.downloadOverWifiOnly) {
+      const isWifi = await this.checkWifiConnection();
+      if (!isWifi) {
+        return { canStart: false, reason: 'WiFi-only mode enabled. Connect to WiFi to download.' };
+      }
+    }
+
+    return { canStart: true };
   }
 
   async startDownload(item: BaseItem, serverId: string): Promise<string | null> {
@@ -72,6 +102,11 @@ class DownloadManager {
     const store = useDownloadStore.getState();
 
     while (true) {
+      const { canStart } = await this.canStartDownload();
+      if (!canStart) {
+        break;
+      }
+
       const nextDownload = store.getNextPendingDownload();
       if (!nextDownload) break;
 
@@ -142,6 +177,10 @@ class DownloadManager {
 
     if (result?.uri) {
       store.completeDownload(downloadId, result.uri);
+      notificationService.showDownloadComplete(
+        item.Name || 'Download',
+        item.Type || 'Media'
+      );
     } else {
       throw new Error('Download failed - no result');
     }
@@ -159,6 +198,45 @@ class DownloadManager {
   async resumeDownload(downloadId: string): Promise<void> {
     useDownloadStore.getState().resumeDownload(downloadId);
     this.processQueue();
+  }
+
+  async pauseAllDownloads(): Promise<void> {
+    this.isPaused = true;
+    for (const task of this.activeTasks.values()) {
+      if (task.downloadResumable) {
+        try {
+          await task.downloadResumable.pauseAsync();
+        } catch {}
+      }
+    }
+    this.activeTasks.clear();
+    useDownloadStore.getState().pauseAllDownloads();
+  }
+
+  async resumeAllDownloads(): Promise<void> {
+    this.isPaused = false;
+    useDownloadStore.getState().resumeAllDownloads();
+    this.processQueue();
+  }
+
+  getIsPaused(): boolean {
+    return this.isPaused;
+  }
+
+  async removeWatchedDownloads(): Promise<number> {
+    const store = useDownloadStore.getState();
+    const completedDownloads = store.downloads.filter((d) => d.status === 'completed');
+    let removedCount = 0;
+
+    for (const download of completedDownloads) {
+      const isWatched = download.item.UserData?.Played === true;
+      if (isWatched) {
+        await this.deleteDownload(download.id);
+        removedCount++;
+      }
+    }
+
+    return removedCount;
   }
 
   async cancelDownload(downloadId: string): Promise<void> {
