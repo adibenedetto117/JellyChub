@@ -1,12 +1,13 @@
 # JellyChub
 
-A modern Jellyfin client for Android that handles all your media - video, music, audiobooks, and ebooks in one app.
+A modern Jellyfin client for Android and Android TV that handles all your media - video, music, audiobooks, ebooks, and live TV in one app.
 
 <p align="center">
   <img src="assets/icon.png" alt="JellyChub" width="128" height="128"/>
 </p>
 
 ![Platform](https://img.shields.io/badge/platform-Android-green)
+![Android TV](https://img.shields.io/badge/Android%20TV-supported-green)
 ![iOS](https://img.shields.io/badge/iOS-coming%20soon-lightgrey)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
@@ -25,15 +26,26 @@ Requires Android 8.0 (API 26) or higher.
 - Skip intro/credits buttons (Jellyfin media segments)
 - Volume/brightness swipe gestures
 - Auto-play next episode
-- Offline playback for downloads
+- Trickplay thumbnail previews while seeking
 - Hardware acceleration
+- External player support (VLC, Infuse, nPlayer)
+- Chromecast support
+
+### Live TV
+- Live channel streaming
+- EPG (Electronic Program Guide) with grid view
+- Channel groups and favorites
+- Program details and scheduling
+- Recording support (via Jellyfin DVR)
 
 ### Music
 - Background playback with lock screen controls
 - Synced lyrics with auto-scroll
+- Audio visualizer
 - Gapless playback
 - Mini player with quick controls
 - Playlist management
+- Equalizer presets
 
 ### Audiobooks
 - Chapter navigation with visual timeline
@@ -41,28 +53,38 @@ Requires Android 8.0 (API 26) or higher.
 - Bookmarks with custom labels
 - Variable playback speed (0.5x - 2x)
 - M4B chapter parsing
+- Background playback
 
 ### EPUB Reader
 - Full EPUB rendering with epub.js
 - Reading themes: Dark, Light, Sepia
 - Adjustable font size
 - Bookmarks with sync to Jellyfin
+- Progress tracking
 
-### PDF Reader
+### PDF & Comic Reader
 - Native PDF rendering with progress tracking
+- Comic/manga reader support
 
-### Downloads
+### Downloads & Offline Mode
 - Download movies, TV shows, music, and audiobooks
 - Organized by content type with collapsible groups
 - Quality options: original, high, medium, low
 - Background download queue
 - WiFi-only option
 - Full offline playback
+- Offline mode for downloaded content only
 
 ### Jellyseerr Integration
 - Browse trending and popular content
 - Request movies and TV shows
 - View request status and history
+
+### Radarr & Sonarr Integration
+- Add movies directly to Radarr
+- Add TV shows directly to Sonarr
+- View download queue status
+- Quality profile selection
 
 ### Server Administration
 - Active sessions with remote control (play, pause, stop)
@@ -72,10 +94,22 @@ Requires Android 8.0 (API 26) or higher.
 - Activity logs
 - Server restart/shutdown
 
+### Android TV Support
+- Full D-pad/remote navigation
+- TV-optimized UI with sidebar navigation
+- Large artwork and readable text
+- Focus-based navigation
+- TV-specific player controls
+
+### Security
+- PIN lock for app access
+- Biometric authentication support
+
 ### Customizable Interface
 - Configurable navigation bar (choose and reorder tabs)
 - Set any tab as landing page
-- Accent color themes
+- Multiple accent color themes
+- Hide media info mode (screenshot mode)
 
 ### Multi-Server Support
 - Quick Connect authentication
@@ -93,7 +127,7 @@ Requires Android 8.0 (API 26) or higher.
 | Data Fetching | TanStack Query (React Query) |
 | Local Storage | MMKV |
 | Video Player | expo-video |
-| Audio Player | react-native-track-player |
+| Audio Player | expo-audio |
 
 ## Building from Source
 
@@ -110,7 +144,7 @@ git clone https://github.com/adibenedetto117/JellyChub.git
 cd JellyChub
 
 # Install dependencies
-npm install
+npm install --legacy-peer-deps
 
 # Generate native code
 npx expo prebuild
@@ -135,36 +169,28 @@ npx expo run:android
 
 ### In Progress
 - [ ] iOS build and testing
-- [ ] Better image caching
-- [ ] Audio quality improvements
+- [ ] OpenSubtitles integration
+- [ ] Improved Chromecast controls
 
 ### Planned
-- [ ] Queue view and management
 - [ ] iOS release
-- [ ] Live TV support
-- [ ] Chromecast support
 - [ ] SyncPlay (watch together)
-- [ ] Android TV optimization
 - [ ] Play Store release
 - [ ] App Store release
 - [ ] Widget for currently playing
 - [ ] Wear OS companion app
 - [ ] CarPlay / Android Auto
-- [ ] Comic/manga reader
-- [ ] Custom server plugins support
-- [ ] Parental controls
 
 ## Acknowledgments
 
-- [Jellyfin](https://jellyfin.org/) - The free software media system this app connects to
+- [Jellyfin](https://jellyfin.org/) - The free software media system
 - [Expo](https://expo.dev/) - React Native framework and tooling
 - [React Native](https://reactnative.dev/) - Mobile app framework
-- [Finamp](https://github.com/jmshrv/finamp) - Inspiration for music player features
-- [Jellyseerr](https://github.com/Fallenbagel/jellyseerr) - Request management integration
+- [Jellyseerr](https://github.com/Fallenbagel/jellyseerr) - Request management
+- [Radarr](https://radarr.video/) / [Sonarr](https://sonarr.tv/) - Media management
 - [TanStack Query](https://tanstack.com/query) - Data fetching and caching
 - [Zustand](https://github.com/pmndrs/zustand) - State management
 - [NativeWind](https://www.nativewind.dev/) - Tailwind CSS for React Native
-- [React Native Reanimated](https://docs.swmansion.com/react-native-reanimated/) - Animations
 - [MMKV](https://github.com/mrousavy/react-native-mmkv) - Fast key-value storage
 - [epub.js](https://github.com/futurepress/epub.js) - EPUB rendering
 
