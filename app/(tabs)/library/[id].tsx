@@ -13,8 +13,12 @@ import {
   getLibraryItemTypes,
   shouldUseSquareVariant,
   getLibraryIcon,
+  getGenres,
 } from '@/api';
-import { SearchButton, HomeButton } from '@/components/ui';
+import { SearchButton } from '@/components/ui';
+import { FilterSortModal, DEFAULT_FILTERS, getActiveFilterCount } from '@/components/library';
+import type { FilterOptions, SortOption } from '@/components/library';
+import { getDisplayName, getDisplayImageUrl, goBack } from '@/utils';
 import { colors } from '@/theme';
 import type { BaseItem } from '@/types/jellyfin';
 
@@ -25,8 +29,6 @@ const GRID_GAP = 8;
 const POSTER_WIDTH = (SCREEN_WIDTH - (GRID_PADDING * 2) - (GRID_GAP * (NUM_COLUMNS - 1))) / NUM_COLUMNS;
 const POSTER_HEIGHT = POSTER_WIDTH * 1.5;
 const SQUARE_SIZE = POSTER_WIDTH;
-
-type SortOption = 'DateCreated' | 'SortName' | 'PremiereDate' | 'CommunityRating';
 
 const ITEMS_PER_PAGE = 100;
 const FULL_ALPHABET = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '#'];
@@ -47,10 +49,12 @@ function getIoniconName(iconName: string): keyof typeof Ionicons.glyphMap {
   return iconMap[iconName] ?? 'library-outline';
 }
 
-function ItemCard({ item, onPress, showRating, isSquare }: { item: BaseItem; onPress: () => void; showRating?: boolean; isSquare?: boolean }) {
-  const imageUrl = item.ImageTags?.Primary
+function ItemCard({ item, onPress, showRating, isSquare, hideMedia }: { item: BaseItem; onPress: () => void; showRating?: boolean; isSquare?: boolean; hideMedia: boolean }) {
+  const rawImageUrl = item.ImageTags?.Primary
     ? getImageUrl(item.Id, 'Primary', { maxWidth: 300, tag: item.ImageTags.Primary })
     : null;
+  const imageUrl = getDisplayImageUrl(item.Id, rawImageUrl, hideMedia, 'Primary');
+  const displayName = getDisplayName(item, hideMedia);
 
   const yearAndRating = [
     item.ProductionYear,
@@ -73,7 +77,7 @@ function ItemCard({ item, onPress, showRating, isSquare }: { item: BaseItem; onP
           />
         ) : (
           <View style={styles.posterPlaceholder}>
-            <Text style={styles.posterPlaceholderText}>{item.Name?.charAt(0) ?? '?'}</Text>
+            <Text style={styles.posterPlaceholderText}>{displayName?.charAt(0) ?? '?'}</Text>
           </View>
         )}
         {item.UserData?.Played && (
@@ -82,16 +86,18 @@ function ItemCard({ item, onPress, showRating, isSquare }: { item: BaseItem; onP
           </View>
         )}
       </View>
-      <Text style={styles.itemTitle} numberOfLines={1}>{item.Name}</Text>
+      <Text style={styles.itemTitle} numberOfLines={1}>{displayName}</Text>
       {yearAndRating ? <Text style={styles.itemYear}>{yearAndRating}</Text> : null}
     </Pressable>
   );
 }
 
-function ItemRow({ item, onPress, isSquare }: { item: BaseItem; onPress: () => void; isSquare?: boolean }) {
-  const imageUrl = item.ImageTags?.Primary
+function ItemRow({ item, onPress, isSquare, hideMedia }: { item: BaseItem; onPress: () => void; isSquare?: boolean; hideMedia: boolean }) {
+  const rawImageUrl = item.ImageTags?.Primary
     ? getImageUrl(item.Id, 'Primary', { maxWidth: 120, tag: item.ImageTags.Primary })
     : null;
+  const imageUrl = getDisplayImageUrl(item.Id, rawImageUrl, hideMedia, 'Primary');
+  const displayName = getDisplayName(item, hideMedia);
 
   const imgWidth = isSquare ? 48 : 48;
   const imgHeight = isSquare ? 48 : 72;
@@ -109,12 +115,12 @@ function ItemRow({ item, onPress, isSquare }: { item: BaseItem; onPress: () => v
           />
         ) : (
           <View style={styles.itemRowPlaceholder}>
-            <Text style={styles.itemRowPlaceholderText}>{item.Name?.charAt(0) ?? '?'}</Text>
+            <Text style={styles.itemRowPlaceholderText}>{displayName?.charAt(0) ?? '?'}</Text>
           </View>
         )}
       </View>
       <View style={styles.itemRowInfo}>
-        <Text style={styles.itemRowName} numberOfLines={1}>{item.Name}</Text>
+        <Text style={styles.itemRowName} numberOfLines={1}>{displayName}</Text>
         <Text style={styles.itemRowMeta} numberOfLines={1}>
           {[item.ProductionYear, item.CommunityRating ? `${item.CommunityRating.toFixed(1)}` : null].filter(Boolean).join(' - ')}
         </Text>
@@ -155,12 +161,14 @@ function AlphabetScroller({ availableLetters, onLetterPress, accentColor }: { av
 export default function LibraryDetailScreen() {
   const { id: libraryId } = useLocalSearchParams<{ id: string }>();
   const [refreshing, setRefreshing] = useState(false);
-  const [sortBy, setSortBy] = useState<SortOption>('SortName');
+  const [filters, setFilters] = useState<FilterOptions>(DEFAULT_FILTERS);
+  const [showFilterModal, setShowFilterModal] = useState(false);
   const sectionListRef = useRef<SectionList>(null);
   const flatListRef = useRef<FlatList>(null);
 
   const currentUser = useAuthStore((state) => state.currentUser);
   const accentColor = useSettingsStore((s) => s.accentColor);
+  const hideMedia = useSettingsStore((s) => s.hideMedia);
   const userId = currentUser?.Id ?? '';
 
   const { data: libraries } = useQuery({
@@ -184,6 +192,23 @@ export default function LibraryDetailScreen() {
     return shouldUseSquareVariant(library.CollectionType);
   }, [library]);
 
+  const { data: genresData } = useQuery({
+    queryKey: ['genres', 'library', libraryId, userId],
+    queryFn: () => getGenres(userId, libraryId, itemTypes),
+    enabled: !!userId && !!libraryId && itemTypes.length > 0,
+    staleTime: 1000 * 60 * 30,
+  });
+
+  const availableGenres = useMemo(() => {
+    return genresData?.map((g) => g.Name) ?? [];
+  }, [genresData]);
+
+  const queryFilters = useMemo(() => {
+    const filterList: string[] = [];
+    if (filters.unplayedOnly) filterList.push('IsUnplayed');
+    return filterList;
+  }, [filters.unplayedOnly]);
+
   const {
     data,
     fetchNextPage,
@@ -192,61 +217,38 @@ export default function LibraryDetailScreen() {
     isLoading,
     refetch,
   } = useInfiniteQuery({
-    queryKey: ['libraryDetail', userId, libraryId],
+    queryKey: ['libraryDetail', userId, libraryId, filters],
     queryFn: ({ pageParam = 0 }) =>
       getItems<BaseItem>(userId, {
         parentId: libraryId,
         includeItemTypes: itemTypes,
-        sortBy: 'SortName',
-        sortOrder: 'Ascending',
+        sortBy: filters.sortBy === 'Random' ? 'Random' : filters.sortBy,
+        sortOrder: filters.sortOrder,
         startIndex: pageParam,
         limit: ITEMS_PER_PAGE,
         recursive: true,
-        fields: ['SortName'],
+        fields: ['SortName', 'DateCreated', 'CommunityRating', 'RunTimeTicks'],
+        genres: filters.genres.length > 0 ? filters.genres : undefined,
+        years: filters.years.length > 0 ? filters.years : undefined,
+        filters: queryFilters.length > 0 ? queryFilters : undefined,
+        isFavorite: filters.favoritesOnly ? true : undefined,
       }),
     initialPageParam: 0,
     getNextPageParam: (lastPage, pages) => {
+      if (filters.sortBy === 'Random') return undefined;
       const totalFetched = pages.reduce((acc, p) => acc + p.Items.length, 0);
       return totalFetched < lastPage.TotalRecordCount ? totalFetched : undefined;
     },
     enabled: !!userId && !!libraryId && itemTypes.length > 0,
-    staleTime: 1000 * 60 * 5,
+    staleTime: filters.sortBy === 'Random' ? 0 : 1000 * 60 * 5,
   });
 
   const allItems = data?.pages.flatMap((p) => p.Items) ?? [];
   const totalCount = data?.pages[0]?.TotalRecordCount ?? 0;
-
-  const sortedItems = useMemo(() => {
-    if (allItems.length === 0) return [];
-
-    const itemsCopy = [...allItems];
-
-    switch (sortBy) {
-      case 'SortName':
-        return itemsCopy.sort((a, b) =>
-          (a.SortName ?? a.Name ?? '').localeCompare(b.SortName ?? b.Name ?? '')
-        );
-      case 'DateCreated':
-        return itemsCopy.sort((a, b) => {
-          const dateA = (a as any).DateCreated ?? '';
-          const dateB = (b as any).DateCreated ?? '';
-          return dateB.localeCompare(dateA);
-        });
-      case 'PremiereDate':
-        return itemsCopy.sort((a, b) =>
-          (b.ProductionYear ?? 0) - (a.ProductionYear ?? 0)
-        );
-      case 'CommunityRating':
-        return itemsCopy.sort((a, b) =>
-          (b.CommunityRating ?? 0) - (a.CommunityRating ?? 0)
-        );
-      default:
-        return itemsCopy;
-    }
-  }, [allItems, sortBy]);
+  const sortedItems = allItems;
 
   const { sections: itemSections, availableLetters } = useMemo(() => {
-    if (sortBy !== 'SortName') {
+    if (filters.sortBy !== 'SortName') {
       return { sections: [], availableLetters: [] };
     }
 
@@ -272,7 +274,9 @@ export default function LibraryDetailScreen() {
       })),
       availableLetters: sortedLetters,
     };
-  }, [sortedItems, sortBy]);
+  }, [sortedItems, filters.sortBy]);
+
+  const activeFilterCount = useMemo(() => getActiveFilterCount(filters), [filters]);
 
   const scrollToLetter = useCallback((letter: string) => {
     const sectionIndex = itemSections.findIndex((s) => s.title === letter);
@@ -295,11 +299,11 @@ export default function LibraryDetailScreen() {
   const handleItemPress = (item: BaseItem) => {
     const type = item.Type?.toLowerCase();
     if (type === 'movie') {
-      router.push(`/details/movie/${item.Id}`);
+      router.push(`/(tabs)/details/movie/${item.Id}`);
     } else if (type === 'series') {
-      router.push(`/details/series/${item.Id}`);
+      router.push(`/(tabs)/details/series/${item.Id}`);
     } else if (type === 'musicalbum') {
-      router.push(`/details/album/${item.Id}`);
+      router.push(`/(tabs)/details/album/${item.Id}`);
     } else if (type === 'audiobook') {
       router.push(`/player/audiobook?itemId=${item.Id}`);
     } else if (type === 'book') {
@@ -308,20 +312,25 @@ export default function LibraryDetailScreen() {
       const isPdf = container === 'pdf' || path.endsWith('.pdf');
       router.push(isPdf ? `/reader/pdf?itemId=${item.Id}` : `/reader/epub?itemId=${item.Id}`);
     } else if (type === 'boxset') {
-      router.push(`/library/${item.Id}`);
+      router.push(`/(tabs)/library/${item.Id}`);
     } else {
-      router.push(`/details/${type}/${item.Id}`);
+      router.push(`/(tabs)/details/${type}/${item.Id}`);
     }
   };
 
-  const handleSortChange = (newSort: SortOption) => {
-    setSortBy(newSort);
-    if (newSort === 'SortName') {
-      sectionListRef.current?.scrollToLocation({ sectionIndex: 0, itemIndex: 0, animated: false, viewOffset: 0 });
+  const handleFiltersApply = useCallback((newFilters: FilterOptions) => {
+    setFilters(newFilters);
+    if (newFilters.sortBy === 'SortName') {
+      setTimeout(() => {
+        sectionListRef.current?.scrollToLocation({ sectionIndex: 0, itemIndex: 0, animated: false, viewOffset: 0 });
+      }, 100);
     } else {
       flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
     }
-  };
+  }, []);
+
+  const openFilterModal = useCallback(() => setShowFilterModal(true), []);
+  const closeFilterModal = useCallback(() => setShowFilterModal(false), []);
 
   const renderFooter = () => {
     if (!isFetchingNextPage) return <View style={styles.bottomSpacer} />;
@@ -339,17 +348,11 @@ export default function LibraryDetailScreen() {
     return !noRatingTypes.includes(library.CollectionType);
   }, [library]);
 
-  const sortOptions: { label: string; value: SortOption }[] = useMemo(() => {
-    const options: { label: string; value: SortOption }[] = [
-      { label: 'A-Z', value: 'SortName' },
-      { label: 'Recent', value: 'DateCreated' },
-      { label: 'Year', value: 'PremiereDate' },
-    ];
-    if (showRatingSort) {
-      options.push({ label: 'Rating', value: 'CommunityRating' });
-    }
-    return options;
-  }, [showRatingSort]);
+  const showRuntimeSort = useMemo(() => {
+    if (!library) return false;
+    const runtimeTypes = ['movies', 'tvshows', 'musicvideos'];
+    return runtimeTypes.includes(library.CollectionType ?? '');
+  }, [library]);
 
   const iconName = library ? getLibraryIcon(library.CollectionType) : 'library';
 
@@ -360,7 +363,7 @@ export default function LibraryDetailScreen() {
         sections={itemSections}
         contentContainerStyle={styles.sectionListContent}
         renderItem={({ item }) => (
-          <ItemRow item={item} onPress={() => handleItemPress(item)} isSquare={isSquare} />
+          <ItemRow item={item} onPress={() => handleItemPress(item)} isSquare={isSquare} hideMedia={hideMedia} />
         )}
         renderSectionHeader={({ section }) => (
           <View style={styles.sectionHeaderContainer}>
@@ -400,7 +403,7 @@ export default function LibraryDetailScreen() {
       ref={flatListRef}
       data={sortedItems}
       renderItem={({ item }) => (
-        <ItemCard item={item} onPress={() => handleItemPress(item)} showRating={sortBy !== 'SortName'} isSquare={isSquare} />
+        <ItemCard item={item} onPress={() => handleItemPress(item)} showRating={filters.sortBy !== 'SortName'} isSquare={isSquare} hideMedia={hideMedia} />
       )}
       keyExtractor={(item) => item.Id}
       numColumns={NUM_COLUMNS}
@@ -435,7 +438,7 @@ export default function LibraryDetailScreen() {
       <View style={styles.header}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
           <Pressable
-            onPress={() => router.back()}
+            onPress={() => goBack('/(tabs)/library')}
             style={styles.backButton}
           >
             <Ionicons name="chevron-back" size={24} color="#fff" />
@@ -445,30 +448,42 @@ export default function LibraryDetailScreen() {
           </View>
           <Text style={styles.headerTitle}>{library?.Name ?? 'Library'}</Text>
         </View>
-        <SearchButton />
-      </View>
-
-      <View style={styles.sortContainer}>
-        {sortOptions.map((option) => (
-          <Pressable
-            key={option.value}
-            onPress={() => handleSortChange(option.value)}
-            style={[
-              styles.sortOption,
-              sortBy === option.value && { backgroundColor: accentColor }
-            ]}
-          >
-            <Text style={[
-              styles.sortOptionText,
-              sortBy === option.value && styles.sortOptionTextActive
-            ]}>
-              {option.label}
-            </Text>
+        <View style={styles.headerRight}>
+          <Pressable onPress={openFilterModal} style={styles.filterButton}>
+            <Ionicons name="options-outline" size={22} color="#fff" />
+            {activeFilterCount > 0 && (
+              <View style={[styles.filterBadge, { backgroundColor: accentColor }]}>
+                <Text style={styles.filterBadgeText}>{activeFilterCount}</Text>
+              </View>
+            )}
           </Pressable>
-        ))}
+          <SearchButton />
+        </View>
       </View>
 
-      {sortBy === 'SortName' ? renderAlphabeticalView() : renderGridView()}
+      <View style={styles.sortInfoRow}>
+        <Text style={styles.sortInfoText}>
+          {totalCount} items
+          {filters.sortBy !== 'SortName' && ` • Sorted by ${filters.sortBy === 'DateCreated' ? 'Date Added' : filters.sortBy === 'PremiereDate' ? 'Year' : filters.sortBy === 'CommunityRating' ? 'Rating' : filters.sortBy === 'Runtime' ? 'Runtime' : filters.sortBy === 'Random' ? 'Random' : 'Name'}`}
+        </Text>
+        {activeFilterCount > 0 && (
+          <Text style={[styles.filterActiveText, { color: accentColor }]}>
+            {activeFilterCount} filter{activeFilterCount > 1 ? 's' : ''} active
+          </Text>
+        )}
+      </View>
+
+      {filters.sortBy === 'SortName' ? renderAlphabeticalView() : renderGridView()}
+
+      <FilterSortModal
+        visible={showFilterModal}
+        onClose={closeFilterModal}
+        filters={filters}
+        onApply={handleFiltersApply}
+        availableGenres={availableGenres}
+        accentColor={accentColor}
+        showRuntimeSort={showRuntimeSort}
+      />
     </SafeAreaView>
   );
 }
@@ -505,25 +520,48 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  sortContainer: {
+  headerRight: {
     flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  filterButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  filterBadge: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  filterBadgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  sortInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingBottom: 12,
-    gap: 8,
   },
-  sortOption: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: colors.surface.default,
+  sortInfoText: {
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: 13,
   },
-  sortOptionText: {
-    color: 'rgba(255,255,255,0.7)',
+  filterActiveText: {
     fontSize: 13,
     fontWeight: '500',
-  },
-  sortOptionTextActive: {
-    color: '#fff',
   },
   alphabeticalContainer: {
     flex: 1,

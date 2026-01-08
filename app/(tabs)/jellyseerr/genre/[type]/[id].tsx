@@ -6,6 +6,7 @@ import { useDiscoverByGenre } from '@/hooks';
 import { JellyseerrPosterCard } from '@/components/jellyseerr';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { colors } from '@/theme';
+import { goBack } from '@/utils';
 import type { JellyseerrDiscoverItem } from '@/types/jellyseerr';
 
 export default function GenreBrowseScreen() {
@@ -54,7 +55,7 @@ export default function GenreBrowseScreen() {
           headerStyle: { backgroundColor: colors.background.primary },
           headerTintColor: '#fff',
           headerLeft: () => (
-            <Pressable onPress={() => router.back()} style={{ marginRight: 16 }}>
+            <Pressable onPress={() => goBack('/(tabs)/home')} style={{ marginRight: 16 }}>
               <Ionicons name="arrow-back" size={24} color="#fff" />
             </Pressable>
           ),

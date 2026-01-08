@@ -1,14 +1,14 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { View, Text, ScrollView, Pressable, ActivityIndicator, Alert } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeOut, useSharedValue, useAnimatedStyle, withTiming, runOnJS, Easing } from 'react-native-reanimated';
 import { useAuthStore, useSettingsStore, usePlayerStore, useDownloadStore } from '@/stores';
 import { getItem, getImageUrl, getSimilarItems, getSeasons, getEpisodes, getAlbumTracks, getArtistAlbums, getPlaylistItems, getNextUp, markAsFavorite } from '@/api';
-import { formatDuration, formatYear, formatRating, ticksToMs, getWatchProgress } from '@/utils';
+import { formatDuration, formatYear, formatRating, ticksToMs, getWatchProgress, getDisplayName, getDisplayImageUrl, getDisplaySeriesName, getDisplayArtist, goBack } from '@/utils';
 import { MediaRow } from '@/components/media/MediaRow';
 import { Button } from '@/components/ui/Button';
 import { CachedImage } from '@/components/ui/CachedImage';
@@ -76,6 +76,7 @@ export default function DetailScreen() {
   const currentUser = useAuthStore((state) => state.currentUser);
   const activeServerId = useAuthStore((state) => state.activeServerId);
   const accentColor = useSettingsStore((s) => s.accentColor);
+  const hideMedia = useSettingsStore((s) => s.hideMedia);
   const setQueue = usePlayerStore((s) => s.setQueue);
   const currentItem = usePlayerStore((s) => s.currentItem);
   const playerState = usePlayerStore((s) => s.playerState);
@@ -93,6 +94,17 @@ export default function DetailScreen() {
   const [selectedPerson, setSelectedPerson] = useState<{ id: string; name: string; imageTag?: string } | null>(null);
   const [isFavorite, setIsFavorite] = useState<boolean | null>(null);
   const [isBatchDownloading, setIsBatchDownloading] = useState(false);
+  const [contentReady, setContentReady] = useState(false);
+
+  const contentOpacity = useSharedValue(0);
+
+  const contentAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: contentOpacity.value,
+  }));
+
+  const handleGoBack = () => {
+    goBack('/(tabs)/home');
+  };
 
   // Check download status
   const downloadItem = getDownloadByItemId(id);
@@ -169,86 +181,49 @@ export default function DetailScreen() {
     refetchOnMount: 'always',
   });
 
-  // Get next up episode for series
   const { data: nextUp } = useQuery({
     queryKey: ['nextUp', id, userId],
     queryFn: () => getNextUp(userId, id, 1),
     enabled: !!userId && !!id && type === 'series',
   });
 
+  useEffect(() => {
+    if (item && !contentReady) {
+      setContentReady(true);
+      contentOpacity.value = withTiming(1, {
+        duration: 200,
+        easing: Easing.out(Easing.ease),
+      });
+    }
+  }, [item, contentReady, contentOpacity]);
+
+  useEffect(() => {
+    setContentReady(false);
+    contentOpacity.value = 0;
+  }, [id]);
+
   if (itemError) {
     return (
-      <View className="flex-1 bg-background items-center justify-center px-4">
+      <Animated.View
+        entering={FadeIn.duration(200)}
+        className="flex-1 bg-background items-center justify-center px-4"
+      >
         <Ionicons name="alert-circle-outline" size={48} color="#f87171" />
         <Text className="text-red-400 text-center mt-4">Error loading item</Text>
         <Text className="text-text-tertiary text-center mt-2">{(itemError as any)?.message || 'Unknown error'}</Text>
         <Pressable
-          onPress={() => router.back()}
+          onPress={handleGoBack}
           className="mt-6 px-6 py-3 rounded-lg"
           style={{ backgroundColor: accentColor }}
         >
           <Text className="text-white font-medium">Go Back</Text>
         </Pressable>
-      </View>
+      </Animated.View>
     );
   }
-
-  if (isLoading || !item) {
-    return (
-      <View className="flex-1 bg-background items-center justify-center">
-        <ActivityIndicator color={accentColor} size="large" />
-      </View>
-    );
-  }
-
-  // For episodes/seasons, fall back to series/parent backdrop if item doesn't have one
-  const backdropTag = item.BackdropImageTags?.[0];
-  const parentBackdropTag = (item as any).ParentBackdropImageTags?.[0];
-  const parentIdForBackdrop = item.SeriesId || item.ParentId;
-  const posterTag = item.ImageTags?.Primary;
-
-  // Backdrop URL with fallback chain: own backdrop -> parent backdrop -> poster (scaled up)
-  const backdropUrl = backdropTag
-    ? getImageUrl(item.Id, 'Backdrop', { maxWidth: 1920, tag: backdropTag })
-    : (parentBackdropTag && parentIdForBackdrop)
-      ? getImageUrl(parentIdForBackdrop, 'Backdrop', { maxWidth: 1920, tag: parentBackdropTag })
-      : posterTag
-        ? getImageUrl(item.Id, 'Primary', { maxWidth: 1920, tag: posterTag })
-        : null;
-
-  const posterUrl = posterTag
-    ? getImageUrl(item.Id, 'Primary', { maxWidth: 400, tag: posterTag })
-    : null;
-
-  const progress = getWatchProgress(item);
-  const hasProgress = progress > 0 && progress < 100;
-  const duration = formatDuration(ticksToMs(item.RunTimeTicks ?? 0));
-
-  // For series, check if there's a next up episode
-  const nextUpEpisode = nextUp?.Items?.[0];
-  const nextUpProgress = nextUpEpisode ? getWatchProgress(nextUpEpisode) : 0;
-  const hasNextUpProgress = nextUpProgress > 0 && nextUpProgress < 100;
-
-  // For seasons, find the first episode in progress or first unwatched
-  const getSeasonPlayEpisode = () => {
-    if (!episodes?.Items?.length) return null;
-    // First, find episode in progress
-    const inProgressEp = episodes.Items.find((ep) => {
-      const prog = getWatchProgress(ep);
-      return prog > 0 && prog < 100;
-    });
-    if (inProgressEp) return inProgressEp;
-    // Then find first unwatched
-    const unwatchedEp = episodes.Items.find((ep) => !ep.UserData?.Played);
-    if (unwatchedEp) return unwatchedEp;
-    // Default to first episode
-    return episodes.Items[0];
-  };
-  const seasonPlayEpisode = type === 'season' ? getSeasonPlayEpisode() : null;
-  const seasonEpisodeProgress = seasonPlayEpisode ? getWatchProgress(seasonPlayEpisode) : 0;
-  const hasSeasonProgress = seasonEpisodeProgress > 0 && seasonEpisodeProgress < 100;
 
   const handlePlay = (resume = false) => {
+    if (!item) return;
     if (type === 'movie' || type === 'episode') {
       router.push(`/player/video?itemId=${item.Id}${resume ? '&resume=true' : ''}`);
     } else if (type === 'series') {
@@ -257,7 +232,7 @@ export default function DetailScreen() {
         router.push(`/player/video?itemId=${nextUpEpisode.Id}${hasNextUpProgress ? '&resume=true' : ''}`);
       } else if (seasons?.Items?.[0]) {
         // Fallback: go to first season
-        router.push(`/details/season/${seasons.Items[0].Id}`);
+        router.push(`/(tabs)/details/season/${seasons.Items[0].Id}`);
       }
     } else if (type === 'season') {
       // Play the episode we determined above
@@ -433,19 +408,80 @@ export default function DetailScreen() {
   };
 
   const handleItemPress = (pressedItem: BaseItem) => {
-    router.push(`/details/${pressedItem.Type.toLowerCase()}/${pressedItem.Id}`);
+    router.push(`/(tabs)/details/${pressedItem.Type.toLowerCase()}/${pressedItem.Id}`);
   };
+
+  const backdropTag = item?.BackdropImageTags?.[0];
+  const parentBackdropTag = (item as any)?.ParentBackdropImageTags?.[0];
+  const parentIdForBackdrop = item?.SeriesId || item?.ParentId;
+  const posterTag = item?.ImageTags?.Primary;
+
+  const rawBackdropUrl = backdropTag
+    ? getImageUrl(item!.Id, 'Backdrop', { maxWidth: 1920, tag: backdropTag })
+    : (parentBackdropTag && parentIdForBackdrop)
+      ? getImageUrl(parentIdForBackdrop, 'Backdrop', { maxWidth: 1920, tag: parentBackdropTag })
+      : posterTag
+        ? getImageUrl(item!.Id, 'Primary', { maxWidth: 1920, tag: posterTag })
+        : null;
+  const backdropUrl = item ? getDisplayImageUrl(item.Id, rawBackdropUrl, hideMedia, 'Backdrop') : null;
+
+  const rawPosterUrl = posterTag
+    ? getImageUrl(item!.Id, 'Primary', { maxWidth: 400, tag: posterTag })
+    : null;
+  const posterUrl = item ? getDisplayImageUrl(item.Id, rawPosterUrl, hideMedia, 'Primary') : null;
+
+  const displayName = item ? getDisplayName(item, hideMedia) : '';
+  const displaySeriesName = item ? getDisplaySeriesName(item as Episode, hideMedia) : '';
+
+  const progress = item ? getWatchProgress(item) : 0;
+  const hasProgress = progress > 0 && progress < 100;
+  const duration = item ? formatDuration(ticksToMs(item.RunTimeTicks ?? 0)) : '';
+
+  const nextUpEpisode = nextUp?.Items?.[0];
+  const nextUpProgress = nextUpEpisode ? getWatchProgress(nextUpEpisode) : 0;
+  const hasNextUpProgress = nextUpProgress > 0 && nextUpProgress < 100;
+
+  const getSeasonPlayEpisode = () => {
+    if (!episodes?.Items?.length) return null;
+    const inProgressEp = episodes.Items.find((ep) => {
+      const prog = getWatchProgress(ep);
+      return prog > 0 && prog < 100;
+    });
+    if (inProgressEp) return inProgressEp;
+    const unwatchedEp = episodes.Items.find((ep) => !ep.UserData?.Played);
+    if (unwatchedEp) return unwatchedEp;
+    return episodes.Items[0];
+  };
+  const seasonPlayEpisode = type === 'season' ? getSeasonPlayEpisode() : null;
+  const seasonEpisodeProgress = seasonPlayEpisode ? getWatchProgress(seasonPlayEpisode) : 0;
+  const hasSeasonProgress = seasonEpisodeProgress > 0 && seasonEpisodeProgress < 100;
 
   return (
     <View className="flex-1 bg-background">
-      <ScrollView
-        className="flex-1"
-        showsVerticalScrollIndicator={false}
-        bounces={true}
-        contentContainerStyle={{ flexGrow: 1, paddingBottom: insets.bottom + 16 }}
-      >
-        {/* Backdrop Image Section */}
-        {backdropUrl ? (
+      {isLoading && (
+        <View
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 10,
+          }}
+        >
+          <ActivityIndicator color={accentColor} size="large" />
+        </View>
+      )}
+      <Animated.View style={[{ flex: 1 }, contentAnimatedStyle]}>
+        <ScrollView
+          className="flex-1"
+          showsVerticalScrollIndicator={false}
+          bounces={true}
+          contentContainerStyle={{ flexGrow: 1, paddingBottom: insets.bottom + 16 }}
+        >
+        {backdropUrl && item ? (
           <View className="relative" style={{ height: 320 }} key={`backdrop-${item.Id}`}>
             <CachedImage
               uri={backdropUrl}
@@ -485,22 +521,22 @@ export default function DetailScreen() {
 
             {/* Info Column */}
             <View className="flex-1 justify-end pb-1">
-              {type === 'season' && item.SeriesName && (
-                <Pressable onPress={() => router.push(`/details/series/${item.SeriesId || item.ParentId}`)}>
+              {type === 'season' && displaySeriesName && item && (
+                <Pressable onPress={() => router.push(`/(tabs)/details/series/${item.SeriesId || item.ParentId}`)}>
                   <Text className="text-text-secondary text-sm mb-1" numberOfLines={1}>
-                    {item.SeriesName}
+                    {displaySeriesName}
                   </Text>
                 </Pressable>
               )}
-              {type === 'episode' && item.SeriesName && (
-                <Pressable onPress={() => router.push(`/details/series/${item.SeriesId}`)}>
+              {type === 'episode' && displaySeriesName && item && (
+                <Pressable onPress={() => router.push(`/(tabs)/details/series/${item.SeriesId}`)}>
                   <Text className="text-text-secondary text-sm mb-1" numberOfLines={1}>
-                    {item.SeriesName} • S{item.ParentIndexNumber} E{item.IndexNumber}
+                    {displaySeriesName} • S{item.ParentIndexNumber} E{item.IndexNumber}
                   </Text>
                 </Pressable>
               )}
               <Text className="text-white text-xl font-bold" numberOfLines={2}>
-                {item.Name}
+                {displayName}
               </Text>
 
               <View className="flex-row items-center mt-2 flex-wrap">
@@ -509,7 +545,7 @@ export default function DetailScreen() {
                     {artistAlbums.TotalRecordCount} {artistAlbums.TotalRecordCount === 1 ? 'Album' : 'Albums'}
                   </Text>
                 )}
-                {item.ProductionYear && (
+                {item?.ProductionYear && (
                   <Text className="text-text-secondary text-sm mr-3">
                     {formatYear(item.ProductionYear)}
                   </Text>
@@ -524,14 +560,14 @@ export default function DetailScreen() {
                     {playlistTracks.Items.length} {playlistTracks.Items.length === 1 ? 'track' : 'tracks'} • {formatDuration(ticksToMs(playlistTracks.Items.reduce((sum, t) => sum + (t.RunTimeTicks ?? 0), 0)))}
                   </Text>
                 )}
-                {item.OfficialRating && (
+                {item?.OfficialRating && (
                   <View className="bg-surface px-2 py-0.5 rounded mr-3">
                     <Text className="text-text-secondary text-xs">
                       {item.OfficialRating}
                     </Text>
                   </View>
                 )}
-                {item.CommunityRating && (
+                {item?.CommunityRating && (
                   <Text className="text-accent text-sm">
                     {formatRating(item.CommunityRating)}
                   </Text>
@@ -663,7 +699,7 @@ export default function DetailScreen() {
             </View>
           )}
 
-          {item.Genres && item.Genres.length > 0 && (
+          {item?.Genres && item.Genres.length > 0 && (
             <View className="flex-row flex-wrap mt-4">
               {item.Genres.map((genre) => (
                 <View
@@ -676,8 +712,11 @@ export default function DetailScreen() {
             </View>
           )}
 
-          {item.Overview && (
+          {item?.Overview && !hideMedia && (
             <CollapsibleDescription text={item.Overview} accentColor={accentColor} />
+          )}
+          {item?.Overview && hideMedia && (
+            <CollapsibleDescription text="A wonderful collection that showcases the best of this content. Enjoy the experience and discover something new." accentColor={accentColor} />
           )}
 
           {type === 'series' && (
@@ -692,16 +731,18 @@ export default function DetailScreen() {
               ) : seasons && seasons.Items.length > 0 ? (
                 seasons.Items.map((season) => {
                   const seasonImageTag = season.ImageTags?.Primary;
-                  const seasonImageUrl = seasonImageTag
+                  const rawSeasonImageUrl = seasonImageTag
                     ? getImageUrl(season.Id, 'Primary', { maxWidth: 200, tag: seasonImageTag })
                     : null;
+                  const seasonImageUrl = getDisplayImageUrl(season.Id, rawSeasonImageUrl, hideMedia, 'Primary');
+                  const seasonDisplayName = getDisplayName(season, hideMedia);
 
                   return (
                     <Pressable
                       key={season.Id}
                       className="bg-surface rounded-xl mb-3 flex-row items-center overflow-hidden"
                       onPress={() =>
-                        router.push(`/details/season/${season.Id}`)
+                        router.push(`/(tabs)/details/season/${season.Id}`)
                       }
                     >
                       {/* Season poster */}
@@ -720,7 +761,7 @@ export default function DetailScreen() {
                         )}
                       </View>
                       <View className="flex-1 pl-4 pr-3 py-2">
-                        <Text className="text-white font-medium">{season.Name}</Text>
+                        <Text className="text-white font-medium">{seasonDisplayName}</Text>
                         <View className="flex-row items-center mt-1">
                           {(season as any).ChildCount != null && (
                             <Text className="text-text-tertiary text-xs">
@@ -733,7 +774,7 @@ export default function DetailScreen() {
                             </Text>
                           )}
                         </View>
-                        {season.ProductionYear && (
+                        {season.ProductionYear && !hideMedia && (
                           <Text className="text-text-muted text-xs mt-0.5">
                             {season.ProductionYear}
                           </Text>
@@ -786,9 +827,11 @@ export default function DetailScreen() {
                   const episodeProgress = getWatchProgress(episode);
                   const hasEpisodeProgress = episodeProgress > 0;
                   const episodeImageTag = episode.ImageTags?.Primary;
-                  const episodeImageUrl = episodeImageTag
+                  const rawEpisodeImageUrl = episodeImageTag
                     ? getImageUrl(episode.Id, 'Primary', { maxWidth: 300, tag: episodeImageTag })
                     : null;
+                  const episodeImageUrl = getDisplayImageUrl(episode.Id, rawEpisodeImageUrl, hideMedia, 'Primary');
+                  const episodeDisplayName = hideMedia ? `Episode ${episode.IndexNumber}` : episode.Name;
 
                   // Episode download status
                   const epDownload = getDownloadByItemId(episode.Id);
@@ -832,7 +875,7 @@ export default function DetailScreen() {
                             Episode {episode.IndexNumber}
                           </Text>
                           <Text className="text-white font-medium" numberOfLines={1}>
-                            {episode.Name}
+                            {episodeDisplayName}
                           </Text>
                           <View className="flex-row items-center mt-0.5">
                             {episode.RunTimeTicks && (
@@ -922,6 +965,7 @@ export default function DetailScreen() {
                 tracks.Items.map((track, index) => {
                   const isPlaying = currentItem?.item?.Id === track.Id;
                   const isActive = isPlaying && (playerState === 'playing' || playerState === 'paused');
+                  const trackDisplayName = hideMedia ? `Track ${index + 1}` : track.Name;
                   return (
                     <View
                       key={track.Id}
@@ -948,7 +992,7 @@ export default function DetailScreen() {
                             <Text className="text-text-tertiary text-center">{index + 1}</Text>
                           )}
                         </View>
-                        <Text style={isActive ? { color: accentColor } : undefined} className={isActive ? 'flex-1' : 'text-white flex-1'} numberOfLines={1}>{track.Name}</Text>
+                        <Text style={isActive ? { color: accentColor } : undefined} className={isActive ? 'flex-1' : 'text-white flex-1'} numberOfLines={1}>{trackDisplayName}</Text>
                         <Text className="text-text-tertiary text-sm ml-3">
                           {formatDuration(ticksToMs(track.RunTimeTicks ?? 0))}
                         </Text>
@@ -986,11 +1030,15 @@ export default function DetailScreen() {
                   // Get album art - try AlbumId first, then track's own image
                   const albumId = (track as any).AlbumId || track.Id;
                   const imageTag = (track as any).AlbumPrimaryImageTag || track.ImageTags?.Primary;
-                  const trackImageUrl = imageTag
+                  const rawTrackImageUrl = imageTag
                     ? getImageUrl(albumId, 'Primary', { maxWidth: 100, tag: imageTag })
                     : null;
-                  const artistName = track.Artists?.[0] || (track as any).AlbumArtist || '';
-                  const albumName = (track as any).Album || '';
+                  const trackImageUrl = getDisplayImageUrl(track.Id, rawTrackImageUrl, hideMedia, 'Primary');
+                  const rawArtistName = track.Artists?.[0] || (track as any).AlbumArtist || '';
+                  const rawAlbumName = (track as any).Album || '';
+                  const artistName = hideMedia ? 'Artist' : rawArtistName;
+                  const albumName = hideMedia ? 'Album' : rawAlbumName;
+                  const trackDisplayName = hideMedia ? `Track ${index + 1}` : track.Name;
                   const isPlaying = currentItem?.item?.Id === track.Id;
                   const isActive = isPlaying && (playerState === 'playing' || playerState === 'paused');
 
@@ -1027,10 +1075,10 @@ export default function DetailScreen() {
                           )}
                         </View>
                         <View className="flex-1">
-                          <Text style={isActive ? { color: accentColor } : undefined} className={isActive ? 'font-medium' : 'text-white font-medium'} numberOfLines={1}>{track.Name}</Text>
-                          {(artistName || albumName) && (
+                          <Text style={isActive ? { color: accentColor } : undefined} className={isActive ? 'font-medium' : 'text-white font-medium'} numberOfLines={1}>{trackDisplayName}</Text>
+                          {(rawArtistName || rawAlbumName) && (
                             <Text className="text-text-tertiary text-sm mt-0.5" numberOfLines={1}>
-                              {artistName}{artistName && albumName ? ' • ' : ''}{albumName}
+                              {artistName}{rawArtistName && rawAlbumName ? ' • ' : ''}{rawAlbumName ? albumName : ''}
                             </Text>
                           )}
                         </View>
@@ -1074,28 +1122,31 @@ export default function DetailScreen() {
                   ))}
                 </>
               ) : artistAlbums && artistAlbums.Items.length > 0 ? (
-                artistAlbums.Items.map((album) => {
-                  const albumImageUrl = album.ImageTags?.Primary
+                artistAlbums.Items.map((album, albumIndex) => {
+                  const rawAlbumImageUrl = album.ImageTags?.Primary
                     ? getImageUrl(album.Id, 'Primary', { maxWidth: 200, tag: album.ImageTags.Primary })
                     : null;
+                  const albumImageUrl = getDisplayImageUrl(album.Id, rawAlbumImageUrl, hideMedia, 'Primary');
+                  const albumDisplayName = hideMedia ? `Album ${albumIndex + 1}` : album.Name;
+                  const albumYear = hideMedia ? '2024' : album.ProductionYear;
                   return (
                     <Pressable
                       key={album.Id}
                       className="bg-surface p-3 rounded-xl mb-2 flex-row items-center"
-                      onPress={() => router.push(`/details/album/${album.Id}`)}
+                      onPress={() => router.push(`/(tabs)/details/album/${album.Id}`)}
                     >
                       <View className="w-14 h-14 rounded-lg overflow-hidden bg-surface mr-3">
                         <CachedImage
                           uri={albumImageUrl}
                           style={{ width: 56, height: 56 }}
                           borderRadius={8}
-                          fallbackText={album.Name?.charAt(0) ?? '?'}
+                          fallbackText={albumDisplayName?.charAt(0) ?? '?'}
                         />
                       </View>
                       <View className="flex-1">
-                        <Text className="text-white" numberOfLines={1}>{album.Name}</Text>
-                        {album.ProductionYear && (
-                          <Text className="text-text-tertiary text-sm">{album.ProductionYear}</Text>
+                        <Text className="text-white" numberOfLines={1}>{albumDisplayName}</Text>
+                        {albumYear && (
+                          <Text className="text-text-tertiary text-sm">{albumYear}</Text>
                         )}
                       </View>
                       <Text className="text-text-tertiary">{'>'}</Text>
@@ -1108,20 +1159,23 @@ export default function DetailScreen() {
             </View>
           )}
 
-          {item.People && item.People.length > 0 && (
+          {item?.People && item.People.length > 0 && (
             <View className="mt-6">
               <Text className="text-white text-lg font-semibold mb-3">Cast</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                 {item.People.slice(0, 15).map((person, index) => {
-                  const personImageUrl = person.PrimaryImageTag
+                  const rawPersonImageUrl = person.PrimaryImageTag
                     ? getImageUrl(person.Id, 'Primary', { maxWidth: 200, tag: person.PrimaryImageTag })
                     : null;
+                  const personImageUrl = getDisplayImageUrl(person.Id, rawPersonImageUrl, hideMedia, 'Primary');
+                  const personName = hideMedia ? `Actor ${index + 1}` : person.Name;
+                  const personRole = hideMedia ? 'Character' : person.Role;
 
                   return (
                     <Pressable
                       key={`${person.Id}-${index}`}
                       className="mr-3 items-center w-20"
-                      onPress={() => setSelectedPerson({
+                      onPress={() => !hideMedia && setSelectedPerson({
                         id: person.Id,
                         name: person.Name,
                         imageTag: person.PrimaryImageTag,
@@ -1137,7 +1191,7 @@ export default function DetailScreen() {
                         ) : (
                           <View className="w-full h-full items-center justify-center">
                             <Text className="text-text-tertiary text-lg">
-                              {person.Name.charAt(0)}
+                              {personName.charAt(0)}
                             </Text>
                           </View>
                         )}
@@ -1146,14 +1200,14 @@ export default function DetailScreen() {
                         className="text-white text-xs mt-2 text-center"
                         numberOfLines={1}
                       >
-                        {person.Name}
+                        {personName}
                       </Text>
                       {person.Role && (
                         <Text
                           className="text-text-tertiary text-xs text-center"
                           numberOfLines={1}
                         >
-                          {person.Role}
+                          {personRole}
                         </Text>
                       )}
                     </Pressable>
@@ -1175,9 +1229,9 @@ export default function DetailScreen() {
           </View>
         )}
 
-      </ScrollView>
+        </ScrollView>
+      </Animated.View>
 
-      {/* Floating Back Button */}
       <Pressable
         style={{
           position: 'absolute',
@@ -1190,12 +1244,11 @@ export default function DetailScreen() {
           alignItems: 'center',
           justifyContent: 'center',
         }}
-        onPress={() => router.back()}
+        onPress={handleGoBack}
       >
         <Ionicons name="chevron-back" size={24} color="#fff" />
       </Pressable>
 
-      {/* Floating Search Button */}
       <Pressable
         style={{
           position: 'absolute',

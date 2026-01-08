@@ -48,6 +48,7 @@ import { SubtitleSelector } from '@/components/player/SubtitleSelector';
 import { SubtitleDisplay } from '@/components/player/SubtitleDisplay';
 import { SubtitleStyleModal } from '@/components/player/SubtitleStyleModal';
 import { BrightnessIndicator, VolumeIndicator, SubtitleOffsetControl, SeekIndicator } from '@/components/player/VideoPlayerControls';
+import { VideoOptionsMenu } from '@/components/player/VideoOptionsMenu';
 import { TVVideoPlayerControls } from '@/components/player/TVVideoPlayerControls';
 import { SleepTimerSelector, SleepTimerIndicator } from '@/components/player/SleepTimerSelector';
 import { OpenSubtitlesSearch } from '@/components/player/OpenSubtitlesSearch';
@@ -189,6 +190,7 @@ export default function VideoPlayerScreen() {
   const [subtitlesLoading, setSubtitlesLoading] = useState(false);
   const [subtitleLoadError, setSubtitleLoadError] = useState<string | null>(null);
   const [showChapterList, setShowChapterList] = useState(false);
+  const [showOptionsMenu, setShowOptionsMenu] = useState(false);
 
   const [abLoop, setAbLoop] = useState<{ a: number | null; b: number | null }>({ a: null, b: null });
   const [controlsLocked, setControlsLocked] = useState(false);
@@ -2265,7 +2267,16 @@ export default function VideoPlayerScreen() {
                       onLayout={(e) => setSeekBarLayoutWidth(e.nativeEvent.layout.width)}
                     >
                       <View style={{ height: 6, backgroundColor: 'rgba(255,255,255,0.3)', borderRadius: 3 }}>
-                        {/* Intro highlight - gold/yellow section */}
+                        <View
+                          style={{
+                            position: 'absolute',
+                            top: 0,
+                            height: 6,
+                            width: `${progressPercent}%`,
+                            backgroundColor: accentColor,
+                            borderRadius: 3,
+                          }}
+                        />
                         {introStart !== null && introEnd !== null && progress.duration > 0 && (
                           <View
                             style={{
@@ -2279,7 +2290,6 @@ export default function VideoPlayerScreen() {
                             }}
                           />
                         )}
-                        {/* Credits highlight - orange section */}
                         {creditsStart !== null && progress.duration > 0 && (
                           <View
                             style={{
@@ -2293,7 +2303,6 @@ export default function VideoPlayerScreen() {
                             }}
                           />
                         )}
-                        {/* A-B Loop markers */}
                         {abLoop.a !== null && abLoop.b !== null && progress.duration > 0 && (
                           <View
                             style={{
@@ -2344,7 +2353,6 @@ export default function VideoPlayerScreen() {
                             <Text style={{ color: '#fff', fontSize: 8, fontWeight: '700' }}>B</Text>
                           </View>
                         )}
-                        {/* Chapter markers */}
                         {item?.Chapters && item.Chapters.length > 1 && (
                           <ChapterMarkers
                             chapters={item.Chapters as ChapterInfo[]}
@@ -2352,15 +2360,6 @@ export default function VideoPlayerScreen() {
                             accentColor={accentColor}
                           />
                         )}
-                        {/* Progress bar */}
-                        <View
-                          style={{
-                            height: 6,
-                            width: `${progressPercent}%`,
-                            backgroundColor: accentColor,
-                            borderRadius: 3,
-                          }}
-                        />
                       </View>
                       <Animated.View
                         style={{

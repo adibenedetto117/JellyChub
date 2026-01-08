@@ -10,16 +10,32 @@ import { jellyseerrClient } from '@/api/jellyseerr';
 import { StatusBadge, SeasonSelector } from '@/components/jellyseerr';
 import { CachedImage } from '@/components/ui/CachedImage';
 import { Button } from '@/components/ui/Button';
+import { AddToArrModal } from '@/components/media/AddToArrModal';
+import { radarrService, sonarrService } from '@/services';
 import { colors } from '@/theme';
+import { getDisplayImageUrl, goBack } from '@/utils';
 import { MEDIA_STATUS } from '@/types/jellyseerr';
 import type { JellyseerrMovieDetails, JellyseerrTvDetails } from '@/types/jellyseerr';
+
+const PLACEHOLDER_TITLES = [
+  'The Adventure',
+  'Space Journey',
+  'Mystery Files',
+  'Drama Chronicles',
+  'Action Hero',
+  'Comedy Night',
+  'Sci-Fi Station',
+  'Romance Story',
+];
 
 export default function JellyseerrDetailsScreen() {
   const { type, tmdbId } = useLocalSearchParams<{ type: string; tmdbId: string }>();
   const [showSeasonSelector, setShowSeasonSelector] = useState(false);
+  const [showAddToArr, setShowAddToArr] = useState(false);
   const insets = useSafeAreaInsets();
 
   const accentColor = useSettingsStore((s) => s.accentColor);
+  const hideMedia = useSettingsStore((s) => s.hideMedia);
   const numericTmdbId = tmdbId ? parseInt(tmdbId, 10) : undefined;
 
   const { data: movieDetails, isLoading: isLoadingMovie } = useMovieDetails(
@@ -36,17 +52,22 @@ export default function JellyseerrDetailsScreen() {
 
   const isLoading = type === 'movie' ? isLoadingMovie : isLoadingTv;
 
-  const title = useMemo(() => {
+  const rawTitle = useMemo(() => {
     if (!details) return '';
     return (details as JellyseerrMovieDetails).title || (details as JellyseerrTvDetails).name || '';
   }, [details]);
 
-  const year = useMemo(() => {
+  const titleIndex = Math.abs(numericTmdbId || 0) % PLACEHOLDER_TITLES.length;
+  const title = hideMedia ? PLACEHOLDER_TITLES[titleIndex] : rawTitle;
+
+  const rawYear = useMemo(() => {
     if (!details) return '';
     const date = (details as JellyseerrMovieDetails).releaseDate ||
       (details as JellyseerrTvDetails).firstAirDate;
     return date?.split('-')[0] || '';
   }, [details]);
+
+  const year = hideMedia ? '2024' : rawYear;
 
   const runtime = useMemo(() => {
     if (!details) return '';
@@ -65,8 +86,21 @@ export default function JellyseerrDetailsScreen() {
 
   const canRequest = !isAvailable && !isPending && !isProcessing;
 
-  const backdropUrl = jellyseerrClient.getImageUrl(details?.backdropPath, 'w780');
-  const posterUrl = jellyseerrClient.getImageUrl(details?.posterPath, 'w342');
+  const canAddToArr = type === 'movie'
+    ? radarrService.isConfigured() && !isAvailable
+    : sonarrService.isConfigured() && !isAvailable;
+
+  const tvdbId = useMemo(() => {
+    if (type !== 'tv' || !details) return undefined;
+    const tvData = details as JellyseerrTvDetails;
+    return (tvData as any).externalIds?.tvdbId ?? undefined;
+  }, [type, details]);
+
+  const rawBackdropUrl = jellyseerrClient.getImageUrl(details?.backdropPath, 'w780');
+  const rawPosterUrl = jellyseerrClient.getImageUrl(details?.posterPath, 'w342');
+  const itemId = String(numericTmdbId || '0');
+  const backdropUrl = getDisplayImageUrl(itemId, rawBackdropUrl, hideMedia, 'Backdrop');
+  const posterUrl = getDisplayImageUrl(itemId, rawPosterUrl, hideMedia, 'Primary');
 
   const handleRequest = useCallback(() => {
     if (type === 'tv') {
@@ -129,7 +163,7 @@ export default function JellyseerrDetailsScreen() {
       <View style={styles.errorContainer}>
         <Stack.Screen options={{ headerShown: false }} />
         <Text style={styles.errorText}>Details not found</Text>
-        <Button title="Go Back" variant="ghost" onPress={() => router.back()} />
+        <Button title="Go Back" variant="ghost" onPress={() => goBack('/(tabs)/home')} />
       </View>
     );
   }
@@ -162,7 +196,7 @@ export default function JellyseerrDetailsScreen() {
         {/* Back Button */}
         <Pressable
           style={[styles.backButton, { top: insets.top + 8 }]}
-          onPress={() => router.back()}
+          onPress={() => goBack('/(tabs)/home')}
         >
           <Ionicons name="chevron-back" size={24} color="#fff" />
         </Pressable>
@@ -222,8 +256,11 @@ export default function JellyseerrDetailsScreen() {
           )}
 
           {/* Overview */}
-          {details.overview && (
+          {details.overview && !hideMedia && (
             <Text style={styles.overview}>{details.overview}</Text>
+          )}
+          {hideMedia && (
+            <Text style={styles.overview}>A captivating story that takes viewers on an unforgettable journey through extraordinary circumstances and compelling characters.</Text>
           )}
 
           {/* TV Info */}
@@ -266,6 +303,19 @@ export default function JellyseerrDetailsScreen() {
               fullWidth
             />
           )}
+
+          {/* Add to Radarr/Sonarr Button */}
+          {canAddToArr && (
+            <Pressable
+              style={[styles.arrButton, { borderColor: accentColor }]}
+              onPress={() => setShowAddToArr(true)}
+            >
+              <Ionicons name="add-circle-outline" size={20} color={accentColor} />
+              <Text style={[styles.arrButtonText, { color: accentColor }]}>
+                Add to {type === 'movie' ? 'Radarr' : 'Sonarr'}
+              </Text>
+            </Pressable>
+          )}
         </View>
 
         <View style={{ height: 32 }} />
@@ -280,6 +330,16 @@ export default function JellyseerrDetailsScreen() {
           isLoading={createRequest.isPending}
         />
       )}
+
+      <AddToArrModal
+        visible={showAddToArr}
+        onClose={() => setShowAddToArr(false)}
+        type={type === 'movie' ? 'movie' : 'tv'}
+        tmdbId={numericTmdbId}
+        tvdbId={tvdbId}
+        title={rawTitle}
+        year={rawYear ? parseInt(rawYear, 10) : undefined}
+      />
     </View>
   );
 }
@@ -456,5 +516,19 @@ const styles = StyleSheet.create({
     color: 'rgba(239, 68, 68, 0.7)',
     fontSize: 13,
     marginTop: 2,
+  },
+  arrButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginTop: 12,
+    gap: 8,
+  },
+  arrButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
   },
 });

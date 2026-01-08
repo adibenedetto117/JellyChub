@@ -20,3 +20,4 @@ export { OpenSubtitlesSearch } from './OpenSubtitlesSearch';
 export { ChapterList, ChapterMarkers, CurrentChapterDisplay, ChapterNavigation } from './ChapterList';
 export { TrickplayPreview, TimeOnlyPreview } from './TrickplayPreview';
 export { CastRemoteControl, CastMiniControl } from './CastRemoteControl';
+export { VideoOptionsMenu } from './VideoOptionsMenu';

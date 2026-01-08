@@ -10,7 +10,7 @@ import { getItem, getPlaylistItems, getImageUrl } from '@/api';
 import { CachedImage } from '@/components/ui/CachedImage';
 import { NowPlayingBars } from '@/components/ui/NowPlayingBars';
 import { TrackOptionsMenu } from '@/components/music/TrackOptionsMenu';
-import { formatDuration, ticksToMs } from '@/utils';
+import { formatDuration, ticksToMs, getDisplayName, getDisplayImageUrl, getDisplayArtist, goBack } from '@/utils';
 import { colors } from '@/theme';
 import type { BaseItem, AudioTrack } from '@/types/jellyfin';
 
@@ -18,6 +18,7 @@ export default function PlaylistScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const currentUser = useAuthStore((state) => state.currentUser);
   const accentColor = useSettingsStore((s) => s.accentColor);
+  const hideMedia = useSettingsStore((s) => s.hideMedia);
   const setQueue = usePlayerStore((s) => s.setQueue);
   const currentItem = usePlayerStore((s) => s.currentItem);
   const playerState = usePlayerStore((s) => s.playerState);
@@ -42,11 +43,7 @@ export default function PlaylistScreen() {
   const totalDuration = tracks.reduce((sum, t) => sum + (t.RunTimeTicks ?? 0), 0);
 
   const handleGoBack = () => {
-    if (router.canGoBack()) {
-      router.back();
-    } else {
-      router.replace('/(tabs)/music');
-    }
+    goBack('/(tabs)/home');
   };
 
   const handlePlayAll = () => {
@@ -85,11 +82,15 @@ export default function PlaylistScreen() {
   const renderTrack = ({ item, index }: { item: AudioTrack; index: number }) => {
     const albumId = (item as any).AlbumId || item.Id;
     const imageTag = (item as any).AlbumPrimaryImageTag || item.ImageTags?.Primary;
-    const imageUrl = imageTag
+    const rawImageUrl = imageTag
       ? getImageUrl(albumId, 'Primary', { maxWidth: 100, tag: imageTag })
       : null;
-    const artistName = item.Artists?.[0] || (item as any).AlbumArtist || '';
+    const imageUrl = getDisplayImageUrl(albumId, rawImageUrl, hideMedia, 'Primary');
+    const rawArtists = item.Artists || [(item as any).AlbumArtist || ''];
+    const displayArtists = getDisplayArtist(rawArtists, hideMedia);
+    const artistName = displayArtists[0] || '';
     const albumName = (item as any).Album || '';
+    const displayName = getDisplayName(item, hideMedia);
     const isPlaying = currentItem?.item?.Id === item.Id;
     const isActive = isPlaying && (playerState === 'playing' || playerState === 'paused');
 
@@ -122,7 +123,7 @@ export default function PlaylistScreen() {
             )}
           </View>
           <View style={styles.trackInfo}>
-            <Text style={[styles.trackName, isActive && { color: accentColor }]} numberOfLines={1}>{item.Name}</Text>
+            <Text style={[styles.trackName, isActive && { color: accentColor }]} numberOfLines={1}>{displayName}</Text>
             {(artistName || albumName) && (
               <Text style={styles.trackArtist} numberOfLines={1}>
                 {artistName}{artistName && albumName ? ' • ' : ''}{albumName}
@@ -149,16 +150,18 @@ export default function PlaylistScreen() {
   const isLoading = isLoadingPlaylist || isLoadingTracks;
 
   // Get playlist image
-  const playlistImageUrl = playlist?.ImageTags?.Primary
+  const rawPlaylistImageUrl = playlist?.ImageTags?.Primary
     ? getImageUrl(playlist.Id, 'Primary', { maxWidth: 200, tag: playlist.ImageTags.Primary })
     : null;
+  const playlistImageUrl = playlist ? getDisplayImageUrl(playlist.Id, rawPlaylistImageUrl, hideMedia, 'Primary') : null;
+  const playlistDisplayName = playlist ? getDisplayName(playlist, hideMedia) : 'Playlist';
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <Stack.Screen
         options={{
           headerShown: true,
-          headerTitle: playlist?.Name || 'Playlist',
+          headerTitle: playlistDisplayName,
           headerStyle: { backgroundColor: colors.background.primary },
           headerTintColor: '#fff',
           headerLeft: () => (
@@ -197,7 +200,7 @@ export default function PlaylistScreen() {
                   <Ionicons name="list" size={36} color={accentColor} />
                 )}
               </View>
-              <Text style={styles.headerTitle}>{playlist?.Name || 'Playlist'}</Text>
+              <Text style={styles.headerTitle}>{playlistDisplayName}</Text>
               <Text style={styles.headerSubtitle}>
                 {tracks.length} {tracks.length === 1 ? 'song' : 'songs'} • {formatDuration(ticksToMs(totalDuration))}
               </Text>
