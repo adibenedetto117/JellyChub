@@ -3,8 +3,10 @@ import { useState, useCallback, useMemo } from 'react';
 import { useQuery, useQueries } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore, useSettingsStore } from '@/stores';
 import { useResponsive } from '@/hooks';
+import { isTV } from '@/utils/platform';
 import {
   getResumeItems,
   getNextUp,
@@ -19,8 +21,10 @@ import {
 import { MediaRow } from '@/components/media/MediaRow';
 import { ContinueWatching } from '@/components/media/ContinueWatching';
 import { NextUpRow } from '@/components/media/NextUpRow';
+import { HeroSpotlight } from '@/components/media/HeroSpotlight';
 import { SearchButton, AnimatedGradient } from '@/components/ui';
 import { SkeletonContinueWatching, SkeletonRow } from '@/components/ui/Skeleton';
+import { TVHomeScreen } from '@/components/tv';
 import type { BaseItem, Library, Episode, CollectionType } from '@/types/jellyfin';
 import type { GroupedLibraries } from '@/api';
 
@@ -41,12 +45,16 @@ const DISPLAYABLE_COLLECTION_TYPES = [
 const EXCLUDED_COLLECTION_TYPES = ['playlists'];
 
 export default function HomeScreen() {
+  if (isTV) {
+    return <TVHomeScreen />;
+  }
+
   const [refreshing, setRefreshing] = useState(false);
-  const { isTablet, isTV, fontSize } = useResponsive();
+  const { isTablet, isTV: isResponsiveTV, fontSize } = useResponsive();
   const currentUser = useAuthStore((state) => state.currentUser);
   const accentColor = useSettingsStore((s) => s.accentColor);
   const userId = currentUser?.Id ?? '';
-  const horizontalPadding = isTV ? 48 : isTablet ? 24 : 16;
+  const horizontalPadding = isResponsiveTV ? 48 : isTablet ? 24 : 16;
 
   const { data: libraries, refetch: refetchLibraries } = useQuery({
     queryKey: ['libraries', userId],
@@ -173,6 +181,29 @@ export default function HomeScreen() {
     }
   }, []);
 
+  const handlePlayPress = useCallback((item: BaseItem) => {
+    const type = item.Type?.toLowerCase();
+    if (type === 'movie') {
+      router.push(`/player/video?itemId=${item.Id}`);
+    } else if (type === 'series') {
+      router.push(`/(tabs)/details/series/${item.Id}`);
+    }
+  }, []);
+
+  const heroItems = useMemo(() => {
+    const movieItems = libraryLatestMedia
+      .filter(({ group }) => group.collectionType === 'movies')
+      .flatMap(({ data }) => data)
+      .slice(0, 3);
+
+    const tvItems = libraryLatestMedia
+      .filter(({ group }) => group.collectionType === 'tvshows')
+      .flatMap(({ data }) => data)
+      .slice(0, 2);
+
+    return [...movieItems, ...tvItems].filter(item => item.BackdropImageTags?.length);
+  }, [libraryLatestMedia]);
+
   const getLatestSectionTitle = useCallback((group: GroupedLibraries): string => {
     const { collectionType, libraries: libs, label } = group;
 
@@ -203,8 +234,10 @@ export default function HomeScreen() {
     }
   }, []);
 
+  const showHero = heroItems.length > 0 && !isLoadingResume;
+
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={styles.container} edges={showHero ? [] : ['top']}>
       <AnimatedGradient intensity="subtle" />
       <ScrollView
         style={styles.scrollView}
@@ -216,14 +249,47 @@ export default function HomeScreen() {
           />
         }
       >
-        <View style={[styles.header, { paddingHorizontal: horizontalPadding, paddingTop: isTablet ? 20 : 16 }]}>
-          <View style={styles.headerLeft}>
-            <Text style={[styles.headerTitle, { fontSize: fontSize['2xl'] }]}>Home</Text>
+        {showHero ? (
+          <HeroSpotlight
+            items={heroItems}
+            onItemPress={handleItemPress}
+            onPlayPress={handlePlayPress}
+          />
+        ) : (
+          <View style={[styles.header, { paddingHorizontal: horizontalPadding, paddingTop: isTablet ? 20 : 16 }]}>
+            <View style={styles.headerLeft}>
+              <Text style={[styles.headerTitle, { fontSize: fontSize['2xl'] }]}>Home</Text>
+            </View>
+            <SearchButton />
           </View>
-          <SearchButton />
-        </View>
+        )}
 
-        {/* Continue Watching - aggregated from all libraries */}
+        {showHero && (
+          <View style={[styles.quickActions, { paddingHorizontal: horizontalPadding }]}>
+            <Pressable
+              style={[styles.quickActionButton, { backgroundColor: accentColor + '20' }]}
+              onPress={() => router.push('/(tabs)/search')}
+            >
+              <Ionicons name="search" size={18} color={accentColor} />
+              <Text style={[styles.quickActionText, { color: accentColor }]}>Search</Text>
+            </Pressable>
+            <Pressable
+              style={styles.quickActionButton}
+              onPress={() => router.push('/(tabs)/library')}
+            >
+              <Ionicons name="library-outline" size={18} color="rgba(255,255,255,0.8)" />
+              <Text style={styles.quickActionText}>Library</Text>
+            </Pressable>
+            <Pressable
+              style={styles.quickActionButton}
+              onPress={() => router.push('/(tabs)/favorites')}
+            >
+              <Ionicons name="heart-outline" size={18} color="rgba(255,255,255,0.8)" />
+              <Text style={styles.quickActionText}>Favorites</Text>
+            </Pressable>
+          </View>
+        )}
+
         {isLoadingResume && !resumeItems ? (
           <SkeletonContinueWatching count={2} />
         ) : (resumeItems?.Items?.length ?? 0) > 0 ? (
@@ -233,9 +299,8 @@ export default function HomeScreen() {
           />
         ) : null}
 
-        {/* Next Up - for TV shows */}
         {isLoadingNextUp && !nextUp ? (
-          <SkeletonRow cardWidth={280} cardHeight={158} count={2} />
+          <SkeletonRow cardWidth={300} cardHeight={170} count={2} />
         ) : (nextUp?.Items?.length ?? 0) > 0 ? (
           <NextUpRow
             items={nextUp?.Items ?? []}
@@ -243,25 +308,24 @@ export default function HomeScreen() {
           />
         ) : null}
 
-        {/* Favorite Movies */}
         {favoriteMovies.length > 0 && (
           <MediaRow
             title="Favorite Movies"
             items={favoriteMovies}
             onItemPress={handleItemPress}
+            icon="heart"
           />
         )}
 
-        {/* Favorite Shows */}
         {favoriteSeries.length > 0 && (
           <MediaRow
             title="Favorite Shows"
             items={favoriteSeries}
             onItemPress={handleItemPress}
+            icon="heart"
           />
         )}
 
-        {/* Recommendations */}
         {isLoadingSuggestions && !suggestions ? (
           <SkeletonRow cardWidth={130} cardHeight={195} count={4} />
         ) : (suggestions?.length ?? 0) > 0 ? (
@@ -269,10 +333,10 @@ export default function HomeScreen() {
             title="Recommended For You"
             items={suggestions ?? []}
             onItemPress={handleItemPress}
+            icon="sparkles"
           />
         ) : null}
 
-        {/* Dynamic "Latest" sections for each collection type (consolidated) */}
         {libraryLatestMedia.length === 0 && latestMediaQueries.some(q => q.isLoading) ? (
           <>
             <SkeletonRow cardWidth={130} cardHeight={195} count={4} />
@@ -328,5 +392,24 @@ const styles = StyleSheet.create({
   headerTitle: {
     color: '#fff',
     fontWeight: 'bold',
+  },
+  quickActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 20,
+  },
+  quickActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 20,
+  },
+  quickActionText: {
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: 13,
+    fontWeight: '600',
   },
 });

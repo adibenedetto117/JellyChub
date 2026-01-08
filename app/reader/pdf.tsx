@@ -16,7 +16,8 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { useAuthStore, useSettingsStore, useDownloadStore } from '@/stores';
 import { useReadingProgressStore } from '@/stores/readingProgressStore';
 import { downloadManager } from '@/services';
-import { getItem, getBookDownloadUrl } from '@/api';
+import { getItem, getBookDownloadUrl, reportPlaybackProgress, generatePlaySessionId } from '@/api';
+import { goBack } from '@/utils';
 
 export default function PdfReaderScreen() {
   const { itemId } = useLocalSearchParams<{ itemId: string }>();
@@ -42,6 +43,7 @@ export default function PdfReaderScreen() {
   const [totalPages, setTotalPages] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [debugInfo, setDebugInfo] = useState('Initializing...');
+  const [playSessionId] = useState(() => generatePlaySessionId());
 
   const { data: item } = useQuery({
     queryKey: ['item', userId, itemId],
@@ -142,7 +144,19 @@ export default function PdfReaderScreen() {
       position: currentPage,
       total: totalPages,
     });
-  }, [item, currentPage, totalPages]);
+
+    // Sync progress to Jellyfin server
+    const totalTicks = item.RunTimeTicks || 10000000000;
+    const positionTicks = Math.round(totalTicks * (currentPage / totalPages));
+    reportPlaybackProgress({
+      ItemId: item.Id,
+      MediaSourceId: item.Id,
+      PositionTicks: positionTicks,
+      IsPaused: true,
+      IsMuted: false,
+      PlaySessionId: playSessionId,
+    }).catch(() => {});
+  }, [item, currentPage, totalPages, playSessionId]);
 
   const injectPdfData = () => {
     if (!pdfBase64 || !webViewRef.current) return;
@@ -543,7 +557,7 @@ export default function PdfReaderScreen() {
           <Ionicons name="alert-circle" size={64} color="#ef4444" />
           <Text style={styles.errorText}>Failed to load PDF</Text>
           <Text style={styles.errorSubtext}>{errorMsg}</Text>
-          <Pressable onPress={() => router.back()} style={[styles.button, { backgroundColor: accentColor }]}>
+          <Pressable onPress={() => goBack('/(tabs)/home')} style={[styles.button, { backgroundColor: accentColor }]}>
             <Text style={styles.buttonText}>Go Back</Text>
           </Pressable>
         </View>
@@ -556,7 +570,7 @@ export default function PdfReaderScreen() {
       <StatusBar barStyle="light-content" />
 
       <View style={[styles.header, { paddingTop: insets.top }]}>
-        <Pressable onPress={() => router.back()} style={styles.headerBtn}>
+        <Pressable onPress={() => goBack('/(tabs)/home')} style={styles.headerBtn}>
           <Ionicons name="arrow-back" size={24} color="#fff" />
         </Pressable>
         <Text style={styles.headerTitle} numberOfLines={1}>

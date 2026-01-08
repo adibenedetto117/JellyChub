@@ -7,6 +7,7 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { useAuthStore } from '@/stores';
 import { jellyseerrClient } from '@/api/jellyseerr';
 import { colors } from '@/theme';
+import { goBack } from '@/utils';
 
 type AuthMethod = 'apikey' | 'jellyfin' | 'local';
 
@@ -126,7 +127,7 @@ export default function JellyseerrSettingsScreen() {
       }
 
       Alert.alert('Success', 'Connected to Jellyseerr', [
-        { text: 'OK', onPress: () => router.back() },
+        { text: 'OK', onPress: () => goBack('/(tabs)/settings') },
       ]);
     } catch (error: any) {
       const message = error?.response?.data?.message || error?.message || 'Connection failed';

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { View, Text, TextInput, FlatList, Pressable, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -6,36 +6,46 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuthStore, useSettingsStore } from '@/stores';
 import { search, getImageUrl } from '@/api';
 import { CachedImage } from '@/components/ui/CachedImage';
+import { useDebounce } from '@/hooks';
+import { getDisplayName, getDisplayImageUrl } from '@/utils';
 import type { SearchHint } from '@/types/jellyfin';
 
 export default function SearchScreen() {
   const [query, setQuery] = useState('');
   const currentUser = useAuthStore((state) => state.currentUser);
   const accentColor = useSettingsStore((s) => s.accentColor);
+  const hideMedia = useSettingsStore((s) => s.hideMedia);
   const userId = currentUser?.Id ?? '';
 
-  const getImageForItem = (item: SearchHint): string | null => {
+  // Debounce search query to reduce API calls while typing
+  const debouncedQuery = useDebounce(query, 300);
+
+  // Memoize image URL getter
+  const getImageForItem = useCallback((item: SearchHint): string | null => {
+    let rawImageUrl: string | null = null;
     if (item.PrimaryImageTag) {
-      return getImageUrl(item.Id, 'Primary', { maxWidth: 120, tag: item.PrimaryImageTag });
+      rawImageUrl = getImageUrl(item.Id, 'Primary', { maxWidth: 120, tag: item.PrimaryImageTag });
+    } else if (item.AlbumId) {
+      rawImageUrl = getImageUrl(item.AlbumId, 'Primary', { maxWidth: 120 });
+    } else if (item.SeriesId) {
+      rawImageUrl = getImageUrl(item.SeriesId, 'Primary', { maxWidth: 120 });
+    } else {
+      rawImageUrl = getImageUrl(item.Id, 'Primary', { maxWidth: 120 });
     }
-    if (item.AlbumId) {
-      return getImageUrl(item.AlbumId, 'Primary', { maxWidth: 120 });
-    }
-    if (item.SeriesId) {
-      return getImageUrl(item.SeriesId, 'Primary', { maxWidth: 120 });
-    }
-    return getImageUrl(item.Id, 'Primary', { maxWidth: 120 });
-  };
+    return getDisplayImageUrl(item.Id, rawImageUrl, hideMedia, 'Primary');
+  }, [hideMedia]);
 
   const { data, isLoading, isFetching } = useQuery({
-    queryKey: ['search', userId, query],
-    queryFn: () => search(userId, query, 50),
-    enabled: !!userId && query.length >= 2,
+    queryKey: ['search', userId, debouncedQuery],
+    queryFn: () => search(userId, debouncedQuery, 50),
+    enabled: !!userId && debouncedQuery.length >= 2,
+    staleTime: 1000 * 60 * 5, // 5 minutes for search results
   });
 
   const results = data?.SearchHints ?? [];
 
-  const handleItemPress = (item: SearchHint) => {
+  // Memoize navigation handler
+  const handleItemPress = useCallback((item: SearchHint) => {
     const t = item.Type.toLowerCase();
     if (t === 'audio') {
       router.push(`/player/music?itemId=${item.Id}`);
@@ -47,15 +57,16 @@ export default function SearchScreen() {
       const isPdf = container === 'pdf' || path.endsWith('.pdf');
       router.push(isPdf ? `/reader/pdf?itemId=${item.Id}` : `/reader/epub?itemId=${item.Id}`);
     } else if (t === 'musicartist') {
-      router.push(`/details/artist/${item.Id}`);
+      router.push(`/(tabs)/details/artist/${item.Id}`);
     } else if (t === 'musicalbum') {
-      router.push(`/details/album/${item.Id}`);
+      router.push(`/(tabs)/details/album/${item.Id}`);
     } else {
-      router.push(`/details/${t}/${item.Id}`);
+      router.push(`/(tabs)/details/${t}/${item.Id}`);
     }
-  };
+  }, []);
 
-  const getLabel = (item: SearchHint) => {
+  // Memoize label getter
+  const getLabel = useCallback((item: SearchHint) => {
     const t = (item.Type || '').toLowerCase();
     switch (t) {
       case 'musicartist': return 'Artist';
@@ -66,11 +77,13 @@ export default function SearchScreen() {
       case 'episode': return item.Series || 'Episode';
       default: return item.Type;
     }
-  };
+  }, []);
 
-  const renderItem = ({ item }: { item: SearchHint }) => {
+  // Memoize renderItem to prevent unnecessary re-renders
+  const renderItem = useCallback(({ item }: { item: SearchHint }) => {
     const imageUrl = getImageForItem(item);
     const isSquare = ['musicalbum', 'audio', 'musicartist'].includes((item.Type || '').toLowerCase());
+    const displayName = getDisplayName(item as any, hideMedia);
 
     return (
       <Pressable
@@ -85,13 +98,13 @@ export default function SearchScreen() {
             uri={imageUrl}
             style={{ width: isSquare ? 48 : 40, height: 48 }}
             borderRadius={8}
-            fallbackText={item.Name.charAt(0).toUpperCase()}
+            fallbackText={displayName.charAt(0).toUpperCase()}
             showSkeleton={false}
           />
         </View>
         <View className="flex-1">
           <Text className="text-white font-medium" numberOfLines={1}>
-            {item.Name}
+            {displayName}
           </Text>
           <Text className="text-text-tertiary text-sm" numberOfLines={1}>
             {getLabel(item)}
@@ -99,7 +112,7 @@ export default function SearchScreen() {
         </View>
       </Pressable>
     );
-  };
+  }, [getImageForItem, handleItemPress, getLabel, hideMedia]);
 
   return (
     <SafeAreaView className="flex-1 bg-background" edges={['top']}>
@@ -117,7 +130,7 @@ export default function SearchScreen() {
             autoCorrect={false}
             returnKeyType="search"
           />
-          {(isLoading || isFetching) && query.length >= 2 && (
+          {(isLoading || isFetching) && debouncedQuery.length >= 2 && (
             <ActivityIndicator color={accentColor} size="small" />
           )}
           {query.length > 0 && (

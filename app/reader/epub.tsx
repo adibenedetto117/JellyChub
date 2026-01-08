@@ -9,7 +9,7 @@ import {
   StatusBar,
   ScrollView,
   Modal,
-  PanResponder,
+  TextInput,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { useLocalSearchParams, router } from 'expo-router';
@@ -17,18 +17,11 @@ import { useQuery } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as FileSystem from 'expo-file-system/legacy';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withSpring,
-  withTiming,
-  runOnJS,
-} from 'react-native-reanimated';
-import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useAuthStore, useSettingsStore, useDownloadStore } from '@/stores';
-import { useReadingProgressStore } from '@/stores/readingProgressStore';
+import { useReadingProgressStore, HighlightColor, EbookHighlight } from '@/stores/readingProgressStore';
 import { downloadManager } from '@/services';
-import { getItem, getBookDownloadUrl } from '@/api';
+import { getItem, getBookDownloadUrl, reportPlaybackProgress, generatePlaySessionId } from '@/api';
+import { msToTicks, getDisplayName, goBack } from '@/utils';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -45,6 +38,18 @@ interface TocItem {
   label: string;
 }
 
+interface PendingHighlight {
+  cfiRange: string;
+  text: string;
+}
+
+const HIGHLIGHT_COLORS: Record<HighlightColor, string> = {
+  yellow: '#fef08a',
+  green: '#86efac',
+  blue: '#93c5fd',
+  pink: '#f9a8d4',
+};
+
 export default function EpubReaderScreen() {
   const { itemId, cfi: startCfi } = useLocalSearchParams<{ itemId: string; cfi?: string }>();
   const decodedStartCfi = startCfi ? decodeURIComponent(startCfi) : undefined;
@@ -54,6 +59,7 @@ export default function EpubReaderScreen() {
   const currentUser = useAuthStore((state) => state.currentUser);
   const activeServerId = useAuthStore((s) => s.activeServerId);
   const accentColor = useSettingsStore((s) => s.accentColor);
+  const hideMedia = useSettingsStore((s) => s.hideMedia);
   const getDownloadedItem = useDownloadStore((s) => s.getDownloadedItem);
   const getDownloadByItemId = useDownloadStore((s) => s.getDownloadByItemId);
   const userId = currentUser?.Id ?? '';
@@ -86,11 +92,33 @@ export default function EpubReaderScreen() {
   const [currentCfi, setCurrentCfi] = useState<string | null>(null);
   const [locationsReady, setLocationsReady] = useState(false);
   const [isNavigating, setIsNavigating] = useState(false);
+  const [playSessionId] = useState(() => generatePlaySessionId());
   const pendingCfiRef = useRef<string | null>(null);
+  const preservedCfiRef = useRef<string | null>(null);
+  const isStyleChangingRef = useRef(false);
 
   const ebookBookmarks = useReadingProgressStore((s) => s.ebookBookmarks);
   const addEbookBookmark = useReadingProgressStore((s) => s.addEbookBookmark);
   const removeEbookBookmark = useReadingProgressStore((s) => s.removeEbookBookmark);
+
+  const ebookHighlights = useReadingProgressStore((s) => s.ebookHighlights);
+  const addHighlight = useReadingProgressStore((s) => s.addHighlight);
+  const updateHighlight = useReadingProgressStore((s) => s.updateHighlight);
+  const removeHighlight = useReadingProgressStore((s) => s.removeHighlight);
+
+  const [showHighlights, setShowHighlights] = useState(false);
+  const [showColorPicker, setShowColorPicker] = useState(false);
+  const [showNoteEditor, setShowNoteEditor] = useState(false);
+  const [pendingHighlight, setPendingHighlight] = useState<PendingHighlight | null>(null);
+  const [selectedHighlight, setSelectedHighlight] = useState<EbookHighlight | null>(null);
+  const [noteText, setNoteText] = useState('');
+
+  const itemHighlights = useMemo(() =>
+    ebookHighlights.filter(h => h.itemId === itemId).sort((a, b) =>
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    ),
+    [ebookHighlights, itemId]
+  );
 
   const itemBookmarks = useMemo(() =>
     ebookBookmarks.filter(b => b.itemId === itemId).sort((a, b) => a.progress - b.progress),
@@ -212,8 +240,8 @@ export default function EpubReaderScreen() {
       pendingCfiRef.current = decodedStartCfi;
       setCurrentCfi(decodedStartCfi);
       setIsNavigating(true);
-    } else if (stored?.position && typeof stored.position === 'string' && stored.percent > 1) {
-      // Use saved CFI for resuming (like bookmarks) - only if we're past 1%
+    } else if (stored?.position && typeof stored.position === 'string' && stored.percent >= 0) {
+      // Use saved CFI for resuming (like bookmarks)
       console.log('Will resume at CFI:', stored.position, '(', stored.percent, '%)');
       pendingCfiRef.current = stored.position;
       setCurrentCfi(stored.position);
@@ -229,7 +257,7 @@ export default function EpubReaderScreen() {
     }
   }, [itemId, decodedStartCfi]);
 
-  // Save progress
+  // Save progress locally and sync to server
   useEffect(() => {
     if (!item || !currentCfi) return;
 
@@ -243,7 +271,21 @@ export default function EpubReaderScreen() {
         author,
         position: currentCfi,
         total: 1,
+        percent: Math.round(progress * 100),
       });
+
+      // Sync progress to Jellyfin server (use progress percentage as position)
+      // For books, Jellyfin uses RunTimeTicks as total "length" - we use 100% = 10 billion ticks
+      const totalTicks = item.RunTimeTicks || 10000000000;
+      const positionTicks = Math.round(totalTicks * progress);
+      reportPlaybackProgress({
+        ItemId: item.Id,
+        MediaSourceId: item.Id,
+        PositionTicks: positionTicks,
+        IsPaused: true,
+        IsMuted: false,
+        PlaySessionId: playSessionId,
+      }).catch(() => {});
     };
 
     const interval = setInterval(save, 10000);
@@ -251,7 +293,7 @@ export default function EpubReaderScreen() {
       clearInterval(interval);
       save();
     };
-  }, [item, currentCfi]);
+  }, [item, currentCfi, progress, playSessionId]);
 
   const handleMessage = (event: any) => {
     try {
@@ -271,6 +313,7 @@ export default function EpubReaderScreen() {
         if (pendingCfiRef.current) {
           webViewRef.current?.injectJavaScript(`goToCfi("${pendingCfiRef.current}"); true;`);
         }
+        injectHighlights();
       } else if (data.type === 'locationsReady') {
         setLocationsReady(true);
         setLoadingStage('Almost ready...');
@@ -288,9 +331,27 @@ export default function EpubReaderScreen() {
         }
       } else if (data.type === 'navigationComplete') {
         setIsNavigating(false);
+        if (isStyleChangingRef.current && preservedCfiRef.current) {
+          setCurrentCfi(preservedCfiRef.current);
+          isStyleChangingRef.current = false;
+        }
+      } else if (data.type === 'styleChangeComplete') {
+        if (data.cfi) {
+          setCurrentCfi(data.cfi);
+        }
+        if (data.progress !== undefined) {
+          const progressValue = Math.round(data.progress * 100);
+          setProgress(progressValue / 100);
+          if (itemId) {
+            updateProgressPercent(itemId, progressValue);
+          }
+        }
+        isStyleChangingRef.current = false;
+        preservedCfiRef.current = null;
       } else if (data.type === 'relocated') {
-        // Only update CFI and progress if we're not at the very beginning
-        // This prevents font/theme changes from corrupting saved position
+        if (isStyleChangingRef.current) {
+          return;
+        }
         if (data.progress !== undefined && data.progress > 0.01) {
           if (data.cfi) setCurrentCfi(data.cfi);
           const progressValue = Math.round(data.progress * 100);
@@ -311,6 +372,19 @@ export default function EpubReaderScreen() {
         setErrorMsg(data.message);
       } else if (data.type === 'log') {
         console.log('Reader log:', data.message);
+      } else if (data.type === 'textSelected') {
+        setPendingHighlight({
+          cfiRange: data.cfiRange,
+          text: data.text,
+        });
+        setShowColorPicker(true);
+      } else if (data.type === 'highlightClicked') {
+        const highlight = itemHighlights.find(h => h.cfiRange === data.cfiRange);
+        if (highlight) {
+          setSelectedHighlight(highlight);
+          setNoteText(highlight.note || '');
+          setShowNoteEditor(true);
+        }
       }
     } catch (e) {
       console.log('Message parse error:', e);
@@ -344,18 +418,29 @@ export default function EpubReaderScreen() {
   };
 
   const handleThemeChange = (t: ReaderTheme) => {
+    if (currentCfi) {
+      preservedCfiRef.current = currentCfi;
+    }
+    isStyleChangingRef.current = true;
     setTheme(t);
     setReaderSettings({ theme: t });
     setShowSettings(false);
     const colors = THEMES[t];
-    webViewRef.current?.injectJavaScript(`setReaderTheme("${colors.bg}", "${colors.text}"); true;`);
+    const cfiToPreserve = currentCfi ? currentCfi.replace(/"/g, '\\"') : '';
+    webViewRef.current?.injectJavaScript(`setReaderTheme("${colors.bg}", "${colors.text}", "${cfiToPreserve}"); true;`);
   };
 
   const handleFontSizeChange = (delta: number) => {
     const newSize = Math.max(50, Math.min(200, fontSize + delta));
+    if (currentCfi) {
+      preservedCfiRef.current = currentCfi;
+    }
+    isStyleChangingRef.current = true;
     setFontSize(newSize);
     setReaderSettings({ fontSize: newSize });
-    webViewRef.current?.injectJavaScript(`setFontSize(${newSize}); true;`);
+    const cfiToPreserve = currentCfi ? currentCfi.replace(/"/g, '\\"') : '';
+    const colors = THEMES[theme];
+    webViewRef.current?.injectJavaScript(`setFontSize(${newSize}, "${cfiToPreserve}", "${colors.bg}", "${colors.text}"); true;`);
   };
 
   const handleTocSelect = (href: string) => {
@@ -393,6 +478,51 @@ export default function EpubReaderScreen() {
       console.error('Failed to start download:', error);
     }
   }, [item, activeServerId]);
+
+  const handleColorSelect = useCallback((color: HighlightColor) => {
+    if (!pendingHighlight || !itemId) return;
+    const id = addHighlight({
+      itemId,
+      cfiRange: pendingHighlight.cfiRange,
+      text: pendingHighlight.text,
+      color,
+    });
+    const hexColor = HIGHLIGHT_COLORS[color];
+    const escapedCfi = pendingHighlight.cfiRange.replace(/"/g, '\\"');
+    webViewRef.current?.injectJavaScript(`addHighlightAnnotation("${escapedCfi}", "${hexColor}", "${id}"); true;`);
+    setPendingHighlight(null);
+    setShowColorPicker(false);
+  }, [pendingHighlight, itemId, addHighlight]);
+
+  const handleSaveNote = useCallback(() => {
+    if (!selectedHighlight) return;
+    updateHighlight(selectedHighlight.id, { note: noteText });
+    setSelectedHighlight(null);
+    setNoteText('');
+    setShowNoteEditor(false);
+  }, [selectedHighlight, noteText, updateHighlight]);
+
+  const handleDeleteHighlight = useCallback((highlight: EbookHighlight) => {
+    const escapedCfi = highlight.cfiRange.replace(/"/g, '\\"');
+    webViewRef.current?.injectJavaScript(`removeHighlightAnnotation("${escapedCfi}"); true;`);
+    removeHighlight(highlight.id);
+    setSelectedHighlight(null);
+    setShowNoteEditor(false);
+  }, [removeHighlight]);
+
+  const handleHighlightPress = useCallback((highlight: EbookHighlight) => {
+    const escapedCfi = highlight.cfiRange.replace(/"/g, '\\"');
+    webViewRef.current?.injectJavaScript(`goToCfi("${escapedCfi}"); true;`);
+    setShowHighlights(false);
+  }, []);
+
+  const injectHighlights = useCallback(() => {
+    itemHighlights.forEach(highlight => {
+      const hexColor = HIGHLIGHT_COLORS[highlight.color];
+      const escapedCfi = highlight.cfiRange.replace(/"/g, '\\"');
+      webViewRef.current?.injectJavaScript(`addHighlightAnnotation("${escapedCfi}", "${hexColor}", "${highlight.id}"); true;`);
+    });
+  }, [itemHighlights]);
 
   const themeColors = THEMES[theme];
   const progressPercent = Math.round(progress * 100);
@@ -634,25 +764,61 @@ export default function EpubReaderScreen() {
       }
     }
 
-    function setReaderTheme(bg, text) {
-      try {
-        if(!book) { msg("navigationComplete", {}); return; }
+    var highlightAnnotations = {};
 
-        // Save current position
-        var cfiToRestore = lastKnownCfi;
-        if (rendition) {
+    function addHighlightAnnotation(cfiRange, color, id) {
+      try {
+        if (!rendition) return;
+        log('Adding highlight: ' + cfiRange);
+        rendition.annotations.add('highlight', cfiRange, {}, function(e) {
+          msg('highlightClicked', { cfiRange: cfiRange });
+        }, 'hl', {
+          'fill': color,
+          'fill-opacity': '0.4',
+          'mix-blend-mode': 'multiply'
+        });
+        highlightAnnotations[cfiRange] = id;
+      } catch(e) {
+        log('addHighlightAnnotation error: ' + e.message);
+      }
+    }
+
+    function removeHighlightAnnotation(cfiRange) {
+      try {
+        if (!rendition) return;
+        log('Removing highlight: ' + cfiRange);
+        rendition.annotations.remove(cfiRange, 'highlight');
+        delete highlightAnnotations[cfiRange];
+      } catch(e) {
+        log('removeHighlightAnnotation error: ' + e.message);
+      }
+    }
+
+    function setReaderTheme(bg, text, preservedCfi) {
+      try {
+        if(!book) { msg("styleChangeComplete", {}); return; }
+
+        var cfiToRestore = preservedCfi || lastKnownCfi;
+        var percentToRestore = lastKnownPercent;
+
+        if (!cfiToRestore && rendition) {
           var currentLoc = rendition.currentLocation();
           if (currentLoc && currentLoc.start && currentLoc.start.cfi) {
             cfiToRestore = currentLoc.start.cfi;
+            if (locationsGenerated && book.locations) {
+              percentToRestore = book.locations.percentageFromCfi(cfiToRestore) || 0;
+            }
           }
-          // Destroy old rendition
+        }
+
+        log('setReaderTheme: preserving CFI=' + cfiToRestore + ' percent=' + percentToRestore);
+
+        if (rendition) {
           rendition.destroy();
         }
 
-        // Update body background
         document.body.style.background = bg;
 
-        // Create new rendition with new theme
         rendition = book.renderTo("reader", {
           width: "100%",
           height: "100%",
@@ -672,57 +838,76 @@ export default function EpubReaderScreen() {
           "img,svg,image,figure,picture": {"display": "none !important"}
         });
 
-        // Re-attach navigation handlers
         rendition.on("keydown", function(e) {
           if (e.key === "ArrowLeft") prevPage();
           if (e.key === "ArrowRight") nextPage();
         });
 
+        var isStyleChangeNavigation = true;
         rendition.on("relocated", function(loc) {
           try {
             lastKnownCfi = loc.start.cfi;
             if (locationsGenerated && book.locations && book.locations.length()) {
               var pct = book.locations.percentageFromCfi(loc.start.cfi);
               lastKnownPercent = pct || 0;
-              msg("relocated", {cfi: loc.start.cfi, progress: pct || 0});
-            } else {
+              if (!isStyleChangeNavigation) {
+                msg("relocated", {cfi: loc.start.cfi, progress: pct || 0});
+              }
+            } else if (!isStyleChangeNavigation) {
               msg("relocated", {cfi: loc.start.cfi});
             }
           } catch(e) {}
         });
 
-        // Display at saved position
         rendition.display(cfiToRestore || undefined).then(function() {
-          msg("navigationComplete", {});
+          isStyleChangeNavigation = false;
+          var finalCfi = cfiToRestore;
+          var finalPercent = percentToRestore;
+          if (rendition.location && rendition.location.start) {
+            finalCfi = rendition.location.start.cfi;
+            if (locationsGenerated && book.locations) {
+              finalPercent = book.locations.percentageFromCfi(finalCfi) || percentToRestore;
+            }
+          }
+          lastKnownCfi = finalCfi;
+          lastKnownPercent = finalPercent;
+          log('setReaderTheme complete: CFI=' + finalCfi + ' percent=' + finalPercent);
+          msg("styleChangeComplete", {cfi: finalCfi, progress: finalPercent});
         }).catch(function(e) {
-          msg("navigationComplete", {});
+          log('setReaderTheme display error: ' + e.message);
+          isStyleChangeNavigation = false;
+          msg("styleChangeComplete", {cfi: cfiToRestore, progress: percentToRestore});
         });
 
       } catch(e) {
         log('setTheme error: ' + e.message);
-        msg("navigationComplete", {});
+        msg("styleChangeComplete", {});
       }
     }
 
-    function setFontSize(size) {
+    function setFontSize(size, preservedCfi, bg, text) {
       try {
         currentFontSize = size;
-        if(!book) { msg("navigationComplete", {}); return; }
+        if(!book) { msg("styleChangeComplete", {}); return; }
 
-        // Save current position
-        var cfiToRestore = lastKnownCfi;
-        if (rendition) {
+        var cfiToRestore = preservedCfi || lastKnownCfi;
+        var percentToRestore = lastKnownPercent;
+
+        if (!cfiToRestore && rendition) {
           var currentLoc = rendition.currentLocation();
           if (currentLoc && currentLoc.start && currentLoc.start.cfi) {
             cfiToRestore = currentLoc.start.cfi;
+            if (locationsGenerated && book.locations) {
+              percentToRestore = book.locations.percentageFromCfi(cfiToRestore) || 0;
+            }
           }
-          // Destroy old rendition
-          rendition.destroy();
         }
 
-        // Create new rendition with new font size
-        var bg = document.body.style.background || '#0a0a0a';
-        var text = getComputedStyle(document.body).color || '#e5e5e5';
+        log('setFontSize: preserving CFI=' + cfiToRestore + ' percent=' + percentToRestore);
+
+        if (rendition) {
+          rendition.destroy();
+        }
 
         rendition = book.renderTo("reader", {
           width: "100%",
@@ -743,35 +928,50 @@ export default function EpubReaderScreen() {
           "img,svg,image,figure,picture": {"display": "none !important"}
         });
 
-        // Re-attach navigation handlers
         rendition.on("keydown", function(e) {
           if (e.key === "ArrowLeft") prevPage();
           if (e.key === "ArrowRight") nextPage();
         });
 
+        var isStyleChangeNavigation = true;
         rendition.on("relocated", function(loc) {
           try {
             lastKnownCfi = loc.start.cfi;
             if (locationsGenerated && book.locations && book.locations.length()) {
               var pct = book.locations.percentageFromCfi(loc.start.cfi);
               lastKnownPercent = pct || 0;
-              msg("relocated", {cfi: loc.start.cfi, progress: pct || 0});
-            } else {
+              if (!isStyleChangeNavigation) {
+                msg("relocated", {cfi: loc.start.cfi, progress: pct || 0});
+              }
+            } else if (!isStyleChangeNavigation) {
               msg("relocated", {cfi: loc.start.cfi});
             }
           } catch(e) {}
         });
 
-        // Display at saved position
         rendition.display(cfiToRestore || undefined).then(function() {
-          msg("navigationComplete", {});
+          isStyleChangeNavigation = false;
+          var finalCfi = cfiToRestore;
+          var finalPercent = percentToRestore;
+          if (rendition.location && rendition.location.start) {
+            finalCfi = rendition.location.start.cfi;
+            if (locationsGenerated && book.locations) {
+              finalPercent = book.locations.percentageFromCfi(finalCfi) || percentToRestore;
+            }
+          }
+          lastKnownCfi = finalCfi;
+          lastKnownPercent = finalPercent;
+          log('setFontSize complete: CFI=' + finalCfi + ' percent=' + finalPercent);
+          msg("styleChangeComplete", {cfi: finalCfi, progress: finalPercent});
         }).catch(function(e) {
-          msg("navigationComplete", {});
+          log('setFontSize display error: ' + e.message);
+          isStyleChangeNavigation = false;
+          msg("styleChangeComplete", {cfi: cfiToRestore, progress: percentToRestore});
         });
 
       } catch(e) {
         log('setFontSize error: ' + e.message);
-        msg("navigationComplete", {});
+        msg("styleChangeComplete", {});
       }
     }
 
@@ -800,20 +1000,34 @@ export default function EpubReaderScreen() {
       } catch(e) { log('setFontSize error: ' + e.message); }
     }
 
-    var touchStartX=0, touchStartY=0, touchStartTime=0;
+    var touchStartX=0, touchStartY=0, touchStartTime=0, longPressTimer=null;
     document.addEventListener("touchstart", function(e) {
       touchStartX = e.touches[0].clientX;
       touchStartY = e.touches[0].clientY;
       touchStartTime = Date.now();
+      if (longPressTimer) clearTimeout(longPressTimer);
+      longPressTimer = setTimeout(function() {
+        checkTextSelection();
+      }, 500);
+    }, {passive:true});
+
+    document.addEventListener("touchmove", function(e) {
+      if (longPressTimer) {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+      }
     }, {passive:true});
 
     document.addEventListener("touchend", function(e) {
       try {
+        if (longPressTimer) {
+          clearTimeout(longPressTimer);
+          longPressTimer = null;
+        }
         var dx = e.changedTouches[0].clientX - touchStartX;
         var dy = e.changedTouches[0].clientY - touchStartY;
         var dt = Date.now() - touchStartTime;
 
-        // Swipe detection - lowered threshold to 40px
         if(Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy) && dt < 500) {
           log('Swipe detected: ' + (dx > 0 ? 'right (prev)' : 'left (next)'));
           dx > 0 ? prevPage() : nextPage();
@@ -822,6 +1036,37 @@ export default function EpubReaderScreen() {
         }
       } catch(e) { log('Touch error: ' + e.message); }
     }, {passive:true});
+
+    function checkTextSelection() {
+      try {
+        if (!rendition) return;
+        var contents = rendition.getContents();
+        if (!contents || contents.length === 0) return;
+        var doc = contents[0].document;
+        var selection = doc.getSelection();
+        if (!selection || selection.isCollapsed || !selection.toString().trim()) return;
+        var text = selection.toString().trim();
+        if (text.length < 2) return;
+        var range = selection.getRangeAt(0);
+        var cfiRange = contents[0].cfiFromRange(range);
+        if (cfiRange) {
+          log('Text selected: ' + text.substring(0, 50) + '...');
+          msg('textSelected', { cfiRange: cfiRange, text: text });
+          selection.removeAllRanges();
+        }
+      } catch(e) {
+        log('checkTextSelection error: ' + e.message);
+      }
+    }
+
+    document.addEventListener('selectionchange', function() {
+      if (longPressTimer) {
+        clearTimeout(longPressTimer);
+        longPressTimer = setTimeout(function() {
+          checkTextSelection();
+        }, 300);
+      }
+    });
   </script>
 </body>
 </html>
@@ -855,7 +1100,7 @@ export default function EpubReaderScreen() {
           <Ionicons name="alert-circle" size={64} color="#ef4444" />
           <Text style={[styles.errorText, { color: themeColors.text }]}>Failed to load book</Text>
           <Text style={[styles.errorSubtext, { color: themeColors.text }]}>{errorMsg}</Text>
-          <Pressable onPress={() => router.back()} style={[styles.button, { backgroundColor: accentColor }]}>
+          <Pressable onPress={() => goBack('/(tabs)/home')} style={[styles.button, { backgroundColor: accentColor }]}>
             <Text style={styles.buttonText}>Go Back</Text>
           </Pressable>
         </View>
@@ -869,11 +1114,11 @@ export default function EpubReaderScreen() {
 
       {/* Header - always visible */}
       <View style={[styles.header, { paddingTop: insets.top, backgroundColor: themeColors.bg }]}>
-          <Pressable onPress={() => router.back()} style={styles.headerBtn}>
+          <Pressable onPress={() => goBack('/(tabs)/home')} style={styles.headerBtn}>
             <Ionicons name="arrow-back" size={24} color={themeColors.text} />
           </Pressable>
           <Text style={[styles.headerTitle, { color: themeColors.text }]} numberOfLines={1}>
-            {item?.Name ?? 'Loading...'}
+            {getDisplayName(item, hideMedia) ?? 'Loading...'}
           </Text>
           {isConfirmedEpub && (
             <>
@@ -882,6 +1127,9 @@ export default function EpubReaderScreen() {
               </Pressable>
               <Pressable onPress={() => setShowBookmarks(true)} style={styles.headerBtn}>
                 <Ionicons name="bookmark-outline" size={22} color={themeColors.text} />
+              </Pressable>
+              <Pressable onPress={() => setShowHighlights(true)} style={styles.headerBtn}>
+                <Ionicons name="color-wand-outline" size={22} color={themeColors.text} />
               </Pressable>
               <Pressable onPress={() => setShowSettings(true)} style={styles.headerBtn}>
                 <Ionicons name="settings-outline" size={22} color={themeColors.text} />
@@ -1077,6 +1325,132 @@ export default function EpubReaderScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      <Modal visible={showColorPicker} transparent animationType="fade" onRequestClose={() => { setShowColorPicker(false); setPendingHighlight(null); }}>
+        <Pressable style={styles.modalBg} onPress={() => { setShowColorPicker(false); setPendingHighlight(null); }}>
+          <Pressable
+            style={[styles.colorPickerPanel, { backgroundColor: theme === 'light' ? '#fff' : '#1a1a1a' }]}
+            onPress={e => e.stopPropagation()}
+          >
+            <Text style={[styles.panelTitle, { color: themeColors.text }]}>Highlight Color</Text>
+            {pendingHighlight && (
+              <Text style={[styles.selectedText, { color: themeColors.text }]} numberOfLines={3}>
+                "{pendingHighlight.text}"
+              </Text>
+            )}
+            <View style={styles.colorRow}>
+              {(Object.keys(HIGHLIGHT_COLORS) as HighlightColor[]).map(color => (
+                <Pressable
+                  key={color}
+                  onPress={() => handleColorSelect(color)}
+                  style={[styles.colorBtn, { backgroundColor: HIGHLIGHT_COLORS[color] }]}
+                />
+              ))}
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal visible={showNoteEditor} transparent animationType="fade" onRequestClose={() => { setShowNoteEditor(false); setSelectedHighlight(null); }}>
+        <Pressable style={styles.modalBg} onPress={() => { setShowNoteEditor(false); setSelectedHighlight(null); }}>
+          <Pressable
+            style={[styles.noteEditorPanel, { backgroundColor: theme === 'light' ? '#fff' : '#1a1a1a' }]}
+            onPress={e => e.stopPropagation()}
+          >
+            <Text style={[styles.panelTitle, { color: themeColors.text }]}>Edit Highlight</Text>
+            {selectedHighlight && (
+              <>
+                <View style={[styles.highlightPreview, { backgroundColor: HIGHLIGHT_COLORS[selectedHighlight.color] + '40' }]}>
+                  <Text style={[styles.highlightPreviewText, { color: themeColors.text }]} numberOfLines={3}>
+                    "{selectedHighlight.text}"
+                  </Text>
+                </View>
+                <Text style={[styles.noteLabel, { color: themeColors.text }]}>Note</Text>
+                <TextInput
+                  style={[styles.noteInput, { color: themeColors.text, borderColor: themeColors.text + '30' }]}
+                  value={noteText}
+                  onChangeText={setNoteText}
+                  placeholder="Add a note..."
+                  placeholderTextColor={themeColors.text + '50'}
+                  multiline
+                  textAlignVertical="top"
+                />
+                <View style={styles.noteButtonRow}>
+                  <Pressable
+                    onPress={() => handleDeleteHighlight(selectedHighlight)}
+                    style={[styles.noteButton, { backgroundColor: '#ef4444' }]}
+                  >
+                    <Ionicons name="trash-outline" size={18} color="#fff" />
+                    <Text style={styles.noteButtonText}>Delete</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={handleSaveNote}
+                    style={[styles.noteButton, { backgroundColor: accentColor }]}
+                  >
+                    <Ionicons name="checkmark" size={18} color="#fff" />
+                    <Text style={styles.noteButtonText}>Save</Text>
+                  </Pressable>
+                </View>
+              </>
+            )}
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal visible={showHighlights} transparent animationType="fade" onRequestClose={() => setShowHighlights(false)}>
+        <Pressable style={styles.modalBg} onPress={() => setShowHighlights(false)}>
+          <Pressable
+            style={[styles.highlightsPanel, { backgroundColor: theme === 'light' ? '#fff' : '#1a1a1a' }]}
+            onPress={e => e.stopPropagation()}
+          >
+            <Text style={[styles.panelTitle, { color: themeColors.text }]}>Highlights & Notes</Text>
+            <ScrollView style={styles.highlightsList} showsVerticalScrollIndicator={false}>
+              {itemHighlights.length === 0 ? (
+                <View style={styles.highlightsEmpty}>
+                  <Ionicons name="color-wand-outline" size={40} color={themeColors.text + '40'} />
+                  <Text style={[styles.highlightsEmptyText, { color: themeColors.text + '60' }]}>
+                    No highlights yet
+                  </Text>
+                  <Text style={[styles.highlightsEmptyHint, { color: themeColors.text + '40' }]}>
+                    Long-press text to highlight
+                  </Text>
+                </View>
+              ) : (
+                itemHighlights.map(highlight => (
+                  <Pressable
+                    key={highlight.id}
+                    onPress={() => handleHighlightPress(highlight)}
+                    style={styles.highlightItem}
+                  >
+                    <View style={[styles.highlightColorBar, { backgroundColor: HIGHLIGHT_COLORS[highlight.color] }]} />
+                    <View style={styles.highlightItemContent}>
+                      <Text style={[styles.highlightItemText, { color: themeColors.text }]} numberOfLines={2}>
+                        "{highlight.text}"
+                      </Text>
+                      {highlight.note && (
+                        <Text style={[styles.highlightItemNote, { color: themeColors.text + '70' }]} numberOfLines={1}>
+                          {highlight.note}
+                        </Text>
+                      )}
+                    </View>
+                    <Pressable
+                      onPress={() => {
+                        setSelectedHighlight(highlight);
+                        setNoteText(highlight.note || '');
+                        setShowHighlights(false);
+                        setShowNoteEditor(true);
+                      }}
+                      style={styles.highlightEditBtn}
+                    >
+                      <Ionicons name="pencil" size={16} color={themeColors.text + '60'} />
+                    </Pressable>
+                  </Pressable>
+                ))
+              )}
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -1183,4 +1557,30 @@ const styles = StyleSheet.create({
   downloadProgressTrack: { width: '100%', height: 4, backgroundColor: 'rgba(128,128,128,0.3)', borderRadius: 2, overflow: 'hidden' },
   downloadProgressFill: { height: '100%', borderRadius: 2 },
   downloadProgressText: { marginTop: 8, fontSize: 13, opacity: 0.7 },
+
+  colorPickerPanel: { width: SCREEN_WIDTH - 48, borderRadius: 20, padding: 24 },
+  selectedText: { fontSize: 14, fontStyle: 'italic', marginBottom: 20, opacity: 0.8, lineHeight: 20 },
+  colorRow: { flexDirection: 'row', justifyContent: 'center', gap: 16 },
+  colorBtn: { width: 56, height: 56, borderRadius: 28 },
+
+  noteEditorPanel: { width: SCREEN_WIDTH - 48, borderRadius: 20, padding: 24 },
+  highlightPreview: { padding: 12, borderRadius: 8, marginBottom: 16 },
+  highlightPreviewText: { fontSize: 14, fontStyle: 'italic', lineHeight: 20 },
+  noteLabel: { fontSize: 14, marginBottom: 8, opacity: 0.7 },
+  noteInput: { borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 15, minHeight: 100 },
+  noteButtonRow: { flexDirection: 'row', gap: 12, marginTop: 16 },
+  noteButton: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 12, borderRadius: 10, gap: 8 },
+  noteButtonText: { color: '#fff', fontSize: 15, fontWeight: '600' },
+
+  highlightsPanel: { width: SCREEN_WIDTH - 48, borderRadius: 20, padding: 24, maxHeight: SCREEN_HEIGHT * 0.7 },
+  highlightsList: { maxHeight: SCREEN_HEIGHT * 0.5 },
+  highlightsEmpty: { alignItems: 'center', paddingVertical: 32 },
+  highlightsEmptyText: { marginTop: 12, fontSize: 15 },
+  highlightsEmptyHint: { marginTop: 4, fontSize: 13 },
+  highlightItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(128,128,128,0.15)' },
+  highlightColorBar: { width: 4, height: '100%', borderRadius: 2, marginRight: 12, minHeight: 40 },
+  highlightItemContent: { flex: 1 },
+  highlightItemText: { fontSize: 14, lineHeight: 20 },
+  highlightItemNote: { fontSize: 13, marginTop: 4 },
+  highlightEditBtn: { padding: 8 },
 });

@@ -6,9 +6,9 @@ import Animated, { FadeIn, FadeOut, Layout, useSharedValue, useAnimatedStyle, wi
 import { Ionicons } from '@expo/vector-icons';
 import { useDownloadStore, useSettingsStore } from '@/stores';
 import { downloadManager } from '@/services';
-import { formatBytes, ticksToMs, formatDuration } from '@/utils';
+import { formatBytes, ticksToMs, formatDuration, getDisplayName, getDisplayImageUrl } from '@/utils';
 import { CachedImage } from '@/components/ui/CachedImage';
-import { SearchButton, HomeButton } from '@/components/ui';
+import { SearchButton } from '@/components/ui';
 import { getImageUrl } from '@/api';
 import { colors } from '@/theme';
 import type { DownloadItem } from '@/types';
@@ -127,7 +127,7 @@ const CollapsibleHeader = memo(function CollapsibleHeader({
         style={styles.chevronIcon}
       />
       <View style={styles.headerInfo}>
-        <Text style={styles.headerTitle} numberOfLines={1}>{title}</Text>
+        <Text style={styles.collapsibleTitle} numberOfLines={1}>{title}</Text>
         {subtitle && <Text style={styles.headerSubtitle} numberOfLines={1}>{subtitle}</Text>}
       </View>
       <View style={styles.headerMeta}>
@@ -146,6 +146,7 @@ const DownloadCard = memo(function DownloadCard({
   onDelete,
   onPauseResume,
   compact = false,
+  hideMedia,
 }: {
   item: DownloadItem;
   accentColor: string;
@@ -153,12 +154,15 @@ const DownloadCard = memo(function DownloadCard({
   onDelete: () => void;
   onPauseResume: () => void;
   compact?: boolean;
+  hideMedia: boolean;
 }) {
   const isActive = item.status === 'downloading' || item.status === 'pending' || item.status === 'paused';
   const isCompleted = item.status === 'completed';
   const isFailed = item.status === 'failed';
 
-  const imageUrl = getImageUrl(item.itemId, 'Primary', { maxWidth: 200 });
+  const rawImageUrl = getImageUrl(item.itemId, 'Primary', { maxWidth: 200 });
+  const imageUrl = getDisplayImageUrl(item.itemId, rawImageUrl, hideMedia, 'Primary');
+  const displayName = getDisplayName(item.item, hideMedia);
 
   const getStatusColor = () => {
     switch (item.status) {
@@ -204,7 +208,7 @@ const DownloadCard = memo(function DownloadCard({
       <Animated.View entering={FadeIn.duration(200)} layout={Layout.springify()} style={styles.compactCard}>
         <Pressable onPress={isCompleted ? onPlay : undefined} style={styles.compactCardContent}>
           <View style={styles.compactThumbnail}>
-            <CachedImage uri={imageUrl} style={styles.compactImage} borderRadius={6} fallbackText={item.item.Name.charAt(0)} />
+            <CachedImage uri={imageUrl} style={styles.compactImage} borderRadius={6} fallbackText={displayName.charAt(0)} />
             {isActive && (
               <View style={styles.compactProgress}>
                 <View style={[styles.compactProgressBar, { width: `${item.progress}%`, backgroundColor: accentColor }]} />
@@ -216,7 +220,7 @@ const DownloadCard = memo(function DownloadCard({
               {displayInfo && (
                 <Text style={[styles.compactBadge, { color: accentColor }]}>{displayInfo}</Text>
               )}
-              <Text style={styles.compactTitle} numberOfLines={1}>{item.item.Name}</Text>
+              <Text style={styles.compactTitle} numberOfLines={1}>{displayName}</Text>
             </View>
             <View style={styles.compactMetaRow}>
               <Text style={styles.compactMeta}>{formatBytes(item.totalBytes)}</Text>
@@ -245,7 +249,7 @@ const DownloadCard = memo(function DownloadCard({
     <Animated.View entering={FadeIn.duration(300)} layout={Layout.springify()} style={styles.card}>
       <Pressable onPress={isCompleted ? onPlay : undefined} style={styles.cardContent}>
         <View style={styles.thumbnailContainer}>
-          <CachedImage uri={imageUrl} style={styles.thumbnail} borderRadius={8} fallbackText={item.item.Name.charAt(0).toUpperCase()} />
+          <CachedImage uri={imageUrl} style={styles.thumbnail} borderRadius={8} fallbackText={displayName.charAt(0).toUpperCase()} />
           {isCompleted && (
             <View style={[styles.playOverlay, { backgroundColor: accentColor }]}>
               <Ionicons name="play" size={14} color="#fff" />
@@ -259,8 +263,8 @@ const DownloadCard = memo(function DownloadCard({
         </View>
         <View style={styles.infoContainer}>
           <View style={styles.titleRow}>
-            <Text style={styles.title} numberOfLines={1}>{item.item.Name}</Text>
-            {item.item.Type === 'Episode' && item.item.SeriesName && (
+            <Text style={styles.title} numberOfLines={1}>{displayName}</Text>
+            {item.item.Type === 'Episode' && item.item.SeriesName && !hideMedia && (
               <Text style={styles.seriesName} numberOfLines={1}>{item.item.SeriesName}</Text>
             )}
           </View>
@@ -306,12 +310,20 @@ const ActiveDownloadsSection = memo(function ActiveDownloadsSection({
   onPlay,
   onDelete,
   onPauseResume,
+  onPauseAll,
+  onResumeAll,
+  isPaused,
+  hideMedia,
 }: {
   downloads: DownloadItem[];
   accentColor: string;
   onPlay: (item: DownloadItem) => void;
   onDelete: (item: DownloadItem) => void;
   onPauseResume: (item: DownloadItem) => void;
+  onPauseAll: () => void;
+  onResumeAll: () => void;
+  isPaused: boolean;
+  hideMedia: boolean;
 }) {
   if (downloads.length === 0) return null;
 
@@ -323,6 +335,25 @@ const ActiveDownloadsSection = memo(function ActiveDownloadsSection({
         <View style={[styles.activeBadge, { backgroundColor: accentColor + '30' }]}>
           <Text style={[styles.activeBadgeText, { color: accentColor }]}>{downloads.length}</Text>
         </View>
+        <View style={styles.queueControls}>
+          {isPaused ? (
+            <Pressable
+              onPress={onResumeAll}
+              style={[styles.queueButton, { backgroundColor: accentColor + '20' }]}
+            >
+              <Ionicons name="play" size={14} color={accentColor} />
+              <Text style={[styles.queueButtonText, { color: accentColor }]}>Resume All</Text>
+            </Pressable>
+          ) : (
+            <Pressable
+              onPress={onPauseAll}
+              style={[styles.queueButton, { backgroundColor: '#f59e0b20' }]}
+            >
+              <Ionicons name="pause" size={14} color="#f59e0b" />
+              <Text style={[styles.queueButtonText, { color: '#f59e0b' }]}>Pause All</Text>
+            </Pressable>
+          )}
+        </View>
       </View>
       {downloads.map((item) => (
         <DownloadCard
@@ -332,6 +363,7 @@ const ActiveDownloadsSection = memo(function ActiveDownloadsSection({
           onPlay={() => onPlay(item)}
           onDelete={() => onDelete(item)}
           onPauseResume={() => onPauseResume(item)}
+          hideMedia={hideMedia}
         />
       ))}
     </View>
@@ -344,11 +376,13 @@ const MoviesSection = memo(function MoviesSection({
   accentColor,
   onPlay,
   onDelete,
+  hideMedia,
 }: {
   movies: DownloadItem[];
   accentColor: string;
   onPlay: (item: DownloadItem) => void;
   onDelete: (item: DownloadItem) => void;
+  hideMedia: boolean;
 }) {
   if (movies.length === 0) {
     return (
@@ -369,11 +403,16 @@ const MoviesSection = memo(function MoviesSection({
           onPlay={() => onPlay(item)}
           onDelete={() => onDelete(item)}
           onPauseResume={() => {}}
+          hideMedia={hideMedia}
         />
       ))}
     </View>
   );
 });
+
+const PLACEHOLDER_SERIES = ['Drama Series', 'Comedy Show', 'Action Series', 'Mystery Show', 'Sci-Fi Series'];
+const PLACEHOLDER_ARTISTS = ['Artist One', 'Artist Two', 'Artist Three', 'Artist Four', 'Artist Five'];
+const PLACEHOLDER_ALBUMS = ['Album One', 'Album Two', 'Album Three', 'Album Four', 'Album Five'];
 
 // TV Shows Section with hierarchical grouping
 const TVShowsSection = memo(function TVShowsSection({
@@ -381,11 +420,13 @@ const TVShowsSection = memo(function TVShowsSection({
   accentColor,
   onPlay,
   onDelete,
+  hideMedia,
 }: {
   seriesGroups: SeriesGroup[];
   accentColor: string;
   onPlay: (item: DownloadItem) => void;
   onDelete: (item: DownloadItem) => void;
+  hideMedia: boolean;
 }) {
   const [expandedSeries, setExpandedSeries] = useState<Set<string>>(new Set());
   const [expandedSeasons, setExpandedSeasons] = useState<Set<string>>(new Set());
@@ -425,12 +466,15 @@ const TVShowsSection = memo(function TVShowsSection({
 
   return (
     <View style={styles.sectionContent}>
-      {seriesGroups.map((series) => {
+      {seriesGroups.map((series, index) => {
         const isSeriesExpanded = expandedSeries.has(series.seriesId);
+        const displaySeriesName = hideMedia
+          ? PLACEHOLDER_SERIES[index % PLACEHOLDER_SERIES.length]
+          : series.seriesName;
         return (
           <View key={series.seriesId} style={styles.groupContainer}>
             <CollapsibleHeader
-              title={series.seriesName}
+              title={displaySeriesName}
               count={series.episodeCount}
               size={series.totalSize}
               expanded={isSeriesExpanded}
@@ -464,6 +508,7 @@ const TVShowsSection = memo(function TVShowsSection({
                               onDelete={() => onDelete(episode)}
                               onPauseResume={() => {}}
                               compact
+                              hideMedia={hideMedia}
                             />
                           ))}
                         </Animated.View>
@@ -486,11 +531,13 @@ const MusicSection = memo(function MusicSection({
   accentColor,
   onPlay,
   onDelete,
+  hideMedia,
 }: {
   artistGroups: ArtistGroup[];
   accentColor: string;
   onPlay: (item: DownloadItem) => void;
   onDelete: (item: DownloadItem) => void;
+  hideMedia: boolean;
 }) {
   const [expandedArtists, setExpandedArtists] = useState<Set<string>>(new Set());
   const [expandedAlbums, setExpandedAlbums] = useState<Set<string>>(new Set());
@@ -530,12 +577,15 @@ const MusicSection = memo(function MusicSection({
 
   return (
     <View style={styles.sectionContent}>
-      {artistGroups.map((artist) => {
+      {artistGroups.map((artist, artistIndex) => {
         const isArtistExpanded = expandedArtists.has(artist.artistName);
+        const displayArtistName = hideMedia
+          ? PLACEHOLDER_ARTISTS[artistIndex % PLACEHOLDER_ARTISTS.length]
+          : artist.artistName;
         return (
           <View key={artist.artistName} style={styles.groupContainer}>
             <CollapsibleHeader
-              title={artist.artistName}
+              title={displayArtistName}
               count={artist.trackCount}
               size={artist.totalSize}
               expanded={isArtistExpanded}
@@ -544,13 +594,16 @@ const MusicSection = memo(function MusicSection({
             />
             {isArtistExpanded && (
               <Animated.View entering={FadeIn.duration(200)}>
-                {artist.albums.map((album) => {
+                {artist.albums.map((album, albumIndex) => {
                   const albumKey = `${artist.artistName}-${album.albumId}`;
                   const isAlbumExpanded = expandedAlbums.has(albumKey);
+                  const displayAlbumName = hideMedia
+                    ? PLACEHOLDER_ALBUMS[albumIndex % PLACEHOLDER_ALBUMS.length]
+                    : album.albumName;
                   return (
                     <View key={albumKey}>
                       <CollapsibleHeader
-                        title={album.albumName}
+                        title={displayAlbumName}
                         count={album.tracks.length}
                         size={album.totalSize}
                         expanded={isAlbumExpanded}
@@ -569,6 +622,7 @@ const MusicSection = memo(function MusicSection({
                               onDelete={() => onDelete(track)}
                               onPauseResume={() => {}}
                               compact
+                              hideMedia={hideMedia}
                             />
                           ))}
                         </Animated.View>
@@ -591,11 +645,13 @@ const BooksSection = memo(function BooksSection({
   accentColor,
   onPlay,
   onDelete,
+  hideMedia,
 }: {
   books: DownloadItem[];
   accentColor: string;
   onPlay: (item: DownloadItem) => void;
   onDelete: (item: DownloadItem) => void;
+  hideMedia: boolean;
 }) {
   if (books.length === 0) {
     return (
@@ -616,6 +672,7 @@ const BooksSection = memo(function BooksSection({
           onPlay={() => onPlay(item)}
           onDelete={() => onDelete(item)}
           onPauseResume={() => {}}
+          hideMedia={hideMedia}
         />
       ))}
     </View>
@@ -625,8 +682,10 @@ const BooksSection = memo(function BooksSection({
 export default function DownloadsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<ContentTab>('movies');
+  const [isPaused, setIsPaused] = useState(downloadManager.getIsPaused());
   const { downloads, usedStorage, maxStorage, recalculateUsedStorage } = useDownloadStore();
   const accentColor = useSettingsStore((s) => s.accentColor);
+  const hideMedia = useSettingsStore((s) => s.hideMedia);
 
   useEffect(() => {
     recalculateUsedStorage();
@@ -799,6 +858,16 @@ export default function DownloadsScreen() {
     }
   };
 
+  const handlePauseAll = async () => {
+    await downloadManager.pauseAllDownloads();
+    setIsPaused(true);
+  };
+
+  const handleResumeAll = async () => {
+    await downloadManager.resumeAllDownloads();
+    setIsPaused(false);
+  };
+
   const handleClearAll = () => {
     Alert.alert(
       'Clear All Downloads',
@@ -826,13 +895,13 @@ export default function DownloadsScreen() {
   const renderContent = () => {
     switch (activeTab) {
       case 'movies':
-        return <MoviesSection movies={movies} accentColor={accentColor} onPlay={handlePlay} onDelete={handleDelete} />;
+        return <MoviesSection movies={movies} accentColor={accentColor} onPlay={handlePlay} onDelete={handleDelete} hideMedia={hideMedia} />;
       case 'tvshows':
-        return <TVShowsSection seriesGroups={seriesGroups} accentColor={accentColor} onPlay={handlePlay} onDelete={handleDelete} />;
+        return <TVShowsSection seriesGroups={seriesGroups} accentColor={accentColor} onPlay={handlePlay} onDelete={handleDelete} hideMedia={hideMedia} />;
       case 'music':
-        return <MusicSection artistGroups={artistGroups} accentColor={accentColor} onPlay={handlePlay} onDelete={handleDelete} />;
+        return <MusicSection artistGroups={artistGroups} accentColor={accentColor} onPlay={handlePlay} onDelete={handleDelete} hideMedia={hideMedia} />;
       case 'books':
-        return <BooksSection books={books} accentColor={accentColor} onPlay={handlePlay} onDelete={handleDelete} />;
+        return <BooksSection books={books} accentColor={accentColor} onPlay={handlePlay} onDelete={handleDelete} hideMedia={hideMedia} />;
       default:
         return null;
     }
@@ -843,7 +912,6 @@ export default function DownloadsScreen() {
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <HomeButton currentScreen="downloads" />
           <Text style={styles.headerTitle}>Downloads</Text>
         </View>
         <View style={styles.headerRight}>
@@ -909,6 +977,10 @@ export default function DownloadsScreen() {
             onPlay={handlePlay}
             onDelete={handleDelete}
             onPauseResume={handlePauseResume}
+            onPauseAll={handlePauseAll}
+            onResumeAll={handleResumeAll}
+            isPaused={isPaused}
+            hideMedia={hideMedia}
           />
 
           {/* Content Type Tabs */}
@@ -1082,6 +1154,22 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
+  queueControls: {
+    flexDirection: 'row',
+    marginLeft: 'auto',
+  },
+  queueButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+    gap: 4,
+  },
+  queueButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
   // Tabs
   tabsContainer: {
     paddingVertical: 12,
@@ -1143,7 +1231,7 @@ const styles = StyleSheet.create({
     flex: 1,
     marginRight: 12,
   },
-  headerTitle: {
+  collapsibleTitle: {
     color: '#fff',
     fontSize: 15,
     fontWeight: '600',

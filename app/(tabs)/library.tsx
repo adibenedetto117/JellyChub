@@ -12,9 +12,10 @@ import {
   getImageUrl,
   getLibraryIcon,
 } from '@/api';
-import { SearchButton, HomeButton, AnimatedGradient } from '@/components/ui';
+import { SearchButton, AnimatedGradient } from '@/components/ui';
 import { CachedImage } from '@/components/ui/CachedImage';
 import { SkeletonRow } from '@/components/ui/Skeleton';
+import { getDisplayName, getDisplayImageUrl } from '@/utils';
 import type { BaseItem, Library, CollectionType } from '@/types/jellyfin';
 
 function getIoniconName(iconName: string): keyof typeof Ionicons.glyphMap {
@@ -51,9 +52,9 @@ function getItemTypes(collectionType: CollectionType): string[] {
 
 function getDetailRoute(item: BaseItem): string {
   const type = item.Type?.toLowerCase();
-  if (type === 'movie') return `/details/movie/${item.Id}`;
-  if (type === 'series') return `/details/series/${item.Id}`;
-  if (type === 'musicalbum') return `/details/album/${item.Id}`;
+  if (type === 'movie') return `/(tabs)/details/movie/${item.Id}`;
+  if (type === 'series') return `/(tabs)/details/series/${item.Id}`;
+  if (type === 'musicalbum') return `/(tabs)/details/album/${item.Id}`;
   if (type === 'audiobook') return `/player/audiobook?itemId=${item.Id}`;
   if (type === 'book') {
     const container = (item as any).Container?.toLowerCase() || '';
@@ -61,7 +62,7 @@ function getDetailRoute(item: BaseItem): string {
     const isPdf = container === 'pdf' || path.endsWith('.pdf');
     return isPdf ? `/reader/pdf?itemId=${item.Id}` : `/reader/epub?itemId=${item.Id}`;
   }
-  return `/details/${type}/${item.Id}`;
+  return `/(tabs)/details/${type}/${item.Id}`;
 }
 
 interface LibraryCardProps {
@@ -71,12 +72,15 @@ interface LibraryCardProps {
   cardWidth: number;
   cardHeight: number;
   fontSize: number;
+  hideMedia: boolean;
 }
 
-const LibraryCard = memo(function LibraryCard({ item, isSquare, onPress, cardWidth, cardHeight, fontSize }: LibraryCardProps) {
-  const imageUrl = item.ImageTags?.Primary
+const LibraryCard = memo(function LibraryCard({ item, isSquare, onPress, cardWidth, cardHeight, fontSize, hideMedia }: LibraryCardProps) {
+  const rawImageUrl = item.ImageTags?.Primary
     ? getImageUrl(item.Id, 'Primary', { maxWidth: cardWidth * 2, tag: item.ImageTags.Primary })
     : null;
+  const imageUrl = getDisplayImageUrl(item.Id, rawImageUrl, hideMedia, 'Primary');
+  const displayName = getDisplayName(item, hideMedia);
 
   return (
     <Pressable onPress={onPress} style={styles.cardPressable}>
@@ -85,14 +89,14 @@ const LibraryCard = memo(function LibraryCard({ item, isSquare, onPress, cardWid
           uri={imageUrl}
           style={{ width: cardWidth, height: cardHeight }}
           borderRadius={8}
-          fallbackText={item.Name?.charAt(0) ?? '?'}
+          fallbackText={displayName?.charAt(0) ?? '?'}
         />
       </View>
       <Text
         style={[styles.cardTitle, { width: cardWidth, fontSize }]}
         numberOfLines={1}
       >
-        {item.Name}
+        {displayName}
       </Text>
     </Pressable>
   );
@@ -102,9 +106,10 @@ interface LibrarySectionProps {
   library: Library;
   userId: string;
   accentColor: string;
+  hideMedia: boolean;
 }
 
-const LibrarySection = memo(function LibrarySection({ library, userId, accentColor }: LibrarySectionProps) {
+const LibrarySection = memo(function LibrarySection({ library, userId, accentColor, hideMedia }: LibrarySectionProps) {
   const { isTablet, isTV, fontSize } = useResponsive();
   const iconName = getLibraryIcon(library.CollectionType);
   const itemTypes = getItemTypes(library.CollectionType);
@@ -142,7 +147,7 @@ const LibrarySection = memo(function LibrarySection({ library, userId, accentCol
     } else if (library.CollectionType === 'books' || library.CollectionType === 'audiobooks') {
       router.push('/(tabs)/books');
     } else {
-      router.push(`/library/${library.Id}`);
+      router.push(`/(tabs)/library/${library.Id}`);
     }
   }, [library.CollectionType, library.Id]);
 
@@ -195,6 +200,7 @@ const LibrarySection = memo(function LibrarySection({ library, userId, accentCol
               cardWidth={cardWidth}
               cardHeight={cardHeight}
               fontSize={fontSize.xs}
+              hideMedia={hideMedia}
             />
           ))}
         </ScrollView>
@@ -213,6 +219,7 @@ export default function LibraryScreen() {
 
   const currentUser = useAuthStore((state) => state.currentUser);
   const accentColor = useSettingsStore((s) => s.accentColor);
+  const hideMedia = useSettingsStore((s) => s.hideMedia);
   const userId = currentUser?.Id ?? '';
 
   const horizontalPadding = isTV ? 48 : isTablet ? 24 : 16;
@@ -247,8 +254,7 @@ export default function LibraryScreen() {
       <AnimatedGradient intensity="subtle" />
       <View style={[styles.header, { paddingHorizontal: horizontalPadding, paddingTop: isTablet ? 20 : 16 }]}>
         <View style={styles.headerLeft}>
-          <HomeButton currentScreen="library" />
-          <View style={{ marginLeft: 12 }}>
+          <View>
             <Text style={[styles.headerTitle, { fontSize: fontSize['2xl'] }]}>Library</Text>
             <Text style={[styles.headerSubtitle, { fontSize: fontSize.sm }]}>
               {browsableLibraries.length} {browsableLibraries.length === 1 ? 'library' : 'libraries'}
@@ -283,6 +289,7 @@ export default function LibraryScreen() {
                 library={library}
                 userId={userId}
                 accentColor={accentColor}
+                hideMedia={hideMedia}
               />
             ))
           )}

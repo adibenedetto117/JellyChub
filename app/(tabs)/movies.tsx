@@ -1,12 +1,15 @@
 import { View, Text, SectionList, FlatList, Pressable, RefreshControl, ActivityIndicator, Dimensions, StyleSheet } from 'react-native';
 import { Image } from 'expo-image';
 import { useState, useCallback, useMemo, useRef, memo } from 'react';
-import { useQuery, useInfiniteQuery } from '@tanstack/react-query';
+import { useQuery, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore, useSettingsStore } from '@/stores';
-import { getLibraries, getItems, getImageUrl, getLibraryIdsByType, getItemsFromMultipleLibraries } from '@/api';
+import { getLibraries, getItems, getImageUrl, getLibraryIdsByType, getItemsFromMultipleLibraries, getGenres } from '@/api';
 import { SearchButton, AnimatedGradient } from '@/components/ui';
+import { FilterSortModal, DEFAULT_FILTERS, getActiveFilterCount } from '@/components/library';
+import type { FilterOptions, SortOption } from '@/components/library';
 import { getDisplayName, getDisplayImageUrl } from '@/utils';
 import { colors } from '@/theme';
 import type { BaseItem, Movie } from '@/types/jellyfin';
@@ -17,8 +20,6 @@ const GRID_PADDING = 16;
 const GRID_GAP = 8;
 const POSTER_WIDTH = (SCREEN_WIDTH - (GRID_PADDING * 2) - (GRID_GAP * (NUM_COLUMNS - 1))) / NUM_COLUMNS;
 const POSTER_HEIGHT = POSTER_WIDTH * 1.5;
-
-type SortOption = 'DateCreated' | 'SortName' | 'PremiereDate' | 'CommunityRating';
 
 const ITEMS_PER_PAGE = 100;
 const FULL_ALPHABET = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '#'];
@@ -128,9 +129,11 @@ const AlphabetScroller = memo(function AlphabetScroller({ availableLetters, onLe
 
 export default function MoviesScreen() {
   const [refreshing, setRefreshing] = useState(false);
-  const [sortBy, setSortBy] = useState<SortOption>('SortName');
+  const [filters, setFilters] = useState<FilterOptions>(DEFAULT_FILTERS);
+  const [showFilterModal, setShowFilterModal] = useState(false);
   const sectionListRef = useRef<SectionList>(null);
   const flatListRef = useRef<FlatList>(null);
+  const queryClient = useQueryClient();
 
   const currentUser = useAuthStore((state) => state.currentUser);
   const accentColor = useSettingsStore((s) => s.accentColor);
@@ -149,7 +152,23 @@ export default function MoviesScreen() {
     return getLibraryIdsByType(libraries, 'movies');
   }, [libraries]);
 
-  // Fetch all movies from all movie libraries
+  const { data: genresData } = useQuery({
+    queryKey: ['genres', 'movies', userId],
+    queryFn: () => getGenres(userId, undefined, ['Movie']),
+    enabled: !!userId,
+    staleTime: 1000 * 60 * 30,
+  });
+
+  const availableGenres = useMemo(() => {
+    return genresData?.map((g) => g.Name) ?? [];
+  }, [genresData]);
+
+  const queryFilters = useMemo(() => {
+    const filterList: string[] = [];
+    if (filters.unplayedOnly) filterList.push('IsUnplayed');
+    return filterList;
+  }, [filters.unplayedOnly]);
+
   const {
     data,
     fetchNextPage,
@@ -158,35 +177,37 @@ export default function MoviesScreen() {
     isLoading,
     refetch,
   } = useInfiniteQuery({
-    queryKey: ['movies', userId, movieLibraryIds.join(','), sortBy],
+    queryKey: ['movies', userId, movieLibraryIds.join(','), filters],
     queryFn: ({ pageParam = 0 }) =>
       getItemsFromMultipleLibraries<Movie>(userId, movieLibraryIds, {
         includeItemTypes: ['Movie'],
-        sortBy: sortBy,
-        sortOrder: sortBy === 'SortName' ? 'Ascending' : 'Descending',
+        sortBy: filters.sortBy === 'Random' ? 'Random' : filters.sortBy,
+        sortOrder: filters.sortOrder,
         startIndex: pageParam,
         limit: ITEMS_PER_PAGE,
         recursive: true,
-        fields: ['SortName', 'DateCreated', 'CommunityRating'],
+        fields: ['SortName', 'DateCreated', 'CommunityRating', 'RunTimeTicks'],
+        genres: filters.genres.length > 0 ? filters.genres : undefined,
+        years: filters.years.length > 0 ? filters.years : undefined,
+        filters: queryFilters.length > 0 ? queryFilters : undefined,
+        isFavorite: filters.favoritesOnly ? true : undefined,
       }),
     initialPageParam: 0,
     getNextPageParam: (lastPage, pages) => {
+      if (filters.sortBy === 'Random') return undefined;
       const totalFetched = pages.reduce((acc, p) => acc + p.Items.length, 0);
       return totalFetched < lastPage.TotalRecordCount ? totalFetched : undefined;
     },
     enabled: !!userId && movieLibraryIds.length > 0,
-    staleTime: 1000 * 60 * 5,
+    staleTime: filters.sortBy === 'Random' ? 0 : 1000 * 60 * 5,
   });
 
   const allMovies = data?.pages.flatMap((p) => p.Items) ?? [];
   const totalCount = data?.pages[0]?.TotalRecordCount ?? 0;
-
-  // Movies are now pre-sorted by the server, just use allMovies directly
   const sortedMovies = allMovies;
 
-  // Group movies by first letter for SectionList
   const { sections: movieSections, availableLetters } = useMemo(() => {
-    if (sortBy !== 'SortName') {
+    if (filters.sortBy !== 'SortName') {
       return { sections: [], availableLetters: [] };
     }
 
@@ -212,7 +233,9 @@ export default function MoviesScreen() {
       })),
       availableLetters: sortedLetters,
     };
-  }, [sortedMovies, sortBy]);
+  }, [sortedMovies, filters.sortBy]);
+
+  const activeFilterCount = useMemo(() => getActiveFilterCount(filters), [filters]);
 
   const scrollToLetter = useCallback((letter: string) => {
     const sectionIndex = movieSections.findIndex((s) => s.title === letter);
@@ -236,15 +259,19 @@ export default function MoviesScreen() {
     router.push(`/(tabs)/details/movie/${item.Id}`);
   }, []);
 
-  const handleSortChange = (newSort: SortOption) => {
-    setSortBy(newSort);
-    // Scroll to top when changing sort
-    if (newSort === 'SortName') {
-      sectionListRef.current?.scrollToLocation({ sectionIndex: 0, itemIndex: 0, animated: false, viewOffset: 0 });
+  const handleFiltersApply = useCallback((newFilters: FilterOptions) => {
+    setFilters(newFilters);
+    if (newFilters.sortBy === 'SortName') {
+      setTimeout(() => {
+        sectionListRef.current?.scrollToLocation({ sectionIndex: 0, itemIndex: 0, animated: false, viewOffset: 0 });
+      }, 100);
     } else {
       flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
     }
-  };
+  }, []);
+
+  const openFilterModal = useCallback(() => setShowFilterModal(true), []);
+  const closeFilterModal = useCallback(() => setShowFilterModal(false), []);
 
   const renderFooter = useCallback(() => {
     if (!isFetchingNextPage) return <View style={styles.bottomSpacer} />;
@@ -262,21 +289,14 @@ export default function MoviesScreen() {
   ), [handleItemPress, hideMedia]);
 
   const renderMovieCard = useCallback(({ item }: { item: BaseItem }) => (
-    <MovieCard item={item} onPress={() => handleItemPress(item)} showRating={sortBy !== 'SortName'} hideMedia={hideMedia} />
-  ), [handleItemPress, sortBy, hideMedia]);
+    <MovieCard item={item} onPress={() => handleItemPress(item)} showRating={filters.sortBy !== 'SortName'} hideMedia={hideMedia} />
+  ), [handleItemPress, filters.sortBy, hideMedia]);
 
   const renderSectionHeader = useCallback(({ section }: { section: { title: string; data: BaseItem[] } }) => (
     <View style={styles.sectionHeaderContainer}>
       <Text style={[styles.sectionHeaderText, { color: accentColor }]}>{section.title}</Text>
     </View>
   ), [accentColor]);
-
-  const sortOptions: { label: string; value: SortOption }[] = [
-    { label: 'A-Z', value: 'SortName' },
-    { label: 'Recent', value: 'DateCreated' },
-    { label: 'Year', value: 'PremiereDate' },
-    { label: 'Rating', value: 'CommunityRating' },
-  ];
 
   const renderAlphabeticalView = () => (
     <View style={styles.alphabeticalContainer}>
@@ -354,30 +374,42 @@ export default function MoviesScreen() {
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <Text style={styles.headerTitle}>Movies</Text>
         </View>
-        <SearchButton />
-      </View>
-
-      <View style={styles.sortContainer}>
-        {sortOptions.map((option) => (
-          <Pressable
-            key={option.value}
-            onPress={() => handleSortChange(option.value)}
-            style={[
-              styles.sortOption,
-              sortBy === option.value && { backgroundColor: accentColor }
-            ]}
-          >
-            <Text style={[
-              styles.sortOptionText,
-              sortBy === option.value && styles.sortOptionTextActive
-            ]}>
-              {option.label}
-            </Text>
+        <View style={styles.headerRight}>
+          <Pressable onPress={openFilterModal} style={styles.filterButton}>
+            <Ionicons name="options-outline" size={22} color="#fff" />
+            {activeFilterCount > 0 && (
+              <View style={[styles.filterBadge, { backgroundColor: accentColor }]}>
+                <Text style={styles.filterBadgeText}>{activeFilterCount}</Text>
+              </View>
+            )}
           </Pressable>
-        ))}
+          <SearchButton />
+        </View>
       </View>
 
-      {sortBy === 'SortName' ? renderAlphabeticalView() : renderGridView()}
+      <View style={styles.sortInfoRow}>
+        <Text style={styles.sortInfoText}>
+          {totalCount} movies
+          {filters.sortBy !== 'SortName' && ` • Sorted by ${filters.sortBy === 'DateCreated' ? 'Date Added' : filters.sortBy === 'PremiereDate' ? 'Year' : filters.sortBy === 'CommunityRating' ? 'Rating' : filters.sortBy === 'Runtime' ? 'Runtime' : filters.sortBy === 'Random' ? 'Random' : 'Name'}`}
+        </Text>
+        {activeFilterCount > 0 && (
+          <Text style={[styles.filterActiveText, { color: accentColor }]}>
+            {activeFilterCount} filter{activeFilterCount > 1 ? 's' : ''} active
+          </Text>
+        )}
+      </View>
+
+      {filters.sortBy === 'SortName' ? renderAlphabeticalView() : renderGridView()}
+
+      <FilterSortModal
+        visible={showFilterModal}
+        onClose={closeFilterModal}
+        filters={filters}
+        onApply={handleFiltersApply}
+        availableGenres={availableGenres}
+        accentColor={accentColor}
+        showRuntimeSort={true}
+      />
     </SafeAreaView>
   );
 }
@@ -399,25 +431,48 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: 'bold',
   },
-  sortContainer: {
+  headerRight: {
     flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  filterButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  filterBadge: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  filterBadgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  sortInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingBottom: 12,
-    gap: 8,
   },
-  sortOption: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: colors.surface.default,
+  sortInfoText: {
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: 13,
   },
-  sortOptionText: {
-    color: 'rgba(255,255,255,0.7)',
+  filterActiveText: {
     fontSize: 13,
     fontWeight: '500',
-  },
-  sortOptionTextActive: {
-    color: '#fff',
   },
   alphabeticalContainer: {
     flex: 1,
