@@ -28,12 +28,10 @@ const BOX_TYPES = {
  */
 export async function parseM4BChapters(url: string): Promise<ParsedChapter[]> {
   if (!url) {
-    console.log('Chapter parser: No URL provided');
     return [];
   }
 
   try {
-    console.log('Chapter parser: Fetching file header...');
 
     // Create an abort controller with timeout
     const controller = new AbortController();
@@ -53,21 +51,12 @@ export async function parseM4BChapters(url: string): Promise<ParsedChapter[]> {
     }
 
     // If range requests aren't supported, try regular fetch
-    if (response.status === 200) {
-      console.log('Chapter parser: Server returned full file, range not supported');
-    } else if (response.status === 206) {
-      console.log('Chapter parser: Got partial content (range request worked)');
-    } else if (!response.ok) {
-      console.log('Chapter parser: Failed to fetch file header, status:', response.status);
+    if (!response.ok && response.status !== 206) {
       return [];
     }
 
     const buffer = await response.arrayBuffer();
     const data = new DataView(buffer);
-    console.log('Chapter parser: Got buffer of size:', buffer.byteLength);
-
-    // List all top-level boxes for debugging
-    listTopLevelBoxes(data);
 
     // Find moov box
     let moovBox = findBox(data, 0, data.byteLength, BOX_TYPES.MOOV);
@@ -75,8 +64,6 @@ export async function parseM4BChapters(url: string): Promise<ParsedChapter[]> {
 
     // Check if moov extends beyond our buffer - if so, fetch the complete moov
     if (moovBox && moovBox.offset + moovBox.size > data.byteLength) {
-      console.log(`Chapter parser: moov (${moovBox.size} bytes) extends beyond buffer (${data.byteLength} bytes), fetching complete moov...`);
-
       try {
         const moovResponse = await fetch(url, {
           headers: {
@@ -87,18 +74,15 @@ export async function parseM4BChapters(url: string): Promise<ParsedChapter[]> {
         if (moovResponse.ok || moovResponse.status === 206) {
           const moovBuffer = await moovResponse.arrayBuffer();
           moovData = new DataView(moovBuffer);
-          console.log(`Chapter parser: Got complete moov, size: ${moovBuffer.byteLength}`);
           // Update moov box to point to start of new buffer
           moovBox = { offset: 0, size: moovBox.size, type: 'moov' };
         }
       } catch (e) {
-        console.log('Chapter parser: Error fetching complete moov', e);
+        // Failed to fetch complete moov, continue with partial data
       }
     }
 
     if (!moovBox) {
-      console.log('Chapter parser: No moov box in first chunk - trying to fetch from end of file');
-
       // Try to get file size from Content-Range header or fetch HEAD
       const contentRange = response.headers.get('Content-Range');
       let fileSize = 0;
@@ -120,7 +104,7 @@ export async function parseM4BChapters(url: string): Promise<ParsedChapter[]> {
             fileSize = parseInt(contentLength, 10);
           }
         } catch (e) {
-          console.log('Chapter parser: Could not get file size');
+          // Could not get file size
         }
       }
 
@@ -138,10 +122,7 @@ export async function parseM4BChapters(url: string): Promise<ParsedChapter[]> {
             data.getUint8(offset + 7)
           );
 
-          console.log(`Chapter parser: Box at offset ${offset}: type='${boxType}', size=${boxSize}`);
-
           if (boxSize === 0) {
-            console.log('Chapter parser: Box size is 0, breaking');
             break;
           }
 
@@ -153,10 +134,8 @@ export async function parseM4BChapters(url: string): Promise<ParsedChapter[]> {
               const lowBits = data.getUint32(offset + 12);
               const extendedSize = highBits * 0x100000000 + lowBits;
               mdatEnd = offset + extendedSize;
-              console.log(`Chapter parser: Found mdat with extended size, ends at ${mdatEnd}`);
             } else {
               mdatEnd = offset + boxSize;
-              console.log(`Chapter parser: Found mdat, ends at ${mdatEnd}`);
             }
             break;
           }
@@ -164,7 +143,6 @@ export async function parseM4BChapters(url: string): Promise<ParsedChapter[]> {
           // For boxes larger than our buffer, we can't skip past them
           // This shouldn't happen for ftyp/free/moov but would for mdat
           if (boxSize > data.byteLength - offset) {
-            console.log(`Chapter parser: Box '${boxType}' is larger than buffer, cannot continue scanning`);
             break;
           }
 
@@ -179,18 +157,15 @@ export async function parseM4BChapters(url: string): Promise<ParsedChapter[]> {
           // We know where mdat ends, moov should be right after
           moovStart = mdatEnd;
           fetchSize = fileSize - moovStart;
-          console.log(`Chapter parser: mdat ends at ${mdatEnd}, moov should be at ${moovStart}, moov size ~${fetchSize} bytes`);
 
           // Cap at 20MB max to avoid huge downloads, but fetch full moov if smaller
           if (fetchSize > 20971520) {
-            console.log('Chapter parser: moov appears very large, capping fetch at 20MB');
             moovStart = fileSize - 20971520;
             fetchSize = 20971520;
           }
         } else {
           // Couldn't find mdat - maybe there's a large 'free' atom
           // Try progressively larger chunks from the end
-          console.log('Chapter parser: Could not determine mdat end, will try fetching from end');
           moovStart = 0; // Will be set in the loop below
           fetchSize = 0;
         }
@@ -202,7 +177,6 @@ export async function parseM4BChapters(url: string): Promise<ParsedChapter[]> {
 
         for (const size of fetchSizes) {
           const startPos = Math.max(0, fileSize - size);
-          console.log(`Chapter parser: File size is ${fileSize}, fetching from ${startPos} (${size} bytes)...`);
 
           try {
             const endResponse = await fetch(url, {
@@ -214,50 +188,34 @@ export async function parseM4BChapters(url: string): Promise<ParsedChapter[]> {
             if (endResponse.ok || endResponse.status === 206) {
               const endBuffer = await endResponse.arrayBuffer();
               const endData = new DataView(endBuffer);
-              console.log('Chapter parser: Got end of file, size:', endBuffer.byteLength);
-              listTopLevelBoxes(endData);
 
               moovBox = findBox(endData, 0, endData.byteLength, BOX_TYPES.MOOV);
 
               // If not found with normal parsing, try brute-force scan for 'moov' signature
               if (!moovBox) {
-                console.log('Chapter parser: Normal parsing failed, trying brute-force scan for moov...');
                 moovBox = bruteForceFind(endData, 'moov');
               }
 
               if (moovBox) {
-                console.log(`Chapter parser: Found moov at end of file, offset ${moovBox.offset}, size ${moovBox.size}`);
                 // Continue with this data
                 const result = parseChaptersFromMoov(endData, moovBox);
                 if (result.length > 0) return result;
-              } else {
-                console.log('Chapter parser: No moov found in this range, trying larger fetch...');
               }
             }
           } catch (e) {
-            console.log('Chapter parser: Error fetching end of file', e);
+            // Error fetching end of file, continue trying
           }
 
           // If we found moov already or this was a known fetch size, don't try more
           if (mdatEnd > 0) break;
-        }
-
-        if (!moovBox) {
-          console.log('Chapter parser: Could not find moov after all attempts');
         }
       }
 
       return [];
     }
 
-    console.log(`Chapter parser: Found moov box at offset ${moovBox.offset}, size ${moovBox.size}`);
     return parseChaptersFromMoov(moovData, moovBox);
   } catch (error: any) {
-    if (error?.name === 'AbortError') {
-      console.log('Chapter parser: Request timed out after 15 seconds');
-    } else {
-      console.log('Chapter parser: Error parsing file', error?.message || error);
-    }
     return [];
   }
 }
@@ -271,20 +229,13 @@ function parseChaptersFromMoov(data: DataView, moovBox: Box): ParsedChapter[] {
   // Look for udta/chpl (Nero chapters)
   const udtaBox = findBox(data, moovBox.offset + 8, moovEnd, BOX_TYPES.UDTA);
   if (udtaBox) {
-    console.log(`Chapter parser: Found udta box at offset ${udtaBox.offset}`);
     const chplBox = findBox(data, udtaBox.offset + 8, Math.min(udtaBox.offset + udtaBox.size, data.byteLength), BOX_TYPES.CHPL);
     if (chplBox) {
-      console.log(`Chapter parser: Found chpl box at offset ${chplBox.offset}`);
       const chapters = parseChplBox(data, chplBox.offset, chplBox.size);
       if (chapters.length > 0) {
-        console.log(`Chapter parser: Found ${chapters.length} Nero chapters`);
         return chapters;
       }
-    } else {
-      console.log('Chapter parser: No chpl box found in udta');
     }
-  } else {
-    console.log('Chapter parser: No udta box found in moov');
   }
 
   // Try to find chapters in other common locations (QuickTime style)
@@ -293,34 +244,9 @@ function parseChaptersFromMoov(data: DataView, moovBox: Box): ParsedChapter[] {
     return chapters;
   }
 
-  console.log('Chapter parser: No chapters found in moov');
   return [];
 }
 
-function listTopLevelBoxes(data: DataView) {
-  let offset = 0;
-  const boxes: string[] = [];
-
-  while (offset < data.byteLength - 8) {
-    try {
-      const size = data.getUint32(offset);
-      const type = String.fromCharCode(
-        data.getUint8(offset + 4),
-        data.getUint8(offset + 5),
-        data.getUint8(offset + 6),
-        data.getUint8(offset + 7)
-      );
-
-      if (size === 0 || size > data.byteLength - offset) break;
-      boxes.push(`${type}(${size})`);
-      offset += size;
-    } catch {
-      break;
-    }
-  }
-
-  console.log('Chapter parser: Top-level boxes:', boxes.join(', '));
-}
 
 interface Box {
   offset: number;
@@ -406,7 +332,6 @@ function bruteForceFind(data: DataView, targetType: string): Box | null {
 
       // Sanity check: size should be reasonable
       if (size >= 8 && size <= data.byteLength - offset + 1000000) {
-        console.log(`Chapter parser: Brute-force found '${targetType}' at offset ${offset}, size ${size}`);
         return { offset, size, type: targetType };
       }
     }
@@ -488,7 +413,7 @@ function parseChplBox(data: DataView, offset: number, size: number): ParsedChapt
       });
     }
   } catch (e) {
-    console.log('Chapter parser: Error parsing chpl box', e);
+    // Error parsing chpl box
   }
 
   return chapters;
@@ -500,27 +425,6 @@ function parseChplBox(data: DataView, offset: number, size: number): ParsedChapt
 function parseAlternativeChapters(data: DataView, moovBox: Box): ParsedChapter[] {
   const moovEnd = Math.min(moovBox.offset + moovBox.size, data.byteLength);
 
-  // List all boxes inside moov for debugging
-  let offset = moovBox.offset + 8;
-  const moovChildren: string[] = [];
-  while (offset < moovEnd - 8) {
-    try {
-      const size = data.getUint32(offset);
-      const type = String.fromCharCode(
-        data.getUint8(offset + 4),
-        data.getUint8(offset + 5),
-        data.getUint8(offset + 6),
-        data.getUint8(offset + 7)
-      );
-      if (size === 0 || size > moovEnd - offset) break;
-      moovChildren.push(type);
-      offset += size;
-    } catch {
-      break;
-    }
-  }
-  console.log('Chapter parser: Boxes inside moov:', moovChildren.join(', '));
-
   // Get timescale from mvhd
   let timescale = 1000;
   const mvhd = findBox(data, moovBox.offset + 8, moovEnd, 'mvhd');
@@ -530,15 +434,13 @@ function parseAlternativeChapters(data: DataView, moovBox: Box): ParsedChapter[]
       // timescale is at offset 12 (v0) or 20 (v1)
       const tsOffset = version === 0 ? mvhd.offset + 20 : mvhd.offset + 28;
       timescale = data.getUint32(tsOffset);
-      console.log(`Chapter parser: Movie timescale: ${timescale}`);
     } catch (e) {
-      console.log('Chapter parser: Could not read timescale');
+      // Could not read timescale, use default
     }
   }
 
   // Find all trak boxes
   const traks = findAllBoxes(data, moovBox.offset + 8, moovEnd, 'trak');
-  console.log(`Chapter parser: Found ${traks.length} trak boxes`);
 
   // First pass: find chapter track ID from tref/chap reference
   let chapterTrackId = 0;
@@ -550,7 +452,6 @@ function parseAlternativeChapters(data: DataView, moovBox: Box): ParsedChapter[]
       if (chap && chap.size >= 12) {
         // chap box contains track IDs it references
         chapterTrackId = data.getUint32(chap.offset + 8);
-        console.log(`Chapter parser: Found chapter track reference to track ${chapterTrackId}`);
         break;
       }
     }
@@ -588,14 +489,12 @@ function parseAlternativeChapters(data: DataView, moovBox: Box): ParsedChapter[]
         data.getUint8(hdlr.offset + 18),
         data.getUint8(hdlr.offset + 19)
       );
-      console.log(`Chapter parser: Track ${trackId} handler type: ${handlerType}`);
     } catch (e) {
       continue;
     }
 
     // Check if this is a text track (chapters are in text tracks)
     if (handlerType === 'text' || (chapterTrackId > 0 && trackId === chapterTrackId)) {
-      console.log(`Chapter parser: Processing text/chapter track ${trackId}`);
 
       // Get track timescale from mdhd
       let trackTimescale = timescale;
@@ -605,8 +504,9 @@ function parseAlternativeChapters(data: DataView, moovBox: Box): ParsedChapter[]
           const version = data.getUint8(mdhd.offset + 8);
           const tsOffset = version === 0 ? mdhd.offset + 20 : mdhd.offset + 28;
           trackTimescale = data.getUint32(tsOffset);
-          console.log(`Chapter parser: Track timescale: ${trackTimescale}`);
-        } catch (e) {}
+        } catch (e) {
+          // Use default timescale
+        }
       }
 
       // Find minf -> stbl -> stts (time-to-sample) and stsz (sample sizes)
@@ -626,7 +526,6 @@ function parseAlternativeChapters(data: DataView, moovBox: Box): ParsedChapter[]
       if (stts) {
         try {
           const entryCount = data.getUint32(stts.offset + 12);
-          console.log(`Chapter parser: stts has ${entryCount} entries`);
 
           let currentTime = 0;
           let sampleIndex = 0;
@@ -648,12 +547,11 @@ function parseAlternativeChapters(data: DataView, moovBox: Box): ParsedChapter[]
             }
           }
         } catch (e) {
-          console.log('Chapter parser: Error parsing stts', e);
+          // Error parsing stts
         }
       }
 
       if (chapters.length > 0) {
-        console.log(`Chapter parser: Found ${chapters.length} QuickTime chapters`);
         return chapters;
       }
     }

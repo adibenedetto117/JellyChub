@@ -1,15 +1,54 @@
 import { View, Text, ActivityIndicator } from 'react-native';
 import { memo } from 'react';
+import type { SubtitleSize, SubtitlePosition, SubtitleFontColor, SubtitleBackgroundColor, SubtitleOutlineStyle } from '@/types/player';
 
 interface SubtitleDisplayProps {
   text: string;
   showControls: boolean;
-  subtitleSize: 'small' | 'medium' | 'large';
-  subtitleTextColor: string;
-  subtitleBackgroundColor: string;
+  subtitleSize: SubtitleSize;
+  subtitleTextColor: SubtitleFontColor;
+  subtitleBackgroundColor: SubtitleBackgroundColor;
   subtitleBackgroundOpacity: number;
+  subtitlePosition: SubtitlePosition;
+  subtitleOutlineStyle: SubtitleOutlineStyle;
   isLoading?: boolean;
   error?: string | null;
+}
+
+const FONT_SIZES: Record<SubtitleSize, number> = {
+  small: 14,
+  medium: 18,
+  large: 24,
+  extraLarge: 32,
+};
+
+function getTextShadow(outlineStyle: SubtitleOutlineStyle) {
+  switch (outlineStyle) {
+    case 'outline':
+      return {
+        textShadowColor: '#000',
+        textShadowOffset: { width: 0, height: 0 },
+        textShadowRadius: 3,
+      };
+    case 'shadow':
+      return {
+        textShadowColor: 'rgba(0,0,0,0.8)',
+        textShadowOffset: { width: 2, height: 2 },
+        textShadowRadius: 3,
+      };
+    case 'both':
+      return {
+        textShadowColor: '#000',
+        textShadowOffset: { width: 1, height: 1 },
+        textShadowRadius: 4,
+      };
+    default:
+      return {
+        textShadowColor: 'transparent',
+        textShadowOffset: { width: 0, height: 0 },
+        textShadowRadius: 0,
+      };
+  }
 }
 
 export const SubtitleDisplay = memo(function SubtitleDisplay({
@@ -19,29 +58,38 @@ export const SubtitleDisplay = memo(function SubtitleDisplay({
   subtitleTextColor,
   subtitleBackgroundColor,
   subtitleBackgroundOpacity,
+  subtitlePosition,
+  subtitleOutlineStyle,
   isLoading = false,
   error = null,
 }: SubtitleDisplayProps) {
-  const fontSize = subtitleSize === 'small' ? 14 : subtitleSize === 'large' ? 24 : 18;
-  const bottomPosition = showControls ? 140 : 60;
-  const backgroundAlpha = Math.round(subtitleBackgroundOpacity * 255).toString(16).padStart(2, '0');
+  const fontSize = FONT_SIZES[subtitleSize];
+  const isTop = subtitlePosition === 'top';
+  const positionValue = showControls ? (isTop ? 100 : 140) : (isTop ? 40 : 60);
+  const textShadow = getTextShadow(subtitleOutlineStyle);
 
-  // Show loading indicator briefly when subtitles are being loaded
+  const getBackgroundStyle = () => {
+    if (subtitleBackgroundColor === 'none') {
+      return { backgroundColor: 'transparent' };
+    }
+    const backgroundAlpha = Math.round(subtitleBackgroundOpacity * 255).toString(16).padStart(2, '0');
+    return { backgroundColor: `${subtitleBackgroundColor}${backgroundAlpha}` };
+  };
+
+  const containerStyle = {
+    position: 'absolute' as const,
+    left: 20,
+    right: 20,
+    alignItems: 'center' as const,
+    ...(isTop ? { top: positionValue } : { bottom: positionValue }),
+  };
+
   if (isLoading) {
     return (
-      <View
-        style={{
-          position: 'absolute',
-          bottom: bottomPosition,
-          left: 20,
-          right: 20,
-          alignItems: 'center',
-        }}
-        pointerEvents="none"
-      >
+      <View style={containerStyle} pointerEvents="none">
         <View
           style={{
-            backgroundColor: `${subtitleBackgroundColor}${backgroundAlpha}`,
+            ...getBackgroundStyle(),
             paddingHorizontal: 16,
             paddingVertical: 8,
             borderRadius: 4,
@@ -55,9 +103,7 @@ export const SubtitleDisplay = memo(function SubtitleDisplay({
               color: subtitleTextColor,
               fontSize: fontSize * 0.85,
               fontWeight: '500',
-              textShadowColor: 'rgba(0,0,0,0.8)',
-              textShadowOffset: { width: 1, height: 1 },
-              textShadowRadius: 2,
+              ...textShadow,
             }}
           >
             Loading subtitles...
@@ -67,19 +113,9 @@ export const SubtitleDisplay = memo(function SubtitleDisplay({
     );
   }
 
-  // Show error message briefly if subtitle loading failed
   if (error) {
     return (
-      <View
-        style={{
-          position: 'absolute',
-          bottom: bottomPosition,
-          left: 20,
-          right: 20,
-          alignItems: 'center',
-        }}
-        pointerEvents="none"
-      >
+      <View style={containerStyle} pointerEvents="none">
         <View
           style={{
             backgroundColor: 'rgba(200, 50, 50, 0.8)',
@@ -103,23 +139,13 @@ export const SubtitleDisplay = memo(function SubtitleDisplay({
     );
   }
 
-  // Don't render anything if no text
   if (!text) return null;
 
   return (
-    <View
-      style={{
-        position: 'absolute',
-        bottom: bottomPosition,
-        left: 20,
-        right: 20,
-        alignItems: 'center',
-      }}
-      pointerEvents="none"
-    >
+    <View style={containerStyle} pointerEvents="none">
       <View
         style={{
-          backgroundColor: `${subtitleBackgroundColor}${backgroundAlpha}`,
+          ...getBackgroundStyle(),
           paddingHorizontal: 16,
           paddingVertical: 8,
           borderRadius: 4,
@@ -132,9 +158,7 @@ export const SubtitleDisplay = memo(function SubtitleDisplay({
             fontSize,
             fontWeight: '500',
             textAlign: 'center',
-            textShadowColor: 'rgba(0,0,0,0.8)',
-            textShadowOffset: { width: 1, height: 1 },
-            textShadowRadius: 2,
+            ...textShadow,
           }}
         >
           {text}

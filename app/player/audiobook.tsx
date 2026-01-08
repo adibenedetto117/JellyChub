@@ -17,8 +17,8 @@ import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-g
 import { useAuthStore, usePlayerStore, useSettingsStore, useDownloadStore } from '@/stores';
 import { useReadingProgressStore } from '@/stores/readingProgressStore';
 import { downloadManager } from '@/services';
-import { getItem, getImageUrl, generatePlaySessionId, getBookDownloadUrl } from '@/api';
-import { formatPlayerTime, ticksToMs } from '@/utils';
+import { getItem, getImageUrl, generatePlaySessionId, getBookDownloadUrl, reportPlaybackProgress } from '@/api';
+import { formatPlayerTime, ticksToMs, msToTicks, getDisplayName, getDisplayImageUrl, getDisplayArtist, goBack } from '@/utils';
 import { audioService, parseM4BChapters } from '@/services';
 import { colors } from '@/theme';
 
@@ -51,6 +51,7 @@ export default function AudiobookPlayerScreen() {
   const currentUser = useAuthStore((state) => state.currentUser);
   const activeServerId = useAuthStore((s) => s.activeServerId);
   const accentColor = useSettingsStore((s) => s.accentColor);
+  const hideMedia = useSettingsStore((s) => s.hideMedia);
   const getDownloadedItem = useDownloadStore((s) => s.getDownloadedItem);
   const getDownloadByItemId = useDownloadStore((s) => s.getDownloadByItemId);
   const userId = currentUser?.Id ?? '';
@@ -101,9 +102,15 @@ export default function AudiobookPlayerScreen() {
     enabled: !!userId && !!itemId,
   });
 
-  const coverUrl = item?.ImageTags?.Primary
+  const rawCoverUrl = item?.ImageTags?.Primary
     ? getImageUrl(item.Id, 'Primary', { maxWidth: 800, tag: item.ImageTags.Primary })
     : null;
+  const coverUrl = getDisplayImageUrl(item?.Id ?? '', rawCoverUrl, hideMedia, 'Primary');
+
+  const displayName = item ? getDisplayName(item, hideMedia) : 'Unknown';
+  const rawArtists = (item as any)?.Artists || [(item as any)?.AlbumArtist || 'Unknown Author'];
+  const displayArtists = getDisplayArtist(rawArtists, hideMedia);
+  const displayAuthor = displayArtists[0] ?? 'Unknown Author';
 
   // Track if we've already parsed chapters for this item
   const chaptersParsedForRef = useRef<string | null>(null);
@@ -249,12 +256,12 @@ export default function AudiobookPlayerScreen() {
     return () => clearInterval(interval);
   }, [audiobookSleepTimerEndTime]);
 
-  // Save reading progress to local store every 5 seconds
+  // Save reading progress to local store and sync to server every 5 seconds
   useEffect(() => {
     if (!item) return;
 
     const interval = setInterval(() => {
-      const { progress } = usePlayerStore.getState();
+      const { progress, playerState } = usePlayerStore.getState();
       if (progress.duration === 0) return;
 
       const author = (item as any)?.AlbumArtist ?? (item as any)?.Artists?.[0];
@@ -267,10 +274,20 @@ export default function AudiobookPlayerScreen() {
         position: progress.position,
         total: progress.duration,
       });
+
+      // Sync progress to Jellyfin server
+      reportPlaybackProgress({
+        ItemId: item.Id,
+        MediaSourceId: item.Id,
+        PositionTicks: msToTicks(progress.position),
+        IsPaused: playerState !== 'playing',
+        IsMuted: false,
+        PlaySessionId: playSessionId,
+      }).catch(() => {});
     }, 5000);
 
     return () => clearInterval(interval);
-  }, [item]);
+  }, [item, playSessionId]);
 
   // Save on unmount
   useEffect(() => {
@@ -292,12 +309,12 @@ export default function AudiobookPlayerScreen() {
   }, [item]);
 
   const handleMinimize = () => {
-    router.back();
+    goBack('/(tabs)/home');
   };
 
   const handleStop = async () => {
     await audioService.stop();
-    router.back();
+    goBack('/(tabs)/home');
   };
 
   const handleDownload = useCallback(async () => {
@@ -396,11 +413,11 @@ export default function AudiobookPlayerScreen() {
     const pos = localProgress.position;
     addBookmark({
       itemId: item.Id,
-      bookTitle: item.Name ?? 'Unknown Book',
+      bookTitle: displayName,
       positionTicks: pos * 10000,
       name: `Bookmark at ${formatPlayerTime(pos)}`,
     });
-  }, [item, localProgress.position, addBookmark]);
+  }, [item, localProgress.position, addBookmark, displayName]);
 
   const handleBookmarkPress = useCallback(async (positionTicks: number) => {
     const pos = ticksToMs(positionTicks);
@@ -441,7 +458,6 @@ export default function AudiobookPlayerScreen() {
   };
   const progressValue = localProgress.duration > 0 ? getDisplayPosition() / localProgress.duration : 0;
   const remainingTime = localProgress.duration - getDisplayPosition();
-  const author = (item as any)?.AlbumArtist ?? (item as any)?.Artists?.[0] ?? 'Unknown Author';
   const currentChapter = getCurrentChapter();
 
   const sleepTimeRemaining = audiobookSleepTimerEndTime
@@ -538,7 +554,7 @@ export default function AudiobookPlayerScreen() {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.modalItemTitle, isCurrentChapter && { color: accentColor }]} numberOfLines={1}>
-                  {chapter.Name || `Chapter ${index + 1}`}
+                  {hideMedia ? `Chapter ${index + 1}` : (chapter.Name || `Chapter ${index + 1}`)}
                 </Text>
                 <Text style={styles.modalItemSubtitle}>
                   {formatPlayerTime(ticksToMs(chapter.StartPositionTicks))}
@@ -694,7 +710,7 @@ export default function AudiobookPlayerScreen() {
               <Text style={styles.headerLabel}>Now Playing</Text>
               {currentChapter && (
                 <Text style={styles.headerChapter} numberOfLines={1}>
-                  {currentChapter.Name || 'Chapter'}
+                  {hideMedia ? `Chapter ${chapters.indexOf(currentChapter) + 1}` : (currentChapter.Name || 'Chapter')}
                 </Text>
               )}
             </View>
@@ -734,10 +750,10 @@ export default function AudiobookPlayerScreen() {
 
             <View style={styles.titleContainer}>
               <Text style={styles.title} numberOfLines={2}>
-                {item?.Name ?? 'Unknown'}
+                {displayName}
               </Text>
               <Text style={styles.author} numberOfLines={1}>
-                {author}
+                {displayAuthor}
               </Text>
             </View>
           </View>

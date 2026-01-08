@@ -25,7 +25,9 @@ import {
   getPlaylists,
   addToPlaylist,
 } from '@/api';
-import { formatPlayerTime, ticksToMs } from '@/utils';
+import { formatPlayerTime, ticksToMs, getDisplayName, getDisplayArtist, getDisplayImageUrl, goBack, dismissModal } from '@/utils';
+import { EqualizerModal, SleepTimerSelector, SleepTimerIndicator, AudioVisualizer } from '@/components/player';
+import type { VideoSleepTimer } from '@/types/player';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -39,6 +41,7 @@ export default function MusicPlayerScreen() {
   const currentUser = useAuthStore((state) => state.currentUser);
   const activeServerId = useAuthStore((state) => state.activeServerId);
   const accentColor = useSettingsStore((s) => s.accentColor);
+  const hideMedia = useSettingsStore((s) => s.hideMedia);
   const queryClient = useQueryClient();
   const userId = currentUser?.Id ?? '';
 
@@ -64,11 +67,15 @@ export default function MusicPlayerScreen() {
     setShowLyrics,
     setProgress,
     addToPlayNext,
+    setMusicSleepTimer,
   } = usePlayerStore();
 
   const [isFavorite, setIsFavorite] = useState(false);
   const [showOptions, setShowOptions] = useState(false);
   const [showPlaylistPicker, setShowPlaylistPicker] = useState(false);
+  const [showEqualizer, setShowEqualizer] = useState(false);
+  const [showSleepTimer, setShowSleepTimer] = useState(false);
+  const [showVisualizer, setShowVisualizer] = useState(false);
   const [playMethod, setPlayMethod] = useState<string>('Direct Stream');
   const [lyrics, setLyrics] = useState<LyricLine[] | null>(null);
   const [lyricsLoading, setLyricsLoading] = useState(false);
@@ -142,22 +149,22 @@ export default function MusicPlayerScreen() {
   const getAlbumArtUrl = () => {
     if (!item) return null;
 
+    let rawUrl: string | null = null;
+
     if (item.ImageTags?.Primary) {
-      return getImageUrl(item.Id, 'Primary', { maxWidth: 800, tag: item.ImageTags.Primary });
+      rawUrl = getImageUrl(item.Id, 'Primary', { maxWidth: 800, tag: item.ImageTags.Primary });
+    } else {
+      const albumId = (item as any)?.AlbumId;
+      const albumArtTag = (item as any)?.AlbumPrimaryImageTag;
+
+      if (albumId && albumArtTag) {
+        rawUrl = getImageUrl(albumId, 'Primary', { maxWidth: 800, tag: albumArtTag });
+      } else if (albumId) {
+        rawUrl = getImageUrl(albumId, 'Primary', { maxWidth: 800 });
+      }
     }
 
-    const albumId = (item as any)?.AlbumId;
-    const albumArtTag = (item as any)?.AlbumPrimaryImageTag;
-
-    if (albumId && albumArtTag) {
-      return getImageUrl(albumId, 'Primary', { maxWidth: 800, tag: albumArtTag });
-    }
-
-    if (albumId) {
-      return getImageUrl(albumId, 'Primary', { maxWidth: 800 });
-    }
-
-    return null;
+    return getDisplayImageUrl(item?.Id, rawUrl, hideMedia, 'Primary');
   };
 
   const albumArtUrl = getAlbumArtUrl();
@@ -266,12 +273,12 @@ export default function MusicPlayerScreen() {
   }, [item?.Id]);
 
   const handleClose = () => {
-    router.back();
+    goBack('/(tabs)/home');
   };
 
   const handleStopAndClose = async () => {
     await audioService.stop();
-    router.back();
+    goBack('/(tabs)/home');
   };
 
   const handlePlayPause = async () => {
@@ -303,9 +310,9 @@ export default function MusicPlayerScreen() {
     const albumId = (item as any)?.AlbumId;
     if (albumId) {
       setShowOptions(false);
-      router.dismiss();
+      dismissModal('/(tabs)/home');
       setTimeout(() => {
-        router.push(`/details/album/${albumId}`);
+        router.push(`/(tabs)/details/album/${albumId}`);
       }, 100);
     }
   };
@@ -314,9 +321,9 @@ export default function MusicPlayerScreen() {
     const artistId = (item as any)?.ArtistItems?.[0]?.Id;
     if (artistId) {
       setShowOptions(false);
-      router.dismiss();
+      dismissModal('/(tabs)/home');
       setTimeout(() => {
-        router.push(`/details/artist/${artistId}`);
+        router.push(`/(tabs)/details/artist/${artistId}`);
       }, 100);
     }
   };
@@ -379,12 +386,47 @@ export default function MusicPlayerScreen() {
     setShowPlaylistPicker(false);
   }, []);
 
+  // Sleep timer - convert music state to VideoSleepTimer format for reusing the component
+  const musicSleepTimer: VideoSleepTimer | undefined = useMemo(() => {
+    if (!music.sleepTimerEndTime || !music.sleepTimerMinutes) return undefined;
+    return {
+      type: 'duration',
+      endTime: music.sleepTimerEndTime,
+      durationMinutes: music.sleepTimerMinutes,
+    };
+  }, [music.sleepTimerEndTime, music.sleepTimerMinutes]);
+
+  const handleSelectSleepTimer = useCallback((timer: VideoSleepTimer | undefined) => {
+    if (timer) {
+      setMusicSleepTimer(timer.durationMinutes);
+    } else {
+      setMusicSleepTimer(undefined);
+    }
+  }, [setMusicSleepTimer]);
+
+  // Sleep timer effect - pause music when timer ends
+  useEffect(() => {
+    if (!music.sleepTimerEndTime) return;
+
+    const checkTimer = () => {
+      if (Date.now() >= music.sleepTimerEndTime!) {
+        audioService.pause();
+        setMusicSleepTimer(undefined);
+      }
+    };
+
+    const interval = setInterval(checkTimer, 1000);
+    return () => clearInterval(interval);
+  }, [music.sleepTimerEndTime, setMusicSleepTimer]);
+
   const getDisplayPosition = () => {
     return isSeeking ? seekPositionRef.current : localProgress.position;
   };
   const progressValue = localProgress.duration > 0 ? getDisplayPosition() / localProgress.duration : 0;
-  const albumArtist = (item as any)?.AlbumArtist ?? (item as any)?.Artists?.[0] ?? 'Unknown Artist';
-  const albumName = (item as any)?.Album ?? '';
+  const rawArtist = (item as any)?.AlbumArtist ?? (item as any)?.Artists?.[0] ?? 'Unknown Artist';
+  const albumArtist = getDisplayArtist([rawArtist], hideMedia)[0] ?? 'Unknown Artist';
+  const rawAlbumName = (item as any)?.Album ?? '';
+  const albumName = hideMedia ? 'Album Title' : rawAlbumName;
 
   const albumStyle = useAnimatedStyle(() => ({
     transform: [{ scale: albumScale.value }],
@@ -550,6 +592,14 @@ export default function MusicPlayerScreen() {
                 {albumName}
               </Text>
             ) : null}
+            {musicSleepTimer && (
+              <View style={{ marginTop: 4 }}>
+                <SleepTimerIndicator
+                  sleepTimer={musicSleepTimer}
+                  onPress={() => setShowSleepTimer(true)}
+                />
+              </View>
+            )}
           </View>
 
           <Pressable onPress={openOptions} style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}>
@@ -598,39 +648,67 @@ export default function MusicPlayerScreen() {
           </ScrollView>
         ) : (
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 }}>
-            <Animated.View style={albumStyle}>
-              <View
-                style={{
-                  width: SCREEN_WIDTH - 80,
-                  height: SCREEN_WIDTH - 80,
-                  borderRadius: 12,
-                  overflow: 'hidden',
-                  shadowColor: '#000',
-                  shadowOffset: { width: 0, height: 20 },
-                  shadowOpacity: 0.5,
-                  shadowRadius: 30,
-                  elevation: 20,
-                  marginBottom: 32,
-                }}
-              >
-                {albumArtUrl ? (
-                  <Image
-                    source={{ uri: albumArtUrl }}
-                    style={{ width: '100%', height: '100%' }}
-                    resizeMode="cover"
-                  />
+            <Pressable onPress={() => setShowVisualizer(!showVisualizer)}>
+              <Animated.View style={albumStyle}>
+                {showVisualizer ? (
+                  <View
+                    style={{
+                      width: SCREEN_WIDTH - 80,
+                      height: SCREEN_WIDTH - 80,
+                      borderRadius: 12,
+                      backgroundColor: '#1a1a1a',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      shadowColor: '#000',
+                      shadowOffset: { width: 0, height: 20 },
+                      shadowOpacity: 0.5,
+                      shadowRadius: 30,
+                      elevation: 20,
+                      marginBottom: 32,
+                    }}
+                  >
+                    <AudioVisualizer
+                      style="bars"
+                      barCount={32}
+                      height={SCREEN_WIDTH - 160}
+                      activeColor={accentColor}
+                    />
+                  </View>
                 ) : (
-                  <View style={{ width: '100%', height: '100%', backgroundColor: '#1a1a1a', alignItems: 'center', justifyContent: 'center' }}>
-                    <Ionicons name="musical-note" size={80} color="rgba(255,255,255,0.3)" />
+                  <View
+                    style={{
+                      width: SCREEN_WIDTH - 80,
+                      height: SCREEN_WIDTH - 80,
+                      borderRadius: 12,
+                      overflow: 'hidden',
+                      shadowColor: '#000',
+                      shadowOffset: { width: 0, height: 20 },
+                      shadowOpacity: 0.5,
+                      shadowRadius: 30,
+                      elevation: 20,
+                      marginBottom: 32,
+                    }}
+                  >
+                    {albumArtUrl ? (
+                      <Image
+                        source={{ uri: albumArtUrl }}
+                        style={{ width: '100%', height: '100%' }}
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <View style={{ width: '100%', height: '100%', backgroundColor: '#1a1a1a', alignItems: 'center', justifyContent: 'center' }}>
+                        <Ionicons name="musical-note" size={80} color="rgba(255,255,255,0.3)" />
+                      </View>
+                    )}
                   </View>
                 )}
-              </View>
-            </Animated.View>
+              </Animated.View>
+            </Pressable>
 
             <View style={{ width: '100%', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
               <View style={{ flex: 1, marginRight: 16 }}>
                 <Text style={{ color: '#fff', fontSize: 24, fontWeight: 'bold' }} numberOfLines={1}>
-                  {item?.Name ?? 'Unknown Track'}
+                  {getDisplayName(item, hideMedia) ?? 'Unknown Track'}
                 </Text>
                 <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 16, marginTop: 4 }} numberOfLines={1}>
                   {albumArtist}
@@ -773,11 +851,11 @@ export default function MusicPlayerScreen() {
             </Pressable>
           </View>
 
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 16, gap: 24 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 16, gap: 8, flexWrap: 'wrap' }}>
             <Pressable
               onPress={() => setShowLyrics(!music.showLyrics)}
               style={{
-                paddingHorizontal: 16,
+                paddingHorizontal: 14,
                 paddingVertical: 8,
                 borderRadius: 20,
                 flexDirection: 'row',
@@ -786,7 +864,65 @@ export default function MusicPlayerScreen() {
               }}
             >
               <Ionicons name="text" size={18} color="#fff" />
-              <Text style={{ color: '#fff', fontSize: 14, marginLeft: 8 }}>Lyrics</Text>
+              <Text style={{ color: '#fff', fontSize: 13, marginLeft: 6 }}>Lyrics</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setShowVisualizer(!showVisualizer)}
+              style={{
+                paddingHorizontal: 14,
+                paddingVertical: 8,
+                borderRadius: 20,
+                flexDirection: 'row',
+                alignItems: 'center',
+                backgroundColor: showVisualizer ? accentColor : 'rgba(255,255,255,0.1)',
+              }}
+            >
+              <Ionicons name="pulse" size={18} color="#fff" />
+              <Text style={{ color: '#fff', fontSize: 13, marginLeft: 6 }}>Viz</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setShowEqualizer(true)}
+              style={{
+                paddingHorizontal: 14,
+                paddingVertical: 8,
+                borderRadius: 20,
+                flexDirection: 'row',
+                alignItems: 'center',
+                backgroundColor: 'rgba(255,255,255,0.1)',
+              }}
+            >
+              <Ionicons name="options" size={18} color="#fff" />
+              <Text style={{ color: '#fff', fontSize: 13, marginLeft: 6 }}>EQ</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setShowSleepTimer(true)}
+              style={{
+                paddingHorizontal: 14,
+                paddingVertical: 8,
+                borderRadius: 20,
+                flexDirection: 'row',
+                alignItems: 'center',
+                backgroundColor: music.sleepTimerEndTime ? accentColor : 'rgba(255,255,255,0.1)',
+              }}
+            >
+              <Ionicons name="moon" size={18} color="#fff" />
+              <Text style={{ color: '#fff', fontSize: 13, marginLeft: 6 }}>
+                {music.sleepTimerEndTime ? 'Sleep' : 'Sleep'}
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => router.push('/(tabs)/queue')}
+              style={{
+                paddingHorizontal: 14,
+                paddingVertical: 8,
+                borderRadius: 20,
+                flexDirection: 'row',
+                alignItems: 'center',
+                backgroundColor: 'rgba(255,255,255,0.1)',
+              }}
+            >
+              <Ionicons name="list" size={18} color="#fff" />
+              <Text style={{ color: '#fff', fontSize: 13, marginLeft: 6 }}>Queue</Text>
             </Pressable>
           </View>
         </View>
@@ -822,7 +958,7 @@ export default function MusicPlayerScreen() {
                     )}
                     <View style={{ flex: 1, marginLeft: 16 }}>
                       <Text style={{ color: '#fff', fontWeight: '600', fontSize: 18 }} numberOfLines={1}>
-                        {item?.Name ?? 'Unknown'}
+                        {getDisplayName(item, hideMedia) ?? 'Unknown'}
                       </Text>
                       <Text style={{ color: 'rgba(255,255,255,0.6)' }} numberOfLines={1}>{albumArtist}</Text>
                     </View>
@@ -944,7 +1080,7 @@ export default function MusicPlayerScreen() {
                     <View style={{ flex: 1, marginLeft: 12 }}>
                       <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, marginBottom: 2 }}>Add to playlist</Text>
                       <Text style={{ color: '#fff', fontWeight: '600', fontSize: 16 }} numberOfLines={1}>
-                        {item?.Name ?? 'Unknown'}
+                        {getDisplayName(item, hideMedia) ?? 'Unknown'}
                       </Text>
                     </View>
                   </View>
@@ -1026,6 +1162,16 @@ export default function MusicPlayerScreen() {
           </View>
         </View>
       )}
+
+      <EqualizerModal visible={showEqualizer} onClose={() => setShowEqualizer(false)} />
+
+      <SleepTimerSelector
+        visible={showSleepTimer}
+        onClose={() => setShowSleepTimer(false)}
+        onSelectTimer={handleSelectSleepTimer}
+        currentTimer={musicSleepTimer}
+        isEpisode={false}
+      />
       </Animated.View>
     </GestureDetector>
   );

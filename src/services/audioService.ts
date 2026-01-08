@@ -1,6 +1,7 @@
 import { createAudioPlayer, setAudioModeAsync, AudioPlayer, AudioStatus } from 'expo-audio';
 import * as FileSystem from 'expo-file-system/legacy';
 import { usePlayerStore } from '@/stores';
+import { useSettingsStore } from '@/stores/settingsStore';
 import { useDownloadStore } from '@/stores/downloadStore';
 import { getAudioStreamUrl, reportPlaybackStart, reportPlaybackStopped, generatePlaySessionId } from '@/api';
 import { ticksToMs, msToTicks } from '@/utils';
@@ -9,6 +10,9 @@ import type { BaseItem } from '@/types/jellyfin';
 
 class AudioService {
   private player: AudioPlayer | null = null;
+  private crossfadePlayer: AudioPlayer | null = null;
+  private preloadedPlayer: AudioPlayer | null = null;
+  private preloadedItemId: string | null = null;
   private currentItemId: string | null = null;
   private currentItem: BaseItem | null = null;
   private playSessionId: string | null = null;
@@ -16,7 +20,11 @@ class AudioService {
   private isLoading = false;
   private isSeeking = false;
   private hasHandledTrackEnd = false;
+  private isCrossfading = false;
+  private isPreloading = false;
+  private crossfadeInterval: ReturnType<typeof setInterval> | null = null;
   private statusSubscription: { remove: () => void } | null = null;
+  private crossfadeStatusSubscription: { remove: () => void } | null = null;
   private queueSubscription: (() => void) | null = null;
   private currentUserId: string | null = null;
 
@@ -40,13 +48,10 @@ class AudioService {
     this.queueSubscription = usePlayerStore.subscribe(
       (state) => state.currentQueueIndex,
       (newIndex, prevIndex) => {
-        console.log(`Queue subscription: index changed from ${prevIndex} to ${newIndex}`);
         if (newIndex !== prevIndex && newIndex >= 0) {
           const store = usePlayerStore.getState();
           const queueItem = store.queue[newIndex];
-          console.log(`Queue subscription: queueItem=${queueItem?.item?.Name}, currentUserId=${!!this.currentUserId}, currentItemId=${this.currentItemId}, newItemId=${queueItem?.item?.Id}`);
           if (queueItem && this.currentUserId && queueItem.item.Id !== this.currentItemId) {
-            console.log(`Queue subscription: Loading track "${queueItem.item.Name}"`);
             const mediaType = store.mediaType;
             this.loadAndPlay(
               queueItem.item,
@@ -54,8 +59,6 @@ class AudioService {
               undefined,
               mediaType === 'audiobook' ? 'audiobook' : 'audio'
             );
-          } else {
-            console.log(`Queue subscription: Skipping load - conditions not met (queueItem: ${!!queueItem}, userId: ${!!this.currentUserId}, sameId: ${queueItem?.item?.Id === this.currentItemId})`);
           }
         }
       }
@@ -69,11 +72,9 @@ class AudioService {
     const hasNext = store.currentQueueIndex < store.queue.length - 1 || store.music.repeatMode === 'all';
 
     if (!hasNext) {
-      console.log('Skip next: No next track available');
       return;
     }
 
-    console.log(`Skip next: ${store.currentQueueIndex + 1}/${store.queue.length}`);
     this.hasHandledTrackEnd = false;
     store.playNext();
   }
@@ -83,11 +84,8 @@ class AudioService {
     const currentIndex = store.currentQueueIndex;
     const position = store.progress.position;
 
-    console.log(`Skip previous: currentIndex=${currentIndex}, position=${position}ms, queueLength=${store.queue.length}`);
-
     // If more than 3 seconds in, restart current track
     if (position > 3000) {
-      console.log('Skip previous: Restarting current track (position > 3000ms)');
       this.hasHandledTrackEnd = false;
 
       // Seek to beginning and ensure playback
@@ -105,10 +103,6 @@ class AudioService {
 
     // Otherwise go to previous track if available
     if (currentIndex > 0) {
-      const prevIndex = currentIndex - 1;
-      const prevItem = store.queue[prevIndex];
-      console.log(`Skip previous: Going to track index ${prevIndex} (was ${currentIndex}), item: ${prevItem?.item?.Name}`);
-
       this.hasHandledTrackEnd = false;
 
       // Clear current item ID to ensure the subscription triggers a reload
@@ -116,13 +110,8 @@ class AudioService {
       this.currentItemId = null;
 
       store.playPrevious();
-
-      // Verify the index changed
-      const newIndex = usePlayerStore.getState().currentQueueIndex;
-      console.log(`Skip previous: Index after playPrevious: ${newIndex}`);
     } else {
       // At first track, just restart it
-      console.log('Skip previous: At first track (index 0), restarting');
       if (this.player) {
         this.player.seekTo(0);
         if (!this.player.playing) {
@@ -139,11 +128,8 @@ class AudioService {
     const queueItem = store.queue[index];
 
     if (!queueItem || !this.currentUserId) {
-      console.log('forcePlayIndex: Invalid index or no user');
       return;
     }
-
-    console.log(`Force playing index ${index}: ${queueItem.item.Name}`);
 
     // Clear current item ID to force reload
     this.currentItemId = null;
@@ -181,7 +167,7 @@ class AudioService {
           this.player.play();
         }
       } catch (e) {
-        console.log('Error resuming playback:', e);
+        // Silently handle resume errors
       }
       return;
     }
@@ -195,7 +181,7 @@ class AudioService {
           this.statusSubscription?.remove();
           this.player.remove();
         } catch (e) {
-          console.log('Error stopping previous player:', e);
+          // Silently handle player cleanup errors
         }
         this.player = null;
         this.statusSubscription = null;
@@ -225,7 +211,6 @@ class AudioService {
       // Transcoded streams don't support proper seeking
       const container = item.MediaSources?.[0]?.Container?.toLowerCase();
       const useDirectStream = isAudiobook && (container === 'm4b' || container === 'm4a' || container === 'mp4');
-      console.log(`Audio loading: container=${container}, isAudiobook=${isAudiobook}, useDirectStream=${useDirectStream}`);
 
       // Check if the track is downloaded for offline playback
       let playbackUrl: string;
@@ -234,23 +219,23 @@ class AudioService {
       const downloadedItem = downloadStore.getDownloadedItem(item.Id);
 
       if (downloadedItem?.localPath) {
-        // Verify the local file actually exists
         const fileInfo = await FileSystem.getInfoAsync(downloadedItem.localPath);
         if (fileInfo.exists) {
           playbackUrl = downloadedItem.localPath;
           isLocalPlayback = true;
-          console.log(`Audio using downloaded file: ${playbackUrl}`);
         } else {
-          // Downloaded record exists but file is missing, fall back to streaming
-          console.log(`Downloaded file missing, falling back to stream: ${downloadedItem.localPath}`);
           playbackUrl = getAudioStreamUrl(item.Id, { directStream: useDirectStream });
         }
       } else {
         playbackUrl = getAudioStreamUrl(item.Id, { directStream: useDirectStream });
-        console.log(`Audio stream URL: ${playbackUrl}`);
       }
 
-      this.player = createAudioPlayer({ uri: playbackUrl });
+      const preloaded = this.usePreloadedPlayer(item.Id);
+      if (preloaded) {
+        this.player = preloaded;
+      } else {
+        this.player = createAudioPlayer({ uri: playbackUrl });
+      }
 
       this.statusSubscription = this.player.addListener('playbackStatusUpdate', (status) => {
         this.onPlaybackStatusUpdate(status);
@@ -292,12 +277,15 @@ class AudioService {
     const durationMs = status.duration ? status.duration * 1000 : ticksToMs(currentItemData?.RunTimeTicks ?? 0);
     const bufferedMs = durationMs;
 
-    // Check for track end - use didJustFinish OR position-based detection as fallback
-    // Position-based: if we're within 500ms of the end and not playing, treat as ended
+    if (store.mediaType === 'audio' && status.playing && durationMs > 0) {
+      this.checkCrossfadeTrigger(positionMs, durationMs);
+      this.checkPreloadTrigger(positionMs, durationMs);
+    }
+
     const isNearEnd = durationMs > 0 && positionMs >= durationMs - 500;
     const shouldTriggerEnd = status.didJustFinish || (isNearEnd && !status.playing);
 
-    if (shouldTriggerEnd && !this.hasHandledTrackEnd) {
+    if (shouldTriggerEnd && !this.hasHandledTrackEnd && !this.isCrossfading) {
       this.handleTrackEnd();
       return;
     }
@@ -314,17 +302,14 @@ class AudioService {
   }
 
   private handleTrackEnd() {
-    // Prevent duplicate calls for the same track
     if (this.hasHandledTrackEnd) {
       return;
     }
     this.hasHandledTrackEnd = true;
 
     const store = usePlayerStore.getState();
-    console.log(`Track ended. Queue: ${store.currentQueueIndex + 1}/${store.queue.length}, RepeatMode: ${store.music.repeatMode}`);
 
     if (store.music.repeatMode === 'one') {
-      // For repeat one, reset the flag so it can trigger again
       this.hasHandledTrackEnd = false;
       this.player?.seekTo(0);
       this.player?.play();
@@ -332,6 +317,228 @@ class AudioService {
       store.playNext();
     } else {
       store.setPlayerState('idle');
+    }
+  }
+
+  private getCrossfadeSettings() {
+    const settings = useSettingsStore.getState();
+    return {
+      enabled: settings.crossfadeEnabled,
+      duration: settings.crossfadeDuration * 1000,
+    };
+  }
+
+  private async startCrossfade(nextItem: BaseItem) {
+    const { enabled, duration } = this.getCrossfadeSettings();
+    if (!enabled || !this.player || this.isCrossfading) return false;
+
+    this.isCrossfading = true;
+
+    try {
+      const container = nextItem.MediaSources?.[0]?.Container?.toLowerCase();
+      const useDirectStream = container === 'm4b' || container === 'm4a' || container === 'mp4';
+
+      let playbackUrl: string;
+      const downloadStore = useDownloadStore.getState();
+      const downloadedItem = downloadStore.getDownloadedItem(nextItem.Id);
+
+      if (downloadedItem?.localPath) {
+        const fileInfo = await FileSystem.getInfoAsync(downloadedItem.localPath);
+        if (fileInfo.exists) {
+          playbackUrl = downloadedItem.localPath;
+        } else {
+          playbackUrl = getAudioStreamUrl(nextItem.Id, { directStream: useDirectStream });
+        }
+      } else {
+        playbackUrl = getAudioStreamUrl(nextItem.Id, { directStream: useDirectStream });
+      }
+
+      this.crossfadePlayer = createAudioPlayer({ uri: playbackUrl });
+      this.crossfadePlayer.volume = 0;
+      this.crossfadePlayer.play();
+
+      const steps = 20;
+      const stepDuration = duration / steps;
+      let step = 0;
+
+      this.crossfadeInterval = setInterval(() => {
+        step++;
+        const progress = step / steps;
+
+        if (this.player) {
+          this.player.volume = Math.max(0, 1 - progress);
+        }
+        if (this.crossfadePlayer) {
+          this.crossfadePlayer.volume = Math.min(1, progress);
+        }
+
+        if (step >= steps) {
+          this.completeCrossfade(nextItem);
+        }
+      }, stepDuration);
+
+      return true;
+    } catch (error) {
+      this.isCrossfading = false;
+      return false;
+    }
+  }
+
+  private completeCrossfade(nextItem: BaseItem) {
+    if (this.crossfadeInterval) {
+      clearInterval(this.crossfadeInterval);
+      this.crossfadeInterval = null;
+    }
+
+    if (this.player) {
+      this.statusSubscription?.remove();
+      this.player.remove();
+    }
+
+    this.player = this.crossfadePlayer;
+    this.crossfadePlayer = null;
+
+    if (this.player) {
+      this.player.volume = 1;
+      this.statusSubscription = this.player.addListener('playbackStatusUpdate', (status) => {
+        this.onPlaybackStatusUpdate(status);
+      });
+    }
+
+    this.currentItemId = nextItem.Id;
+    this.currentItem = nextItem;
+    this.hasHandledTrackEnd = false;
+    this.isCrossfading = false;
+
+    const store = usePlayerStore.getState();
+    const isAudiobook = nextItem.Type === 'AudioBook';
+    this.playSessionId = generatePlaySessionId();
+
+    store.setCurrentItem(
+      { item: nextItem, mediaSource: { Id: nextItem.Id } as any, streamUrl: '', playSessionId: this.playSessionId },
+      isAudiobook ? 'audiobook' : 'audio'
+    );
+
+    reportPlaybackStart({
+      ItemId: nextItem.Id,
+      MediaSourceId: nextItem.Id,
+      PlaySessionId: this.playSessionId,
+      PlayMethod: 'DirectStream',
+    });
+
+    const durationMs = ticksToMs(nextItem.RunTimeTicks ?? 0);
+    mediaSessionService.updateNowPlaying(nextItem, 0, durationMs);
+    mediaSessionService.updatePlaybackState('playing', 0);
+  }
+
+  private checkCrossfadeTrigger(positionMs: number, durationMs: number) {
+    const { enabled, duration } = this.getCrossfadeSettings();
+    if (!enabled || this.isCrossfading || this.hasHandledTrackEnd) return;
+
+    const store = usePlayerStore.getState();
+    const timeRemaining = durationMs - positionMs;
+
+    if (timeRemaining <= duration && timeRemaining > duration - 100) {
+      const hasNext = store.currentQueueIndex < store.queue.length - 1 || store.music.repeatMode === 'all';
+      if (hasNext && store.music.repeatMode !== 'one') {
+        let nextIndex = store.currentQueueIndex + 1;
+        if (nextIndex >= store.queue.length && store.music.repeatMode === 'all') {
+          nextIndex = 0;
+        }
+        const nextItem = store.queue[nextIndex]?.item;
+        if (nextItem) {
+          this.hasHandledTrackEnd = true;
+          this.startCrossfade(nextItem).then((started) => {
+            if (started) {
+              store.skipToIndex(nextIndex);
+            } else {
+              this.hasHandledTrackEnd = false;
+            }
+          });
+        }
+      }
+    }
+  }
+
+  private async preloadNextTrack() {
+    if (this.isPreloading || this.preloadedPlayer) return;
+
+    const store = usePlayerStore.getState();
+    const { enabled: crossfadeEnabled } = this.getCrossfadeSettings();
+
+    if (crossfadeEnabled) return;
+
+    const hasNext = store.currentQueueIndex < store.queue.length - 1 || store.music.repeatMode === 'all';
+    if (!hasNext || store.music.repeatMode === 'one') return;
+
+    let nextIndex = store.currentQueueIndex + 1;
+    if (nextIndex >= store.queue.length && store.music.repeatMode === 'all') {
+      nextIndex = 0;
+    }
+
+    const nextItem = store.queue[nextIndex]?.item;
+    if (!nextItem || nextItem.Id === this.preloadedItemId) return;
+
+    this.isPreloading = true;
+
+    try {
+      const container = nextItem.MediaSources?.[0]?.Container?.toLowerCase();
+      const useDirectStream = container === 'm4b' || container === 'm4a' || container === 'mp4';
+
+      let playbackUrl: string;
+      const downloadStore = useDownloadStore.getState();
+      const downloadedItem = downloadStore.getDownloadedItem(nextItem.Id);
+
+      if (downloadedItem?.localPath) {
+        const fileInfo = await FileSystem.getInfoAsync(downloadedItem.localPath);
+        if (fileInfo.exists) {
+          playbackUrl = downloadedItem.localPath;
+        } else {
+          playbackUrl = getAudioStreamUrl(nextItem.Id, { directStream: useDirectStream });
+        }
+      } else {
+        playbackUrl = getAudioStreamUrl(nextItem.Id, { directStream: useDirectStream });
+      }
+
+      this.preloadedPlayer = createAudioPlayer({ uri: playbackUrl });
+      this.preloadedItemId = nextItem.Id;
+    } catch (error) {
+      this.clearPreloadedPlayer();
+    } finally {
+      this.isPreloading = false;
+    }
+  }
+
+  private clearPreloadedPlayer() {
+    if (this.preloadedPlayer) {
+      try {
+        this.preloadedPlayer.remove();
+      } catch (e) {}
+      this.preloadedPlayer = null;
+      this.preloadedItemId = null;
+    }
+  }
+
+  private usePreloadedPlayer(itemId: string): AudioPlayer | null {
+    if (this.preloadedPlayer && this.preloadedItemId === itemId) {
+      const player = this.preloadedPlayer;
+      this.preloadedPlayer = null;
+      this.preloadedItemId = null;
+      return player;
+    }
+    this.clearPreloadedPlayer();
+    return null;
+  }
+
+  private checkPreloadTrigger(positionMs: number, durationMs: number) {
+    const { enabled: crossfadeEnabled } = this.getCrossfadeSettings();
+    if (crossfadeEnabled) return;
+
+    const timeRemaining = durationMs - positionMs;
+    const preloadThreshold = 10000;
+
+    if (timeRemaining <= preloadThreshold && timeRemaining > preloadThreshold - 500) {
+      this.preloadNextTrack();
     }
   }
 
@@ -354,19 +561,14 @@ class AudioService {
 
   async seek(positionMs: number) {
     if (!this.player) {
-      console.log('Cannot seek - no player');
       return;
     }
 
     this.isSeeking = true;
     const positionSec = positionMs / 1000;
-    console.log(`Seeking to ${positionSec}s (${positionMs}ms), player exists: ${!!this.player}`);
 
     try {
       await this.player.seekTo(positionSec);
-      // Log current position after seek to verify it worked
-      const currentTime = (this.player as any).currentTime;
-      console.log(`Seek complete, player reports position: ${currentTime}s`);
     } catch (e) {
       console.error('Seek error:', e);
     }
@@ -380,13 +582,11 @@ class AudioService {
 
   setPlaybackRate(rate: number) {
     if (!this.player) {
-      console.log('Cannot set rate - no player');
       return;
     }
     try {
       const clampedRate = Math.min(Math.max(rate, 0.5), 2.0);
       (this.player as any).setPlaybackRate(clampedRate, 'high');
-      console.log(`Playback rate set to ${clampedRate}x`);
     } catch (e) {
       console.error('Error setting playback rate:', e);
     }
@@ -394,6 +594,22 @@ class AudioService {
 
   async stop() {
     const store = usePlayerStore.getState();
+
+    if (this.crossfadeInterval) {
+      clearInterval(this.crossfadeInterval);
+      this.crossfadeInterval = null;
+    }
+
+    if (this.crossfadePlayer) {
+      try {
+        this.crossfadeStatusSubscription?.remove();
+        this.crossfadePlayer.remove();
+      } catch (e) {}
+      this.crossfadePlayer = null;
+      this.crossfadeStatusSubscription = null;
+    }
+
+    this.clearPreloadedPlayer();
 
     try {
       if (this.player && this.currentItemId && this.playSessionId) {
@@ -412,7 +628,6 @@ class AudioService {
       console.error('Error stopping audio:', error);
     }
 
-    // Clean up queue subscription to prevent memory leaks
     if (this.queueSubscription) {
       this.queueSubscription();
       this.queueSubscription = null;
@@ -426,6 +641,8 @@ class AudioService {
     this.currentItem = null;
     this.playSessionId = null;
     this.isInitialized = false;
+    this.isCrossfading = false;
+    this.isPreloading = false;
 
     store.clearCurrentItem();
   }

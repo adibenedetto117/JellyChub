@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { View, Text, Pressable, ScrollView, Modal, Dimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { GestureHandlerRootView, GestureDetector, Gesture } from 'react-native-gesture-handler';
@@ -147,6 +147,20 @@ export function EqualizerModal({ visible, onClose }: EqualizerModalProps) {
   );
 
   const translateY = useSharedValue(0);
+
+  useEffect(() => {
+    if (visible) {
+      translateY.value = 0;
+      const preset = getPresetById(equalizerPreset);
+      if (preset) {
+        if (equalizerPreset === 'custom') {
+          setLocalBands(customEqualizerBands);
+        } else {
+          setLocalBands(preset.bands);
+        }
+      }
+    }
+  }, [visible]);
 
   const isCustomPreset = equalizerPreset === 'custom';
   const currentPreset = getPresetById(equalizerPreset);

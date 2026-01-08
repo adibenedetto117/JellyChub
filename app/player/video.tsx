@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, Pressable, StatusBar, Dimensions, ActivityIndicator, ScrollView } from 'react-native';
+import { View, Text, Pressable, StatusBar, Dimensions, ActivityIndicator, ScrollView, Alert, Platform } from 'react-native';
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system';
 import { useLocalSearchParams, router } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -17,7 +19,7 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
-import { useVideoPlayer, VideoView } from 'expo-video';
+import { useVideoPlayer, VideoView, VideoAirPlayButton } from 'expo-video';
 import * as Haptics from 'expo-haptics';
 import * as Brightness from 'expo-brightness';
 import { VolumeManager } from 'react-native-volume-manager';
@@ -37,13 +39,71 @@ import {
   getSubtitleUrl,
 } from '@/api';
 import { downloadManager } from '@/services';
-import { formatPlayerTime, ticksToMs, msToTicks, getSubtitleStreams, getAudioStreams } from '@/utils';
+import { formatPlayerTime, ticksToMs, msToTicks, getSubtitleStreams, getAudioStreams, openInExternalPlayer, hasExternalPlayerSupport, getDisplayName, getDisplaySeriesName, goBack } from '@/utils';
+import { isTV, tvConstants } from '@/utils/platform';
+import { useTVRemoteHandler, useBackHandler } from '@/hooks';
 import { Ionicons } from '@expo/vector-icons';
 import { AudioTrackSelector } from '@/components/player/AudioTrackSelector';
 import { SubtitleSelector } from '@/components/player/SubtitleSelector';
-import type { MediaSource } from '@/types/jellyfin';
+import { SubtitleDisplay } from '@/components/player/SubtitleDisplay';
+import { SubtitleStyleModal } from '@/components/player/SubtitleStyleModal';
+import { BrightnessIndicator, VolumeIndicator, SubtitleOffsetControl, SeekIndicator } from '@/components/player/VideoPlayerControls';
+import { TVVideoPlayerControls } from '@/components/player/TVVideoPlayerControls';
+import { SleepTimerSelector, SleepTimerIndicator } from '@/components/player/SleepTimerSelector';
+import { OpenSubtitlesSearch } from '@/components/player/OpenSubtitlesSearch';
+import { ChapterList, ChapterMarkers, CurrentChapterDisplay, ChapterNavigation, type ChapterInfo } from '@/components/player/ChapterList';
+import { TrickplayPreview, TimeOnlyPreview } from '@/components/player/TrickplayPreview';
+import { openSubtitlesService } from '@/services';
+import type { MediaSource, TrickplayInfo } from '@/types/jellyfin';
+import type { VideoSleepTimer } from '@/types/player';
+import { isChromecastSupported, isAirPlaySupported, type CastMediaInfo } from '@/utils/casting';
+import { useChromecast, useCastButton } from '@/hooks';
+import { CastRemoteControl } from '@/components/player/CastRemoteControl';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+// Playback speed options for video player (0.25x to 3x)
+const VIDEO_SPEED_OPTIONS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3];
+
+const subtitleCache = new Map<string, Array<{ start: number; end: number; text: string }>>();
+
+const IMAGE_BASED_SUBTITLE_CODECS = [
+  'pgs', 'pgssub', 'hdmv_pgs_subtitle', 'dvdsub', 'dvd_subtitle',
+  'vobsub', 'dvbsub', 'dvb_subtitle', 'xsub',
+];
+
+function isTextBasedSubtitle(codec?: string): boolean {
+  if (!codec) return true;
+  return !IMAGE_BASED_SUBTITLE_CODECS.includes(codec.toLowerCase());
+}
+
+function findSubtitleCue(cues: Array<{ start: number; end: number; text: string }>, position: number): { start: number; end: number; text: string } | null {
+  if (cues.length === 0) return null;
+
+  let left = 0;
+  let right = cues.length - 1;
+  let bestMatch: { start: number; end: number; text: string } | null = null;
+
+  while (left <= right) {
+    const mid = Math.floor((left + right) / 2);
+    const cue = cues[mid];
+
+    if (position >= cue.start && position <= cue.end) {
+      return cue;
+    } else if (position < cue.start) {
+      right = mid - 1;
+    } else {
+      bestMatch = cue;
+      left = mid + 1;
+    }
+  }
+
+  if (bestMatch && position >= bestMatch.start && position <= bestMatch.end + 100) {
+    return bestMatch;
+  }
+
+  return null;
+}
 
 // Custom SkipIcon component - kept because it displays the seconds text overlay on the refresh icon
 function SkipIcon({ size = 24, seconds = 10, direction = 'forward', color = '#fff' }: { size?: number; seconds?: number; direction?: 'forward' | 'back'; color?: string }) {
@@ -66,6 +126,9 @@ export default function VideoPlayerScreen() {
   const shouldAutoResume = resume === 'true';
   const currentUser = useAuthStore((state) => state.currentUser);
   const accentColor = useSettingsStore((s) => s.accentColor);
+  const subtitleSettings = useSettingsStore((s) => s.player);
+  const externalPlayerEnabled = useSettingsStore((s) => s.player.externalPlayerEnabled ?? true);
+  const hideMedia = useSettingsStore((s) => s.hideMedia);
   const getDownloadedItem = useDownloadStore((s) => s.getDownloadedItem);
   const userId = currentUser?.Id ?? '';
   const insets = useSafeAreaInsets();
@@ -81,6 +144,13 @@ export default function VideoPlayerScreen() {
   const setProgress = usePlayerStore((s) => s.setProgress);
   const setCurrentItem = usePlayerStore((s) => s.setCurrentItem);
   const clearCurrentItem = usePlayerStore((s) => s.clearCurrentItem);
+  const subtitleOffset = usePlayerStore((s) => s.video.subtitleOffset);
+  const setSubtitleOffset = usePlayerStore((s) => s.setSubtitleOffset);
+  const videoPlaybackSpeed = usePlayerStore((s) => s.video.playbackSpeed);
+  const setVideoPlaybackSpeed = usePlayerStore((s) => s.setVideoPlaybackSpeed);
+  const sleepTimer = usePlayerStore((s) => s.video.sleepTimer);
+  const setVideoSleepTimer = usePlayerStore((s) => s.setVideoSleepTimer);
+  const clearVideoSleepTimer = usePlayerStore((s) => s.clearVideoSleepTimer);
 
   const [showControls, setShowControls] = useState(true);
   const [isSeeking, setIsSeeking] = useState(false);
@@ -88,6 +158,12 @@ export default function VideoPlayerScreen() {
   const [seekPosition, setSeekPosition] = useState(0);
   const [showAudioSelector, setShowAudioSelector] = useState(false);
   const [showSubtitleSelector, setShowSubtitleSelector] = useState(false);
+  const [showSubtitleStyleModal, setShowSubtitleStyleModal] = useState(false);
+  const [showSubtitleOffset, setShowSubtitleOffset] = useState(false);
+  const [showOpenSubtitlesSearch, setShowOpenSubtitlesSearch] = useState(false);
+  const [externalSubtitleCues, setExternalSubtitleCues] = useState<Array<{ start: number; end: number; text: string }> | null>(null);
+  const [showSpeedSelector, setShowSpeedSelector] = useState(false);
+  const [showSleepTimerSelector, setShowSleepTimerSelector] = useState(false);
   const [skipIndicator, setSkipIndicator] = useState<{ direction: 'left' | 'right'; visible: boolean }>({ direction: 'left', visible: false });
   const [playSessionId] = useState(() => generatePlaySessionId());
   const [mediaSource, setMediaSource] = useState<MediaSource | null>(null);
@@ -110,6 +186,22 @@ export default function VideoPlayerScreen() {
   const [nextEpisode, setNextEpisode] = useState<any>(null);
   const [subtitleCues, setSubtitleCues] = useState<Array<{ start: number; end: number; text: string }>>([]);
   const [currentSubtitle, setCurrentSubtitle] = useState<string>('');
+  const [subtitlesLoading, setSubtitlesLoading] = useState(false);
+  const [subtitleLoadError, setSubtitleLoadError] = useState<string | null>(null);
+  const [showChapterList, setShowChapterList] = useState(false);
+
+  const [abLoop, setAbLoop] = useState<{ a: number | null; b: number | null }>({ a: null, b: null });
+  const [controlsLocked, setControlsLocked] = useState(false);
+  const [showFrameControls, setShowFrameControls] = useState(false);
+
+  const chromecast = useChromecast();
+  const CastButton = useCastButton();
+  const [showCastRemote, setShowCastRemote] = useState(false);
+  const [castMediaInfo, setCastMediaInfo] = useState<CastMediaInfo | null>(null);
+  const wasCasting = useRef(false);
+  const castResumePosition = useRef<number | null>(null);
+
+  const [externalPlayerAvailable, setExternalPlayerAvailable] = useState(false);
 
   // Brightness/Volume gesture state
   const [currentBrightness, setCurrentBrightness] = useState(0.5);
@@ -117,8 +209,13 @@ export default function VideoPlayerScreen() {
   const [showBrightnessIndicator, setShowBrightnessIndicator] = useState(false);
   const [showVolumeIndicator, setShowVolumeIndicator] = useState(false);
   const [gestureStartValue, setGestureStartValue] = useState(0);
+  const [isHorizontalSeeking, setIsHorizontalSeeking] = useState(false);
+  const [horizontalSeekPosition, setHorizontalSeekPosition] = useState(0);
+  const [horizontalSeekDelta, setHorizontalSeekDelta] = useState(0);
   const brightnessIndicatorTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const volumeIndicatorTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const gestureStartX = useRef(0);
+  const gestureStartPosition = useRef(0);
 
   const controlsTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const progressInterval = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -137,6 +234,9 @@ export default function VideoPlayerScreen() {
 
   const playerKey = useRef(0);
   const isPlayerValid = useRef(true);
+  const isPlayerReady = useRef(false);
+  const pendingSubtitleLoad = useRef<{ itemId: string; mediaSourceId: string; index: number } | null>(null);
+  const pendingSubtitleSelection = useRef<{ itemId: string; mediaSourceId: string; index: number } | null>(null);
 
   const player = useVideoPlayer(streamUrl ?? '', (p) => {
     p.loop = false;
@@ -146,8 +246,10 @@ export default function VideoPlayerScreen() {
   useEffect(() => {
     playerKey.current += 1;
     isPlayerValid.current = true;
+    isPlayerReady.current = false;
     return () => {
       isPlayerValid.current = false;
+      isPlayerReady.current = false;
     };
   }, [streamUrl]);
 
@@ -222,6 +324,16 @@ export default function VideoPlayerScreen() {
 
   const isNavigatingRef = useRef(false);
 
+  // Auto-clear subtitle error after 5 seconds
+  useEffect(() => {
+    if (subtitleLoadError) {
+      const timeout = setTimeout(() => {
+        setSubtitleLoadError(null);
+      }, 5000);
+      return () => clearTimeout(timeout);
+    }
+  }, [subtitleLoadError]);
+
   // Initialize brightness and volume values on mount
   useEffect(() => {
     const initBrightnessAndVolume = async () => {
@@ -239,6 +351,36 @@ export default function VideoPlayerScreen() {
       }
     };
     initBrightnessAndVolume();
+  }, []);
+
+  useEffect(() => {
+    if (!chromecast.isAvailable) return;
+
+    if (chromecast.isConnected && !wasCasting.current && castMediaInfo) {
+      wasCasting.current = true;
+      player?.pause();
+      setShowCastRemote(true);
+    }
+
+    if (!chromecast.isConnected && wasCasting.current) {
+      wasCasting.current = false;
+      setShowCastRemote(false);
+
+      if (castResumePosition.current !== null && player) {
+        const resumePos = castResumePosition.current;
+        castResumePosition.current = null;
+        try {
+          player.currentTime = resumePos / 1000;
+          player.play();
+        } catch {
+        }
+      }
+    }
+  }, [chromecast.isConnected, chromecast.isAvailable, castMediaInfo, player]);
+
+  // Check external player availability
+  useEffect(() => {
+    hasExternalPlayerSupport().then(setExternalPlayerAvailable);
   }, []);
 
   useEffect(() => {
@@ -311,17 +453,18 @@ export default function VideoPlayerScreen() {
           setSelectedAudioIndex(preferredAudio.index);
         }
 
-        // Auto-select subtitle based on settings
         const playerSettings = useSettingsStore.getState().player;
         const preferredSubLang = playerSettings.defaultSubtitleLanguage;
         const forceSubtitles = playerSettings.forceSubtitles;
 
-        if (subtitles.length > 0 && (preferredSubLang || forceSubtitles)) {
-          const preferredSub = subtitles.find((s) => s.language?.toLowerCase() === preferredSubLang?.toLowerCase())
-            || subtitles.find((s) => s.isDefault)
-            || (forceSubtitles ? subtitles[0] : undefined);
+        const textSubtitles = subtitles.filter((s) => isTextBasedSubtitle(s.codec));
+
+        if (textSubtitles.length > 0 && (preferredSubLang || forceSubtitles)) {
+          const preferredSub = textSubtitles.find((s) => s.language?.toLowerCase() === preferredSubLang?.toLowerCase())
+            || textSubtitles.find((s) => s.isDefault)
+            || (forceSubtitles ? textSubtitles[0] : undefined);
           if (preferredSub) {
-            loadSubtitleTrack(item.Id, source.Id, preferredSub.index);
+            pendingSubtitleSelection.current = { itemId: item.Id, mediaSourceId: source.Id, index: preferredSub.index };
             setSelectedSubtitleIndex(preferredSub.index);
           }
         }
@@ -395,114 +538,205 @@ export default function VideoPlayerScreen() {
     setPlayerState('playing');
   }, [item, playSessionId, localFilePath]);
 
-  const loadSubtitleTrack = useCallback(async (itemId: string, mediaSourceId: string, index: number) => {
+  const loadSubtitleTrack = useCallback(async (itemId: string, mediaSourceId: string, index: number, retryCount = 0): Promise<boolean> => {
+    // Track this load request to detect race conditions
+    const loadRequest = { itemId, mediaSourceId, index };
+    pendingSubtitleLoad.current = loadRequest;
+
+    setSubtitlesLoading(true);
+    setSubtitleLoadError(null);
+
+    // Check cache first
+    const cacheKey = `${itemId}-${mediaSourceId}-${index}`;
+    const cachedCues = subtitleCache.get(cacheKey);
+    if (cachedCues && cachedCues.length > 0) {
+      // Verify this is still the current request (no race condition)
+      if (pendingSubtitleLoad.current === loadRequest) {
+        setSubtitleCues(cachedCues);
+        setSubtitlesLoading(false);
+        console.log(`[Subtitles] Loaded ${cachedCues.length} cues from cache`);
+      }
+      return true;
+    }
+
     const tryFetch = async (format: string): Promise<string | null> => {
       try {
         const url = getSubtitleUrl(itemId, mediaSourceId, index, format);
+        console.log(`[Subtitles] Trying format ${format}: ${url}`);
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 10000);
+        const timeout = setTimeout(() => controller.abort(), 15000); // Increased timeout
         const res = await fetch(url, { signal: controller.signal });
         clearTimeout(timeout);
-        if (!res.ok) return null;
-        return await res.text();
-      } catch (e) {
+        if (!res.ok) {
+          console.warn(`[Subtitles] HTTP ${res.status} for format ${format}`);
+          return null;
+        }
+        const text = await res.text();
+        console.log(`[Subtitles] Got ${text.length} bytes for format ${format}`);
+        return text;
+      } catch (e: any) {
+        console.warn(`[Subtitles] Fetch error for format ${format}:`, e?.message || e);
         return null;
       }
     };
 
-    // Try multiple formats in order of preference
-    let text = await tryFetch('vtt');
-    if (!text || text.length < 10) {
-      text = await tryFetch('srt');
-    }
-    if (!text || text.length < 10) {
-      text = await tryFetch('ass');
-    }
-    if (!text || text.length < 10) {
-      text = await tryFetch('ssa');
-    }
-
-    if (!text || text.length < 10) {
-      setSubtitleCues([]);
-      return;
-    }
-
-    const cues: Array<{ start: number; end: number; text: string }> = [];
-
-    // Parse time string to milliseconds
-    const parseTime = (t: string): number => {
-      const cleaned = t.replace(',', '.').trim();
-      const parts = cleaned.split(':');
-      if (parts.length === 3) {
-        return parseFloat(parts[0]) * 3600000 + parseFloat(parts[1]) * 60000 + parseFloat(parts[2]) * 1000;
-      } else if (parts.length === 2) {
-        return parseFloat(parts[0]) * 60000 + parseFloat(parts[1]) * 1000;
+    try {
+      // Try multiple formats in order of preference
+      let text = await tryFetch('vtt');
+      if (!text || text.length < 10) {
+        text = await tryFetch('srt');
       }
-      return 0;
-    };
+      if (!text || text.length < 10) {
+        text = await tryFetch('ass');
+      }
+      if (!text || text.length < 10) {
+        text = await tryFetch('ssa');
+      }
 
-    // Check if ASS/SSA format (has [Script Info] or Dialogue:)
-    const isAss = text.includes('[Script Info]') || text.includes('Dialogue:');
+      // Check if this request is still current (handle race condition)
+      if (pendingSubtitleLoad.current !== loadRequest) {
+        console.log('[Subtitles] Load cancelled - newer request pending');
+        return false;
+      }
 
-    if (isAss) {
-      // Parse ASS/SSA format
-      const lines = text.split('\n');
-      for (const line of lines) {
-        if (line.startsWith('Dialogue:')) {
-          const parts = line.substring(9).split(',');
-          if (parts.length >= 10) {
-            const startTime = parseTime(parts[1]);
-            const endTime = parseTime(parts[2]);
-            // Text is everything after the 9th comma, remove ASS style tags
-            const subtitleText = parts.slice(9).join(',')
-              .replace(/\{[^}]*\}/g, '')
-              .replace(/\\N/g, '\n')
-              .replace(/\\n/g, '\n')
-              .trim();
-            if (subtitleText) {
-              cues.push({ start: startTime, end: endTime, text: subtitleText });
+      if (!text || text.length < 10) {
+        // Retry up to 2 times with exponential backoff
+        if (retryCount < 2) {
+          const delay = Math.pow(2, retryCount) * 1000; // 1s, 2s
+          console.log(`[Subtitles] Retrying in ${delay}ms (attempt ${retryCount + 2}/3)`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          return loadSubtitleTrack(itemId, mediaSourceId, index, retryCount + 1);
+        }
+        console.error('[Subtitles] All format attempts failed after retries');
+        if (pendingSubtitleLoad.current === loadRequest) {
+          setSubtitleCues([]);
+          setSubtitlesLoading(false);
+          setSubtitleLoadError('Failed to load subtitles');
+        }
+        return false;
+      }
+
+      const cues: Array<{ start: number; end: number; text: string }> = [];
+
+      // Parse time string to milliseconds
+      const parseTime = (t: string): number => {
+        const cleaned = t.replace(',', '.').trim();
+        const parts = cleaned.split(':');
+        if (parts.length === 3) {
+          return parseFloat(parts[0]) * 3600000 + parseFloat(parts[1]) * 60000 + parseFloat(parts[2]) * 1000;
+        } else if (parts.length === 2) {
+          return parseFloat(parts[0]) * 60000 + parseFloat(parts[1]) * 1000;
+        }
+        return 0;
+      };
+
+      // Check if ASS/SSA format (has [Script Info] or Dialogue:)
+      const isAss = text.includes('[Script Info]') || text.includes('Dialogue:');
+
+      if (isAss) {
+        // Parse ASS/SSA format
+        const lines = text.split('\n');
+        for (const line of lines) {
+          if (line.startsWith('Dialogue:')) {
+            const parts = line.substring(9).split(',');
+            if (parts.length >= 10) {
+              const startTime = parseTime(parts[1]);
+              const endTime = parseTime(parts[2]);
+              // Text is everything after the 9th comma, remove ASS style tags
+              const subtitleText = parts.slice(9).join(',')
+                .replace(/\{[^}]*\}/g, '')
+                .replace(/\\N/g, '\n')
+                .replace(/\\n/g, '\n')
+                .trim();
+              if (subtitleText) {
+                cues.push({ start: startTime, end: endTime, text: subtitleText });
+              }
             }
           }
         }
-      }
-    } else {
-      // Parse VTT/SRT format
-      const lines = text.split('\n');
-      let i = 0;
-      while (i < lines.length) {
-        const line = lines[i].trim();
-        if (line.includes('-->')) {
-          const [startStr, endStr] = line.split('-->').map(s => s.trim());
-          const start = parseTime(startStr);
-          const end = parseTime(endStr.split(' ')[0]);
-          const textLines: string[] = [];
-          i++;
-          while (i < lines.length && lines[i].trim() !== '') {
-            textLines.push(lines[i].trim());
+      } else {
+        // Parse VTT/SRT format
+        const lines = text.split('\n');
+        let i = 0;
+        while (i < lines.length) {
+          const line = lines[i].trim();
+          if (line.includes('-->')) {
+            const [startStr, endStr] = line.split('-->').map(s => s.trim());
+            const start = parseTime(startStr);
+            const end = parseTime(endStr.split(' ')[0]);
+            const textLines: string[] = [];
             i++;
+            while (i < lines.length && lines[i].trim() !== '') {
+              textLines.push(lines[i].trim());
+              i++;
+            }
+            if (textLines.length > 0) {
+              cues.push({ start, end, text: textLines.join('\n').replace(/<[^>]+>/g, '') });
+            }
           }
-          if (textLines.length > 0) {
-            cues.push({ start, end, text: textLines.join('\n').replace(/<[^>]+>/g, '') });
-          }
+          i++;
         }
-        i++;
       }
-    }
 
-    setSubtitleCues(cues);
+      // Final race condition check before setting state
+      if (pendingSubtitleLoad.current !== loadRequest) {
+        console.log('[Subtitles] Load cancelled - newer request pending');
+        return false;
+      }
+
+      // Sort cues by start time to ensure correct order
+      cues.sort((a, b) => a.start - b.start);
+
+      // Cache the parsed cues
+      subtitleCache.set(cacheKey, cues);
+      setSubtitleCues(cues);
+      setSubtitlesLoading(false);
+      console.log(`[Subtitles] Successfully loaded ${cues.length} cues`);
+      return cues.length > 0;
+    } catch (error: any) {
+      console.error('[Subtitles] Error loading subtitle track:', error?.message || error);
+      if (pendingSubtitleLoad.current === loadRequest) {
+        setSubtitleCues([]);
+        setSubtitlesLoading(false);
+        setSubtitleLoadError('Error loading subtitles');
+      }
+      return false;
+    }
   }, []);
 
   const handleSelectSubtitle = useCallback(async (index: number | undefined) => {
     setSelectedSubtitleIndex(index);
     setCurrentSubtitle('');
+    setExternalSubtitleCues(null);
 
     if (index === undefined || !mediaSource || !item) {
+      pendingSubtitleLoad.current = null;
+      pendingSubtitleSelection.current = null;
+      setSubtitleCues([]);
+      setSubtitlesLoading(false);
+      setSubtitleLoadError(null);
+      return;
+    }
+
+    const selectedTrack = jellyfinSubtitleTracks.find((t) => t.index === index);
+    if (selectedTrack && !isTextBasedSubtitle(selectedTrack.codec)) {
+      setSubtitleLoadError('Image-based subtitles require transcoding');
       setSubtitleCues([]);
       return;
     }
 
-    await loadSubtitleTrack(item.Id, mediaSource.Id, index);
-  }, [mediaSource, item, loadSubtitleTrack]);
+    const success = await loadSubtitleTrack(item.Id, mediaSource.Id, index);
+    if (!success) {
+      console.warn('[Subtitles] Failed to load selected subtitle track');
+    }
+  }, [mediaSource, item, loadSubtitleTrack, jellyfinSubtitleTracks]);
+
+  const handleExternalSubtitleSelect = useCallback((cues: Array<{ start: number; end: number; text: string }>) => {
+    setExternalSubtitleCues(cues);
+    setSelectedSubtitleIndex(undefined);
+    setSubtitleCues([]);
+    setCurrentSubtitle('');
+  }, []);
 
   const handleSelectAudio = useCallback((index: number) => {
     setSelectedAudioIndex(index);
@@ -584,13 +818,27 @@ export default function VideoPlayerScreen() {
       if (status === 'readyToPlay') {
         setPlayerState('playing');
         setIsBuffering(false);
+        isPlayerReady.current = true;
+
         if (!hasResumedPosition.current && resumePositionMs.current > 0) {
           hasResumedPosition.current = true;
           try {
             player.currentTime = resumePositionMs.current / 1000;
           } catch (e) {}
         }
-        // Auto-select audio track based on settings
+
+        if (pendingSubtitleSelection.current) {
+          const { itemId: subItemId, mediaSourceId, index } = pendingSubtitleSelection.current;
+          pendingSubtitleSelection.current = null;
+          loadSubtitleTrack(subItemId, mediaSourceId, index);
+        }
+
+        try {
+          const savedSpeed = usePlayerStore.getState().video.playbackSpeed;
+          if (savedSpeed !== 1) {
+            player.playbackRate = savedSpeed;
+          }
+        } catch (e) {}
         try {
           const availableTracks = player.availableAudioTracks || [];
           if (availableTracks.length > 0 && selectedAudioIndex !== undefined) {
@@ -662,9 +910,11 @@ export default function VideoPlayerScreen() {
       if (payload.isPlaying) {
         setIsBuffering(false);
         setPlayerState('playing');
+        setShowFrameControls(false);
       } else {
         if (!isBuffering) {
           setPlayerState('paused');
+          setShowFrameControls(true);
         }
       }
     });
@@ -675,7 +925,7 @@ export default function VideoPlayerScreen() {
         playingSub.remove();
       } catch (e) {}
     };
-  }, [player, isBuffering, selectedAudioIndex, jellyfinAudioTracks]);
+  }, [player, isBuffering, selectedAudioIndex, jellyfinAudioTracks, loadSubtitleTrack]);
 
   const progressReportInterval = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastReportedPosition = useRef(0);
@@ -721,10 +971,16 @@ export default function VideoPlayerScreen() {
           if (timeRemaining < 2000 && timeRemaining > 0 && nextEpisode && autoPlayEnabled) {
             handlePlayNextEpisode();
           }
+
+          if (abLoop.a !== null && abLoop.b !== null && currentPosition >= abLoop.b) {
+            player.currentTime = abLoop.a / 1000;
+          }
         }
 
-        if (selectedSubtitleIndex !== undefined && subtitleCues.length > 0) {
-          const activeCue = subtitleCues.find(cue => currentPosition >= cue.start && currentPosition <= cue.end);
+        const activeCueSources = externalSubtitleCues || (selectedSubtitleIndex !== undefined ? subtitleCues : null);
+        if (activeCueSources && activeCueSources.length > 0) {
+          const adjustedPosition = currentPosition - subtitleOffset;
+          const activeCue = findSubtitleCue(activeCueSources, adjustedPosition);
           setCurrentSubtitle(activeCue?.text || '');
         } else {
           setCurrentSubtitle('');
@@ -737,7 +993,7 @@ export default function VideoPlayerScreen() {
     return () => {
       if (progressInterval.current) clearInterval(progressInterval.current);
     };
-  }, [mediaSource, player, subtitleCues, introStart, introEnd, creditsStart, creditsEnd, nextEpisode, showNextUpCard, selectedSubtitleIndex]);
+  }, [mediaSource, player, subtitleCues, externalSubtitleCues, introStart, introEnd, creditsStart, creditsEnd, nextEpisode, showNextUpCard, selectedSubtitleIndex, subtitleOffset, abLoop]);
 
   useEffect(() => {
     if (!mediaSource || !player) return;
@@ -772,6 +1028,22 @@ export default function VideoPlayerScreen() {
       if (progressReportInterval.current) clearInterval(progressReportInterval.current);
     };
   }, [playerState, mediaSource, player, itemId, playSessionId]);
+
+  useEffect(() => {
+    if (!sleepTimer || !player) return;
+
+    const checkSleepTimer = () => {
+      const now = Date.now();
+      if (now >= sleepTimer.endTime) {
+        player.pause();
+        clearVideoSleepTimer();
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+    };
+
+    const interval = setInterval(checkSleepTimer, 1000);
+    return () => clearInterval(interval);
+  }, [sleepTimer, player, clearVideoSleepTimer]);
 
   // Report playback stopped on unmount (handles back button, etc.)
   useEffect(() => {
@@ -882,6 +1154,7 @@ export default function VideoPlayerScreen() {
   }, [hideControlsDelayed]);
 
   const toggleControls = useCallback(() => {
+    if (controlsLocked) return;
     if (showControls) {
       if (controlsTimeout.current) clearTimeout(controlsTimeout.current);
       controlsOpacity.value = withTiming(0, { duration: 250 });
@@ -889,7 +1162,7 @@ export default function VideoPlayerScreen() {
     } else {
       showControlsNow();
     }
-  }, [showControls, showControlsNow]);
+  }, [showControls, showControlsNow, controlsLocked]);
 
   const handleClose = useCallback(() => {
     // Immediately pause playback
@@ -908,8 +1181,60 @@ export default function VideoPlayerScreen() {
 
     // Clear state and exit
     clearCurrentItem();
-    router.back();
+    goBack('/(tabs)/home');
   }, [player, mediaSource, itemId, playSessionId, progress.position, clearCurrentItem]);
+
+  const handleOpenExternalPlayer = useCallback(async () => {
+    if (!streamUrl || !item) return;
+
+    // Pause internal playback
+    try {
+      player?.pause();
+    } catch (e) {
+      // Ignore errors
+    }
+
+    // Get current position in milliseconds
+    let currentPosition = 0;
+    try {
+      currentPosition = Math.floor((player?.currentTime ?? 0) * 1000);
+    } catch (e) {
+      // Use progress state as fallback
+      currentPosition = Math.floor(progress.position);
+    }
+
+    // Determine mime type based on container
+    const container = mediaSource?.Container?.toLowerCase();
+    let mimeType = 'video/*';
+    if (container === 'mp4' || container === 'm4v') {
+      mimeType = 'video/mp4';
+    } else if (container === 'mkv') {
+      mimeType = 'video/x-matroska';
+    } else if (container === 'webm') {
+      mimeType = 'video/webm';
+    } else if (container === 'avi') {
+      mimeType = 'video/avi';
+    } else if (container === 'mov') {
+      mimeType = 'video/quicktime';
+    }
+
+    const success = await openInExternalPlayer(streamUrl, {
+      title: item.Name,
+      position: currentPosition,
+      mimeType,
+    });
+
+    // If external player opened successfully, we can optionally close this player
+    // For now, we'll let the user decide to come back or not
+    if (!success) {
+      // Resume playback if external player failed to open
+      try {
+        player?.play();
+      } catch (e) {
+        // Ignore errors
+      }
+    }
+  }, [streamUrl, item, player, progress.position, mediaSource]);
 
   const handlePlayPause = () => {
     if (!player) return;
@@ -956,6 +1281,98 @@ export default function VideoPlayerScreen() {
     showSkipAnimation(direction);
   }, [progress, handleSeek, showSkipAnimation]);
 
+  const handleSpeedChange = useCallback((speed: number) => {
+    if (!player) return;
+    try {
+      player.playbackRate = speed;
+      setVideoPlaybackSpeed(speed);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      setShowSpeedSelector(false);
+      showControlsNow();
+    } catch (e) {
+      console.warn('Failed to set playback speed:', e);
+    }
+  }, [player, setVideoPlaybackSpeed, showControlsNow]);
+
+  const handleSleepTimerSelect = useCallback((timer: VideoSleepTimer | undefined) => {
+    setVideoSleepTimer(timer);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }, [setVideoSleepTimer]);
+
+  const handleSetLoopA = useCallback(() => {
+    if (!player) return;
+    const currentPos = player.currentTime * 1000;
+    setAbLoop(prev => ({ ...prev, a: currentPos }));
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }, [player]);
+
+  const handleSetLoopB = useCallback(() => {
+    if (!player) return;
+    const currentPos = player.currentTime * 1000;
+    if (abLoop.a !== null && currentPos > abLoop.a) {
+      setAbLoop(prev => ({ ...prev, b: currentPos }));
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+  }, [player, abLoop.a]);
+
+  const handleClearLoop = useCallback(() => {
+    setAbLoop({ a: null, b: null });
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }, []);
+
+  const handleFrameStep = useCallback((direction: 'prev' | 'next') => {
+    if (!player) return;
+    const frameTime = 1 / 24;
+    const step = direction === 'next' ? frameTime : -frameTime;
+    player.currentTime = Math.max(0, player.currentTime + step);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }, [player]);
+
+  const toggleControlsLock = useCallback(() => {
+    setControlsLocked(prev => !prev);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  }, []);
+
+  const handleStartCasting = useCallback(async () => {
+    if (!item || !streamUrl || !mediaSource || !chromecast.isConnected) return;
+
+    const activeServer = useAuthStore.getState().getActiveServer();
+    const serverUrl = activeServer?.url;
+    const posterUrl = serverUrl
+      ? `${serverUrl}/Items/${item.Id}/Images/Primary?maxHeight=720`
+      : undefined;
+
+    const mediaInfo: CastMediaInfo = {
+      title: item.Name || 'Unknown',
+      subtitle: item.Type === 'Episode'
+        ? `S${item.ParentIndexNumber} E${item.IndexNumber} - ${item.SeriesName}`
+        : item.ProductionYear?.toString(),
+      imageUrl: posterUrl,
+      streamUrl: streamUrl,
+      contentType: 'video/mp4',
+      duration: progress.duration,
+      startPosition: progress.position,
+    };
+
+    setCastMediaInfo(mediaInfo);
+    const success = await chromecast.loadMedia(mediaInfo);
+
+    if (success) {
+      player?.pause();
+      setShowCastRemote(true);
+    }
+  }, [item, streamUrl, mediaSource, progress, player, chromecast]);
+
+  const handleCastDisconnect = useCallback((position: number) => {
+    castResumePosition.current = position;
+    setCastMediaInfo(null);
+    setShowCastRemote(false);
+  }, []);
+
+  const handleCastRemoteClose = useCallback(() => {
+    setShowCastRemote(false);
+  }, []);
+
   // Brightness/Volume gesture handlers
   const handleBrightnessChange = useCallback(async (value: number) => {
     const clampedValue = Math.max(0, Math.min(1, value));
@@ -997,56 +1414,77 @@ export default function VideoPlayerScreen() {
     }, 1500);
   }, []);
 
-  // Get screen width for gesture zones (needs to account for landscape)
-  const screenWidth = isPortrait ? SCREEN_WIDTH : SCREEN_HEIGHT;
-  const gestureZoneWidth = 80; // Width of the edge zones for brightness/volume
+  const gestureZoneWidth = 100;
 
-  // Brightness gesture (left edge, landscape only)
-  const brightnessGesture = Gesture.Pan()
-    .enabled(!isPortrait)
+  const handleHorizontalSeekStart = useCallback((startX: number) => {
+    gestureStartX.current = startX;
+    gestureStartPosition.current = progress.position;
+    setIsHorizontalSeeking(true);
+    setHorizontalSeekPosition(progress.position);
+    setHorizontalSeekDelta(0);
+  }, [progress.position]);
+
+  const handleHorizontalSeekUpdate = useCallback((translationX: number) => {
+    const sensitivity = 100;
+    const seekDelta = translationX * sensitivity;
+    const newPosition = Math.max(0, Math.min(progress.duration, gestureStartPosition.current + seekDelta));
+    setHorizontalSeekPosition(newPosition);
+    setHorizontalSeekDelta(seekDelta);
+  }, [progress.duration]);
+
+  const handleHorizontalSeekEnd = useCallback(() => {
+    if (isHorizontalSeeking) {
+      handleSeek(horizontalSeekPosition);
+      setIsHorizontalSeeking(false);
+      setHorizontalSeekDelta(0);
+    }
+  }, [isHorizontalSeeking, horizontalSeekPosition, handleSeek]);
+
+  const gestureActiveZone = useRef<'left' | 'right' | 'center' | null>(null);
+
+  const panGesture = Gesture.Pan()
+    .minDistance(10)
     .onStart((e) => {
-      if (e.x < gestureZoneWidth) {
+      const isInLeftZone = e.x < gestureZoneWidth;
+      const isInRightZone = e.x > SCREEN_WIDTH - gestureZoneWidth;
+
+      if (isInLeftZone && !isPortrait) {
+        gestureActiveZone.current = 'left';
         runOnJS(setGestureStartValue)(currentBrightness);
         runOnJS(showBrightnessIndicatorWithTimeout)();
         runOnJS(Haptics.impactAsync)(Haptics.ImpactFeedbackStyle.Light);
-      }
-    })
-    .onUpdate((e) => {
-      if (e.x < gestureZoneWidth) {
-        // Calculate brightness change based on vertical swipe (swipe up = brighter)
-        const deltaY = -e.translationY;
-        const sensitivity = 0.003; // Adjust sensitivity
-        const newValue = gestureStartValue + (deltaY * sensitivity);
-        runOnJS(handleBrightnessChange)(newValue);
-        runOnJS(showBrightnessIndicatorWithTimeout)();
-      }
-    })
-    .onEnd(() => {
-      // Indicator will hide via timeout
-    });
-
-  // Volume gesture (right edge, landscape only)
-  const volumeGesture = Gesture.Pan()
-    .enabled(!isPortrait)
-    .onStart((e) => {
-      if (e.x > screenWidth - gestureZoneWidth) {
+      } else if (isInRightZone && !isPortrait) {
+        gestureActiveZone.current = 'right';
         runOnJS(setGestureStartValue)(currentVolume);
         runOnJS(showVolumeIndicatorWithTimeout)();
         runOnJS(Haptics.impactAsync)(Haptics.ImpactFeedbackStyle.Light);
+      } else {
+        gestureActiveZone.current = 'center';
+        runOnJS(handleHorizontalSeekStart)(e.x);
       }
     })
     .onUpdate((e) => {
-      if (e.x > screenWidth - gestureZoneWidth) {
-        // Calculate volume change based on vertical swipe (swipe up = louder)
+      if (gestureActiveZone.current === 'left') {
         const deltaY = -e.translationY;
-        const sensitivity = 0.003; // Adjust sensitivity
+        const sensitivity = 0.003;
+        const newValue = gestureStartValue + (deltaY * sensitivity);
+        runOnJS(handleBrightnessChange)(newValue);
+        runOnJS(showBrightnessIndicatorWithTimeout)();
+      } else if (gestureActiveZone.current === 'right') {
+        const deltaY = -e.translationY;
+        const sensitivity = 0.003;
         const newValue = gestureStartValue + (deltaY * sensitivity);
         runOnJS(handleVolumeChange)(newValue);
         runOnJS(showVolumeIndicatorWithTimeout)();
+      } else if (gestureActiveZone.current === 'center') {
+        runOnJS(handleHorizontalSeekUpdate)(e.translationX);
       }
     })
     .onEnd(() => {
-      // Indicator will hide via timeout
+      if (gestureActiveZone.current === 'center') {
+        runOnJS(handleHorizontalSeekEnd)();
+      }
+      gestureActiveZone.current = null;
     });
 
   const tapGesture = Gesture.Tap().onEnd(() => {
@@ -1071,15 +1509,76 @@ export default function VideoPlayerScreen() {
       }
     });
 
-  // Combine brightness/volume pan gestures with tap gestures
-  // Pan gestures for brightness/volume take priority on edges, then double-tap for seeking, then single tap for controls
   const gesture = Gesture.Race(
-    Gesture.Simultaneous(brightnessGesture, volumeGesture),
+    panGesture,
     Gesture.Exclusive(
       Gesture.Simultaneous(doubleTapLeftGesture, doubleTapRightGesture),
       tapGesture
     )
   );
+
+  // TV Remote D-pad handler
+  useTVRemoteHandler({
+    onSelect: handlePlayPause,
+    onPlayPause: handlePlayPause,
+    onLeft: () => {
+      const newPosition = Math.max(0, progress.position - tvConstants.seekStepMs);
+      handleSeek(newPosition);
+      showSkipAnimation('left');
+    },
+    onRight: () => {
+      const newPosition = Math.min(progress.duration, progress.position + tvConstants.seekStepMs);
+      handleSeek(newPosition);
+      showSkipAnimation('right');
+    },
+    onUp: () => {
+      const newVolume = Math.min(1, currentVolume + tvConstants.volumeStep);
+      handleVolumeChange(newVolume);
+      showVolumeIndicatorWithTimeout();
+    },
+    onDown: () => {
+      const newVolume = Math.max(0, currentVolume - tvConstants.volumeStep);
+      handleVolumeChange(newVolume);
+      showVolumeIndicatorWithTimeout();
+    },
+    onLongLeft: () => {
+      // Fast rewind - 30 seconds
+      const newPosition = Math.max(0, progress.position - 30000);
+      handleSeek(newPosition);
+      showSkipAnimation('left');
+    },
+    onLongRight: () => {
+      // Fast forward - 30 seconds
+      const newPosition = Math.min(progress.duration, progress.position + 30000);
+      handleSeek(newPosition);
+      showSkipAnimation('right');
+    },
+    onMenu: () => {
+      // Toggle controls visibility on menu press
+      toggleControls();
+    },
+    onAnyKey: () => {
+      // Show controls on any key press
+      if (!showControls) {
+        showControlsNow();
+      }
+    },
+    enabled: isTV,
+  });
+
+  // Android TV back button handler
+  useBackHandler(() => {
+    if (showControls) {
+      // If controls are showing, hide them first
+      if (controlsTimeout.current) clearTimeout(controlsTimeout.current);
+      controlsOpacity.value = withTiming(0, { duration: 250 });
+      setShowControls(false);
+      return true;
+    }
+    // Otherwise close the player
+    handleClose();
+    return true;
+  }, isTV);
 
   const controlsStyle = useAnimatedStyle(() => ({
     opacity: controlsOpacity.value,
@@ -1103,12 +1602,23 @@ export default function VideoPlayerScreen() {
   const showLoadingIndicator = isLoading || isBuffering;
   const progressPercent = progress.duration > 0 ? ((isSeeking ? seekPosition : progress.position) / progress.duration) * 100 : 0;
 
+  const trickplayInfo: TrickplayInfo | null = (() => {
+    if (!item?.Trickplay || !mediaSource?.Id) return null;
+    const sourceData = item.Trickplay[mediaSource.Id];
+    if (!sourceData) return null;
+    const resolutions = Object.keys(sourceData).map(Number).sort((a, b) => a - b);
+    if (resolutions.length === 0) return null;
+    const selectedRes = resolutions[0];
+    return sourceData[selectedRes.toString()] || null;
+  })();
+
   const getSubtitle = () => {
     if (!item) return null;
     if (item.Type === 'Episode') {
-      return `S${item.ParentIndexNumber} E${item.IndexNumber} - ${item.SeriesName}`;
+      const seriesName = hideMedia ? 'TV Series' : item.SeriesName;
+      return `S${item.ParentIndexNumber} E${item.IndexNumber} - ${seriesName}`;
     }
-    if (item.ProductionYear) return item.ProductionYear.toString();
+    if (item.ProductionYear) return hideMedia ? '2024' : item.ProductionYear.toString();
     return null;
   };
 
@@ -1212,47 +1722,18 @@ export default function VideoPlayerScreen() {
             </>
           )}
 
-          {currentSubtitle !== '' && (() => {
-            const subtitleSettings = useSettingsStore.getState().player;
-            const fontSize = subtitleSettings.subtitleSize === 'small' ? 14 : subtitleSettings.subtitleSize === 'large' ? 24 : 18;
-            const bottomPosition = showControls ? 140 : 60;
-            return (
-              <View
-                style={{
-                  position: 'absolute',
-                  bottom: bottomPosition,
-                  left: 20,
-                  right: 20,
-                  alignItems: 'center',
-                }}
-                pointerEvents="none"
-              >
-                <View
-                  style={{
-                    backgroundColor: `${subtitleSettings.subtitleBackgroundColor}${Math.round(subtitleSettings.subtitleBackgroundOpacity * 255).toString(16).padStart(2, '0')}`,
-                    paddingHorizontal: 16,
-                    paddingVertical: 8,
-                    borderRadius: 4,
-                    maxWidth: '90%',
-                  }}
-                >
-                  <Text
-                    style={{
-                      color: subtitleSettings.subtitleTextColor,
-                      fontSize,
-                      fontWeight: '500',
-                      textAlign: 'center',
-                      textShadowColor: 'rgba(0,0,0,0.8)',
-                      textShadowOffset: { width: 1, height: 1 },
-                      textShadowRadius: 2,
-                    }}
-                  >
-                    {currentSubtitle}
-                  </Text>
-                </View>
-              </View>
-            );
-          })()}
+          <SubtitleDisplay
+            text={currentSubtitle}
+            showControls={showControls}
+            subtitleSize={subtitleSettings.subtitleSize}
+            subtitleTextColor={subtitleSettings.subtitleTextColor}
+            subtitleBackgroundColor={subtitleSettings.subtitleBackgroundColor}
+            subtitleBackgroundOpacity={subtitleSettings.subtitleBackgroundOpacity}
+            subtitlePosition={subtitleSettings.subtitlePosition}
+            subtitleOutlineStyle={subtitleSettings.subtitleOutlineStyle}
+            isLoading={subtitlesLoading && (selectedSubtitleIndex !== undefined || externalSubtitleCues !== null)}
+            error={subtitleLoadError}
+          />
 
           {showLoadingIndicator && (
             <View className="absolute inset-0 items-center justify-center">
@@ -1280,99 +1761,65 @@ export default function VideoPlayerScreen() {
             </View>
           </Animated.View>
 
-          {/* Brightness Indicator (left side) */}
-          {showBrightnessIndicator && !isPortrait && (
+          {abLoop.a !== null && abLoop.b !== null && (
             <View
               style={{
                 position: 'absolute',
-                left: 40,
-                top: '50%',
-                marginTop: -80,
+                top: 60,
+                left: '50%',
+                transform: [{ translateX: -50 }],
+                backgroundColor: '#a855f7',
+                paddingHorizontal: 12,
+                paddingVertical: 6,
+                borderRadius: 16,
+                flexDirection: 'row',
                 alignItems: 'center',
-                backgroundColor: 'rgba(0,0,0,0.7)',
-                borderRadius: 12,
-                padding: 16,
-                minWidth: 60,
+                gap: 6,
               }}
               pointerEvents="none"
             >
-              <Ionicons name="sunny" size={28} color="#fff" />
-              <View
-                style={{
-                  width: 6,
-                  height: 100,
-                  backgroundColor: 'rgba(255,255,255,0.3)',
-                  borderRadius: 3,
-                  marginTop: 12,
-                  overflow: 'hidden',
-                }}
-              >
-                <View
-                  style={{
-                    position: 'absolute',
-                    bottom: 0,
-                    left: 0,
-                    right: 0,
-                    height: `${currentBrightness * 100}%`,
-                    backgroundColor: accentColor,
-                    borderRadius: 3,
-                  }}
-                />
-              </View>
-              <Text style={{ color: '#fff', fontSize: 14, fontWeight: '600', marginTop: 8 }}>
-                {Math.round(currentBrightness * 100)}%
+              <Ionicons name="repeat" size={14} color="#fff" />
+              <Text style={{ color: '#fff', fontSize: 12, fontWeight: '600' }}>
+                A-B Loop
               </Text>
             </View>
           )}
 
-          {/* Volume Indicator (right side) */}
-          {showVolumeIndicator && !isPortrait && (
-            <View
-              style={{
-                position: 'absolute',
-                right: 40,
-                top: '50%',
-                marginTop: -80,
-                alignItems: 'center',
-                backgroundColor: 'rgba(0,0,0,0.7)',
-                borderRadius: 12,
-                padding: 16,
-                minWidth: 60,
-              }}
-              pointerEvents="none"
-            >
-              <Ionicons
-                name={currentVolume === 0 ? "volume-mute" : currentVolume < 0.5 ? "volume-low" : "volume-high"}
-                size={28}
-                color="#fff"
-              />
-              <View
-                style={{
-                  width: 6,
-                  height: 100,
-                  backgroundColor: 'rgba(255,255,255,0.3)',
-                  borderRadius: 3,
-                  marginTop: 12,
-                  overflow: 'hidden',
-                }}
-              >
-                <View
-                  style={{
-                    position: 'absolute',
-                    bottom: 0,
-                    left: 0,
-                    right: 0,
-                    height: `${currentVolume * 100}%`,
-                    backgroundColor: accentColor,
-                    borderRadius: 3,
-                  }}
-                />
-              </View>
-              <Text style={{ color: '#fff', fontSize: 14, fontWeight: '600', marginTop: 8 }}>
-                {Math.round(currentVolume * 100)}%
-              </Text>
-            </View>
+          {/* Brightness Indicator (left side) */}
+          {!isPortrait && (
+            <BrightnessIndicator
+              value={currentBrightness}
+              visible={showBrightnessIndicator}
+              accentColor={accentColor}
+            />
           )}
+
+          {/* Volume Indicator (right side) */}
+          {!isPortrait && (
+            <VolumeIndicator
+              value={currentVolume}
+              visible={showVolumeIndicator}
+              accentColor={accentColor}
+            />
+          )}
+
+          {/* Horizontal Seek Indicator */}
+          <SeekIndicator
+            visible={isHorizontalSeeking}
+            currentTime={progress.position}
+            seekTime={horizontalSeekPosition}
+            seekDelta={horizontalSeekDelta}
+            accentColor={accentColor}
+            formatTime={formatPlayerTime}
+          />
+
+          {/* Subtitle Offset Control */}
+          <SubtitleOffsetControl
+            offset={subtitleOffset}
+            onOffsetChange={setSubtitleOffset}
+            accentColor={accentColor}
+            visible={showSubtitleOffset && (selectedSubtitleIndex !== undefined || externalSubtitleCues !== null)}
+          />
 
           {/* Skip Intro Button */}
           {showSkipIntro && (
@@ -1445,6 +1892,34 @@ export default function VideoPlayerScreen() {
             </Pressable>
           )}
 
+          {/* TV Controls - Shown only on TV platforms */}
+          {isTV && (
+            <Animated.View style={controlsStyle} className="absolute inset-0" pointerEvents={showControls ? 'auto' : 'none'}>
+              <TVVideoPlayerControls
+                isPlaying={playerState === 'playing'}
+                isLoading={showLoadingIndicator}
+                onPlayPause={handlePlayPause}
+                onSeekBack={() => handleDoubleTapSeek('left')}
+                onSeekForward={() => handleDoubleTapSeek('right')}
+                onClose={handleClose}
+                position={progress.position}
+                duration={progress.duration}
+                buffered={progress.buffered}
+                title={getDisplayName(item, hideMedia)}
+                subtitle={getSubtitle() || undefined}
+                onSubtitlePress={() => setShowSubtitleSelector(true)}
+                onAudioPress={() => setShowAudioSelector(true)}
+                onSpeedPress={() => setShowSpeedSelector(true)}
+                playbackSpeed={videoPlaybackSpeed}
+                hasActiveSubtitle={selectedSubtitleIndex !== undefined}
+                onNextEpisode={handlePlayNextEpisode}
+                hasNextEpisode={!!nextEpisode}
+              />
+            </Animated.View>
+          )}
+
+          {/* Mobile/Tablet Controls - Hidden on TV */}
+          {!isTV && (
           <Animated.View style={controlsStyle} className="absolute inset-0" pointerEvents={showControls ? 'auto' : 'none'}>
             <LinearGradient
               colors={['rgba(0,0,0,0.8)', 'transparent', 'transparent', 'rgba(0,0,0,0.9)']}
@@ -1467,7 +1942,7 @@ export default function VideoPlayerScreen() {
 
                 <View className="flex-1 mr-2">
                   <Text className="text-white text-base font-bold" numberOfLines={1}>
-                    {item?.Name}
+                    {getDisplayName(item, hideMedia)}
                   </Text>
                   {getSubtitle() && (
                     <Text className="text-white/60 text-xs mt-0.5" numberOfLines={1}>
@@ -1481,10 +1956,45 @@ export default function VideoPlayerScreen() {
                     <Pressable
                       onPress={() => setShowSubtitleSelector(true)}
                       className="h-9 px-3 rounded-full items-center justify-center flex-row active:bg-white/20"
-                      style={{ backgroundColor: selectedSubtitleIndex !== undefined ? accentColor + '40' : 'rgba(255,255,255,0.1)' }}
+                      style={{ backgroundColor: (selectedSubtitleIndex !== undefined || externalSubtitleCues) ? accentColor + '40' : 'rgba(255,255,255,0.1)' }}
                     >
                       <Text className="text-white text-xs font-bold">CC</Text>
                     </Pressable>
+
+                    {openSubtitlesService.isConfigured() && (
+                      <Pressable
+                        onPress={() => setShowOpenSubtitlesSearch(true)}
+                        className="h-9 px-3 rounded-full items-center justify-center flex-row active:bg-white/20"
+                        style={{ backgroundColor: externalSubtitleCues ? accentColor + '40' : 'rgba(255,255,255,0.1)' }}
+                      >
+                        <Ionicons name="search" size={14} color="#fff" />
+                        <Text className="text-white text-xs font-medium ml-1">Sub</Text>
+                      </Pressable>
+                    )}
+
+                    {(selectedSubtitleIndex !== undefined || externalSubtitleCues) && (
+                      <>
+                        <Pressable
+                          onPress={() => setShowSubtitleStyleModal(true)}
+                          className="h-9 px-3 rounded-full items-center justify-center flex-row active:bg-white/20"
+                          style={{ backgroundColor: 'rgba(255,255,255,0.1)' }}
+                        >
+                          <Ionicons name="text-outline" size={14} color="#fff" />
+                        </Pressable>
+                        <Pressable
+                          onPress={() => setShowSubtitleOffset(prev => !prev)}
+                          className="h-9 px-3 rounded-full items-center justify-center flex-row active:bg-white/20"
+                          style={{ backgroundColor: showSubtitleOffset ? accentColor + '40' : 'rgba(255,255,255,0.1)' }}
+                        >
+                          <Ionicons name="time-outline" size={14} color="#fff" />
+                          {subtitleOffset !== 0 && (
+                            <Text className="text-white text-xs font-medium ml-1">
+                              {subtitleOffset > 0 ? '+' : ''}{(subtitleOffset / 1000).toFixed(1)}s
+                            </Text>
+                          )}
+                        </Pressable>
+                      </>
+                    )}
 
                     <Pressable
                       onPress={() => setShowAudioSelector(true)}
@@ -1492,6 +2002,71 @@ export default function VideoPlayerScreen() {
                     >
                       <Text className="text-white text-xs font-medium">Audio</Text>
                     </Pressable>
+
+                    {item?.Chapters && item.Chapters.length > 0 && (
+                      <Pressable
+                        onPress={() => setShowChapterList(true)}
+                        className="h-9 px-3 rounded-full bg-white/10 items-center justify-center flex-row active:bg-white/20"
+                      >
+                        <Ionicons name="list-outline" size={14} color="#fff" style={{ marginRight: 4 }} />
+                        <Text className="text-white text-xs font-medium">Ch</Text>
+                      </Pressable>
+                    )}
+
+                    <Pressable
+                      onPress={() => setShowSpeedSelector(true)}
+                      className="h-9 px-3 rounded-full items-center justify-center flex-row active:bg-white/20"
+                      style={{ backgroundColor: videoPlaybackSpeed !== 1 ? accentColor + '40' : 'rgba(255,255,255,0.1)' }}
+                    >
+                      <Text className="text-white text-xs font-medium">{videoPlaybackSpeed}x</Text>
+                    </Pressable>
+
+                    <View className="flex-row items-center gap-1">
+                      <Pressable
+                        onPress={handleSetLoopA}
+                        className="h-9 px-2 rounded-full items-center justify-center active:bg-white/20"
+                        style={{ backgroundColor: abLoop.a !== null ? accentColor + '40' : 'rgba(255,255,255,0.1)' }}
+                      >
+                        <Text className="text-white text-xs font-bold">A</Text>
+                      </Pressable>
+                      <Pressable
+                        onPress={handleSetLoopB}
+                        className="h-9 px-2 rounded-full items-center justify-center active:bg-white/20"
+                        style={{ backgroundColor: abLoop.b !== null ? accentColor + '40' : 'rgba(255,255,255,0.1)', opacity: abLoop.a === null ? 0.5 : 1 }}
+                      >
+                        <Text className="text-white text-xs font-bold">B</Text>
+                      </Pressable>
+                      {(abLoop.a !== null || abLoop.b !== null) && (
+                        <Pressable
+                          onPress={handleClearLoop}
+                          className="h-9 px-2 rounded-full bg-red-500/40 items-center justify-center active:bg-red-500/60"
+                        >
+                          <Ionicons name="close" size={14} color="#fff" />
+                        </Pressable>
+                      )}
+                    </View>
+
+                    <Pressable
+                      onPress={toggleControlsLock}
+                      className="w-9 h-9 rounded-full items-center justify-center active:bg-white/20"
+                      style={{ backgroundColor: controlsLocked ? '#ef4444' : 'rgba(255,255,255,0.1)' }}
+                    >
+                      <Ionicons name={controlsLocked ? "lock-closed" : "lock-open-outline"} size={16} color="#fff" />
+                    </Pressable>
+
+                    {sleepTimer ? (
+                      <SleepTimerIndicator
+                        sleepTimer={sleepTimer}
+                        onPress={() => setShowSleepTimerSelector(true)}
+                      />
+                    ) : (
+                      <Pressable
+                        onPress={() => setShowSleepTimerSelector(true)}
+                        className="w-9 h-9 rounded-full bg-white/10 items-center justify-center active:bg-white/20"
+                      >
+                        <Ionicons name="moon-outline" size={16} color="#fff" />
+                      </Pressable>
+                    )}
 
                     <Pressable
                       onPress={toggleRotationLock}
@@ -1515,6 +2090,53 @@ export default function VideoPlayerScreen() {
                     >
                       <Ionicons name="browsers-outline" size={18} color="#fff" />
                     </Pressable>
+
+                    {externalPlayerEnabled && externalPlayerAvailable && (
+                      <Pressable
+                        onPress={handleOpenExternalPlayer}
+                        className="w-9 h-9 rounded-full bg-white/10 items-center justify-center active:bg-white/20"
+                      >
+                        <Ionicons name="open-outline" size={16} color="#fff" />
+                      </Pressable>
+                    )}
+
+                    {/* AirPlay button (iOS only) */}
+                    {isAirPlaySupported && (
+                      <View className="w-9 h-9 rounded-full bg-white/10 items-center justify-center overflow-hidden">
+                        <VideoAirPlayButton
+                          tintColor="#fff"
+                          activeTintColor={accentColor}
+                          style={{ width: 36, height: 36 }}
+                        />
+                      </View>
+                    )}
+
+                    {isChromecastSupported && CastButton && (
+                      <Pressable
+                        onPress={chromecast.isConnected ? () => setShowCastRemote(true) : undefined}
+                        className="w-9 h-9 rounded-full items-center justify-center overflow-hidden"
+                        style={{ backgroundColor: chromecast.isConnected ? accentColor + '40' : 'rgba(255,255,255,0.1)' }}
+                      >
+                        {chromecast.isConnected ? (
+                          <Ionicons name="tv" size={18} color={accentColor} />
+                        ) : (
+                          <CastButton
+                            style={{ width: 36, height: 36, tintColor: '#fff' }}
+                          />
+                        )}
+                      </Pressable>
+                    )}
+
+                    {chromecast.isConnected && (
+                      <Pressable
+                        onPress={handleStartCasting}
+                        className="h-9 px-3 rounded-full items-center justify-center flex-row active:bg-white/20"
+                        style={{ backgroundColor: accentColor + '60' }}
+                      >
+                        <Ionicons name="play" size={14} color="#fff" style={{ marginRight: 4 }} />
+                        <Text className="text-white text-xs font-medium">Cast</Text>
+                      </Pressable>
+                    )}
                   </View>
                 )}
 
@@ -1539,39 +2161,74 @@ export default function VideoPlayerScreen() {
               </View>
             </View>
 
-            <View className="absolute inset-0 items-center justify-center flex-row">
-              <Pressable
-                onPress={() => handleSeek(Math.max(0, progress.position - 10000))}
-                className="w-14 h-14 rounded-full bg-white/10 items-center justify-center mx-6 active:bg-white/20"
-              >
-                <SkipIcon size={22} seconds={10} direction="back" color={accentColor} />
-              </Pressable>
-
-              <Animated.View style={playButtonStyle}>
+            <View className="absolute inset-0 items-center justify-center">
+              <View className="flex-row items-center">
                 <Pressable
-                  onPress={handlePlayPause}
-                  className="w-20 h-20 rounded-full items-center justify-center mx-6"
-                  style={{ backgroundColor: accentColor }}
+                  onPress={() => handleSeek(Math.max(0, progress.position - 10000))}
+                  className="w-14 h-14 rounded-full bg-white/10 items-center justify-center mx-6 active:bg-white/20"
                 >
-                  {showLoadingIndicator ? (
-                    <ActivityIndicator color="#fff" size="large" />
-                  ) : playerState === 'playing' ? (
-                    <Ionicons name="pause" size={36} color="#fff" />
-                  ) : (
-                    <Ionicons name="play" size={36} color="#fff" />
-                  )}
+                  <SkipIcon size={22} seconds={10} direction="back" color={accentColor} />
                 </Pressable>
-              </Animated.View>
 
-              <Pressable
-                onPress={() => handleSeek(Math.min(progress.duration, progress.position + 10000))}
-                className="w-14 h-14 rounded-full bg-white/10 items-center justify-center mx-6 active:bg-white/20"
-              >
-                <SkipIcon size={22} seconds={10} direction="forward" color={accentColor} />
-              </Pressable>
+                <Animated.View style={playButtonStyle}>
+                  <Pressable
+                    onPress={handlePlayPause}
+                    className="w-20 h-20 rounded-full items-center justify-center mx-6"
+                    style={{ backgroundColor: accentColor }}
+                  >
+                    {showLoadingIndicator ? (
+                      <ActivityIndicator color="#fff" size="large" />
+                    ) : playerState === 'playing' ? (
+                      <Ionicons name="pause" size={36} color="#fff" />
+                    ) : (
+                      <Ionicons name="play" size={36} color="#fff" />
+                    )}
+                  </Pressable>
+                </Animated.View>
+
+                <Pressable
+                  onPress={() => handleSeek(Math.min(progress.duration, progress.position + 10000))}
+                  className="w-14 h-14 rounded-full bg-white/10 items-center justify-center mx-6 active:bg-white/20"
+                >
+                  <SkipIcon size={22} seconds={10} direction="forward" color={accentColor} />
+                </Pressable>
+              </View>
+
+              {showFrameControls && playerState === 'paused' && (
+                <View className="flex-row items-center mt-4 gap-4">
+                  <Pressable
+                    onPress={() => handleFrameStep('prev')}
+                    className="w-12 h-12 rounded-full bg-white/20 items-center justify-center active:bg-white/30"
+                  >
+                    <Ionicons name="play-back" size={20} color="#fff" />
+                  </Pressable>
+                  <Text className="text-white/70 text-xs font-medium">FRAME</Text>
+                  <Pressable
+                    onPress={() => handleFrameStep('next')}
+                    className="w-12 h-12 rounded-full bg-white/20 items-center justify-center active:bg-white/30"
+                  >
+                    <Ionicons name="play-forward" size={20} color="#fff" />
+                  </Pressable>
+                </View>
+              )}
             </View>
 
             <View className="absolute bottom-0 left-0 right-0 px-8 pb-8">
+              {item?.Chapters && item.Chapters.length > 0 && (
+                <View className="flex-row items-center justify-between mb-2">
+                  <CurrentChapterDisplay
+                    chapters={item.Chapters as ChapterInfo[]}
+                    currentPositionMs={progress.position}
+                    visible={true}
+                  />
+                  <ChapterNavigation
+                    chapters={item.Chapters as ChapterInfo[]}
+                    currentPositionMs={progress.position}
+                    onNavigate={handleSeek}
+                    accentColor={accentColor}
+                  />
+                </View>
+              )}
               <View className="flex-row items-center mb-3">
                 <Text className="text-white text-sm font-medium w-14">
                   {formatPlayerTime(isSeeking ? seekPosition : progress.position)}
@@ -1636,6 +2293,65 @@ export default function VideoPlayerScreen() {
                             }}
                           />
                         )}
+                        {/* A-B Loop markers */}
+                        {abLoop.a !== null && abLoop.b !== null && progress.duration > 0 && (
+                          <View
+                            style={{
+                              position: 'absolute',
+                              top: 0,
+                              height: 6,
+                              left: `${(abLoop.a / progress.duration) * 100}%`,
+                              width: `${((abLoop.b - abLoop.a) / progress.duration) * 100}%`,
+                              backgroundColor: '#a855f7',
+                              borderRadius: 3,
+                              opacity: 0.7,
+                            }}
+                          />
+                        )}
+                        {abLoop.a !== null && progress.duration > 0 && (
+                          <View
+                            style={{
+                              position: 'absolute',
+                              top: -4,
+                              left: `${(abLoop.a / progress.duration) * 100}%`,
+                              marginLeft: -6,
+                              width: 12,
+                              height: 14,
+                              backgroundColor: '#a855f7',
+                              borderRadius: 2,
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                            }}
+                          >
+                            <Text style={{ color: '#fff', fontSize: 8, fontWeight: '700' }}>A</Text>
+                          </View>
+                        )}
+                        {abLoop.b !== null && progress.duration > 0 && (
+                          <View
+                            style={{
+                              position: 'absolute',
+                              top: -4,
+                              left: `${(abLoop.b / progress.duration) * 100}%`,
+                              marginLeft: -6,
+                              width: 12,
+                              height: 14,
+                              backgroundColor: '#a855f7',
+                              borderRadius: 2,
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                            }}
+                          >
+                            <Text style={{ color: '#fff', fontSize: 8, fontWeight: '700' }}>B</Text>
+                          </View>
+                        )}
+                        {/* Chapter markers */}
+                        {item?.Chapters && item.Chapters.length > 1 && (
+                          <ChapterMarkers
+                            chapters={item.Chapters as ChapterInfo[]}
+                            duration={progress.duration}
+                            accentColor={accentColor}
+                          />
+                        )}
                         {/* Progress bar */}
                         <View
                           style={{
@@ -1663,6 +2379,27 @@ export default function VideoPlayerScreen() {
                           transform: [{ scale: isSeeking ? 1.3 : 1 }],
                         }}
                       />
+                      {isSeeking && trickplayInfo && mediaSource && (
+                        <TrickplayPreview
+                          itemId={itemId}
+                          mediaSourceId={mediaSource.Id}
+                          trickplayInfo={trickplayInfo}
+                          position={seekPosition}
+                          duration={progress.duration}
+                          seekBarWidth={seekBarLayoutWidth}
+                          visible={true}
+                          formatTime={formatPlayerTime}
+                        />
+                      )}
+                      {isSeeking && !trickplayInfo && (
+                        <TimeOnlyPreview
+                          position={seekPosition}
+                          duration={progress.duration}
+                          seekBarWidth={seekBarLayoutWidth}
+                          visible={true}
+                          formatTime={formatPlayerTime}
+                        />
+                      )}
                     </View>
                   </GestureDetector>
                 </View>
@@ -1672,25 +2409,35 @@ export default function VideoPlayerScreen() {
                 </Text>
               </View>
 
-              {isSeeking && (
-                <View className="items-center mb-2">
-                  <View className="bg-black/80 px-4 py-2 rounded-lg">
-                    <Text className="text-white text-lg font-bold">
-                      {formatPlayerTime(seekPosition)}
-                    </Text>
-                  </View>
-                </View>
-              )}
-
               {isPortrait && (
                 <View className="flex-row items-center justify-center gap-4 mt-3">
                   <Pressable
                     onPress={() => setShowSubtitleSelector(true)}
                     className="h-10 px-4 rounded-full items-center justify-center flex-row active:bg-white/20"
-                    style={{ backgroundColor: selectedSubtitleIndex !== undefined ? accentColor + '40' : 'rgba(255,255,255,0.1)' }}
+                    style={{ backgroundColor: (selectedSubtitleIndex !== undefined || externalSubtitleCues) ? accentColor + '40' : 'rgba(255,255,255,0.1)' }}
                   >
                     <Text className="text-white text-sm font-bold">CC</Text>
                   </Pressable>
+
+                  {openSubtitlesService.isConfigured() && (
+                    <Pressable
+                      onPress={() => setShowOpenSubtitlesSearch(true)}
+                      className="w-10 h-10 rounded-full items-center justify-center active:bg-white/20"
+                      style={{ backgroundColor: externalSubtitleCues ? accentColor + '40' : 'rgba(255,255,255,0.1)' }}
+                    >
+                      <Ionicons name="search" size={18} color="#fff" />
+                    </Pressable>
+                  )}
+
+                  {(selectedSubtitleIndex !== undefined || externalSubtitleCues) && (
+                    <Pressable
+                      onPress={() => setShowSubtitleStyleModal(true)}
+                      className="w-10 h-10 rounded-full items-center justify-center active:bg-white/20"
+                      style={{ backgroundColor: 'rgba(255,255,255,0.1)' }}
+                    >
+                      <Ionicons name="text-outline" size={18} color="#fff" />
+                    </Pressable>
+                  )}
 
                   <Pressable
                     onPress={() => setShowAudioSelector(true)}
@@ -1699,16 +2446,139 @@ export default function VideoPlayerScreen() {
                     <Text className="text-white text-sm font-medium">Audio</Text>
                   </Pressable>
 
+                  {item?.Chapters && item.Chapters.length > 0 && (
+                    <Pressable
+                      onPress={() => setShowChapterList(true)}
+                      className="w-10 h-10 rounded-full bg-white/10 items-center justify-center active:bg-white/20"
+                    >
+                      <Ionicons name="list-outline" size={18} color="#fff" />
+                    </Pressable>
+                  )}
+
+                  <Pressable
+                    onPress={() => setShowSpeedSelector(true)}
+                    className="h-10 px-4 rounded-full items-center justify-center flex-row active:bg-white/20"
+                    style={{ backgroundColor: videoPlaybackSpeed !== 1 ? accentColor + '40' : 'rgba(255,255,255,0.1)' }}
+                  >
+                    <Text className="text-white text-sm font-medium">{videoPlaybackSpeed}x</Text>
+                  </Pressable>
+
+                  <View className="flex-row items-center gap-1">
+                    <Pressable
+                      onPress={handleSetLoopA}
+                      className="h-10 px-2 rounded-full items-center justify-center active:bg-white/20"
+                      style={{ backgroundColor: abLoop.a !== null ? accentColor + '40' : 'rgba(255,255,255,0.1)' }}
+                    >
+                      <Text className="text-white text-sm font-bold">A</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={handleSetLoopB}
+                      className="h-10 px-2 rounded-full items-center justify-center active:bg-white/20"
+                      style={{ backgroundColor: abLoop.b !== null ? accentColor + '40' : 'rgba(255,255,255,0.1)', opacity: abLoop.a === null ? 0.5 : 1 }}
+                    >
+                      <Text className="text-white text-sm font-bold">B</Text>
+                    </Pressable>
+                    {(abLoop.a !== null || abLoop.b !== null) && (
+                      <Pressable
+                        onPress={handleClearLoop}
+                        className="h-10 px-2 rounded-full bg-red-500/40 items-center justify-center active:bg-red-500/60"
+                      >
+                        <Ionicons name="close" size={16} color="#fff" />
+                      </Pressable>
+                    )}
+                  </View>
+
+                  <Pressable
+                    onPress={toggleControlsLock}
+                    className="w-10 h-10 rounded-full items-center justify-center active:bg-white/20"
+                    style={{ backgroundColor: controlsLocked ? '#ef4444' : 'rgba(255,255,255,0.1)' }}
+                  >
+                    <Ionicons name={controlsLocked ? "lock-closed" : "lock-open-outline"} size={18} color="#fff" />
+                  </Pressable>
+
+                  {sleepTimer ? (
+                    <SleepTimerIndicator
+                      sleepTimer={sleepTimer}
+                      onPress={() => setShowSleepTimerSelector(true)}
+                    />
+                  ) : (
+                    <Pressable
+                      onPress={() => setShowSleepTimerSelector(true)}
+                      className="w-10 h-10 rounded-full bg-white/10 items-center justify-center active:bg-white/20"
+                    >
+                      <Ionicons name="moon-outline" size={18} color="#fff" />
+                    </Pressable>
+                  )}
+
                   <Pressable
                     onPress={() => videoViewRef.current?.startPictureInPicture()}
                     className="w-10 h-10 rounded-full bg-white/10 items-center justify-center active:bg-white/20"
                   >
                     <Ionicons name="browsers-outline" size={20} color="#fff" />
                   </Pressable>
+
+                  {externalPlayerEnabled && externalPlayerAvailable && (
+                    <Pressable
+                      onPress={handleOpenExternalPlayer}
+                      className="w-10 h-10 rounded-full bg-white/10 items-center justify-center active:bg-white/20"
+                    >
+                      <Ionicons name="open-outline" size={18} color="#fff" />
+                    </Pressable>
+                  )}
+
+                  {isAirPlaySupported && (
+                    <View className="w-10 h-10 rounded-full bg-white/10 items-center justify-center overflow-hidden">
+                      <VideoAirPlayButton
+                        tintColor="#fff"
+                        activeTintColor={accentColor}
+                        style={{ width: 40, height: 40 }}
+                      />
+                    </View>
+                  )}
+
+                  {isChromecastSupported && CastButton && (
+                    <Pressable
+                      onPress={chromecast.isConnected ? () => setShowCastRemote(true) : undefined}
+                      className="w-10 h-10 rounded-full items-center justify-center overflow-hidden"
+                      style={{ backgroundColor: chromecast.isConnected ? accentColor + '40' : 'rgba(255,255,255,0.1)' }}
+                    >
+                      {chromecast.isConnected ? (
+                        <Ionicons name="tv" size={20} color={accentColor} />
+                      ) : (
+                        <CastButton
+                          style={{ width: 40, height: 40, tintColor: '#fff' }}
+                        />
+                      )}
+                    </Pressable>
+                  )}
+
+                  {chromecast.isConnected && (
+                    <Pressable
+                      onPress={handleStartCasting}
+                      className="h-10 px-4 rounded-full items-center justify-center flex-row active:bg-white/20"
+                      style={{ backgroundColor: accentColor + '60' }}
+                    >
+                      <Ionicons name="play" size={16} color="#fff" style={{ marginRight: 4 }} />
+                      <Text className="text-white text-sm font-medium">Cast</Text>
+                    </Pressable>
+                  )}
                 </View>
               )}
             </View>
           </Animated.View>
+          )}
+
+          {controlsLocked && (
+            <View className="absolute inset-0" pointerEvents="box-only">
+              <Pressable
+                onPress={toggleControlsLock}
+                className="absolute bottom-8 left-1/2 -ml-16 w-32 h-12 rounded-full bg-black/70 flex-row items-center justify-center gap-2"
+              >
+                <Ionicons name="lock-closed" size={18} color="#ef4444" />
+                <Text className="text-white text-sm font-medium">Unlock</Text>
+              </Pressable>
+            </View>
+          )}
         </View>
       </GestureDetector>
 
@@ -1729,6 +2599,96 @@ export default function VideoPlayerScreen() {
         />
       )}
 
+      {/* Playback Speed Selector Modal */}
+      {showSpeedSelector && (
+        <Pressable
+          onPress={() => setShowSpeedSelector(false)}
+          className="absolute inset-0 bg-black/60 items-center justify-center"
+        >
+          <View
+            className="bg-neutral-900 rounded-2xl p-6 mx-8"
+            style={{ maxWidth: 400, width: '90%' }}
+          >
+            <Text className="text-white text-lg font-bold mb-4 text-center">Playback Speed</Text>
+            <View className="flex-row flex-wrap justify-center gap-2">
+              {VIDEO_SPEED_OPTIONS.map((speed) => {
+                const isActive = videoPlaybackSpeed === speed;
+                return (
+                  <Pressable
+                    key={speed}
+                    onPress={() => handleSpeedChange(speed)}
+                    className="rounded-lg items-center justify-center"
+                    style={{
+                      width: 70,
+                      height: 44,
+                      backgroundColor: isActive ? accentColor : 'rgba(255,255,255,0.1)',
+                    }}
+                  >
+                    <Text
+                      className="font-semibold"
+                      style={{ color: isActive ? '#fff' : 'rgba(255,255,255,0.8)' }}
+                    >
+                      {speed}x
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <Pressable
+              onPress={() => setShowSpeedSelector(false)}
+              className="mt-4 py-3 rounded-lg bg-white/10 items-center"
+            >
+              <Text className="text-white font-medium">Cancel</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      )}
+
+      <SleepTimerSelector
+        visible={showSleepTimerSelector}
+        onClose={() => setShowSleepTimerSelector(false)}
+        onSelectTimer={handleSleepTimerSelect}
+        currentTimer={sleepTimer}
+        isEpisode={isEpisode}
+        episodeEndTimeMs={progress.duration > 0 ? progress.duration - progress.position : undefined}
+      />
+
+      {showOpenSubtitlesSearch && (
+        <OpenSubtitlesSearch
+          onClose={() => setShowOpenSubtitlesSearch(false)}
+          onSelectSubtitle={handleExternalSubtitleSelect}
+          initialQuery={item?.Name || ''}
+          initialYear={item?.ProductionYear}
+          type={item?.Type === 'Episode' ? 'episode' : 'movie'}
+          seasonNumber={item?.ParentIndexNumber}
+          episodeNumber={item?.IndexNumber}
+          tmdbId={(item as any)?.ProviderIds?.Tmdb ? parseInt((item as any).ProviderIds.Tmdb, 10) : undefined}
+          imdbId={(item as any)?.ProviderIds?.Imdb}
+        />
+      )}
+
+      <SubtitleStyleModal
+        visible={showSubtitleStyleModal}
+        onClose={() => setShowSubtitleStyleModal(false)}
+      />
+
+      <ChapterList
+        visible={showChapterList}
+        onClose={() => setShowChapterList(false)}
+        chapters={(item?.Chapters as ChapterInfo[]) || []}
+        currentPositionMs={progress.position}
+        onSelectChapter={handleSeek}
+        itemId={item?.Id}
+      />
+
+      <CastRemoteControl
+        visible={showCastRemote}
+        castState={chromecast.castState}
+        mediaInfo={castMediaInfo}
+        itemId={item?.Id}
+        onDisconnect={handleCastDisconnect}
+        onClose={handleCastRemoteClose}
+      />
     </View>
   );
 }

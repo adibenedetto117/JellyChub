@@ -46,18 +46,26 @@ export interface AudioTrackInfo {
   isDefault: boolean;
 }
 
+export type SubtitleSize = 'small' | 'medium' | 'large' | 'extraLarge';
+export type SubtitlePosition = 'bottom' | 'top';
+export type SubtitleFontColor = '#ffffff' | '#ffff00' | '#00ffff' | '#00ff00';
+export type SubtitleBackgroundColor = 'none' | '#000000' | '#333333';
+export type SubtitleOutlineStyle = 'none' | 'outline' | 'shadow' | 'both';
+
 export interface PlayerSettings {
   autoPlay: boolean;
   defaultSubtitleLanguage: string;
   defaultAudioLanguage: string;
-  forceSubtitles: boolean; // Always enable subtitles when playing
-  subtitleSize: 'small' | 'medium' | 'large';
-  subtitlePosition: 'bottom' | 'top';
+  forceSubtitles: boolean;
+  subtitleSize: SubtitleSize;
+  subtitlePosition: SubtitlePosition;
   subtitleBackgroundOpacity: number;
-  subtitleTextColor: string;
-  subtitleBackgroundColor: string;
+  subtitleTextColor: SubtitleFontColor;
+  subtitleBackgroundColor: SubtitleBackgroundColor;
+  subtitleOutlineStyle: SubtitleOutlineStyle;
   hardwareAcceleration: boolean;
-  maxStreamingBitrate: number; // in Mbps
+  maxStreamingBitrate: number;
+  externalPlayerEnabled: boolean;
 }
 
 export interface AudiobookPlayerState {
@@ -101,6 +109,20 @@ export interface MusicPlayerState {
   showLyrics: boolean;
   lyrics?: Lyrics;
   visualizerEnabled: boolean;
+  // Sleep timer
+  sleepTimerEndTime?: number;
+  sleepTimerMinutes?: number;
+  // Crossfade
+  crossfadeEnabled: boolean;
+  crossfadeDuration: number; // in seconds (0-12)
+}
+
+export type VideoSleepTimerType = 'duration' | 'end_of_episode' | 'custom';
+
+export interface VideoSleepTimer {
+  type: VideoSleepTimerType;
+  endTime: number;
+  durationMinutes?: number;
 }
 
 export interface VideoPlayerState {
@@ -110,6 +132,9 @@ export interface VideoPlayerState {
   selectedSubtitleTrack?: number;
   selectedAudioTrack?: number;
   flipped: boolean;
+  subtitleOffset: number; // in milliseconds, positive = delay subtitles, negative = advance subtitles
+  playbackSpeed: number; // 0.25 - 3.0
+  sleepTimer?: VideoSleepTimer;
 }
 
 // Combined player store state
