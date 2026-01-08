@@ -1,136 +1,138 @@
 # JellyChub
 
-A modern Jellyfin client for Android and Android TV that handles all your media - video, music, audiobooks, ebooks, and live TV in one app.
+A modern Jellyfin client for Android that handles all your media in one app.
 
 <p align="center">
   <img src="assets/icon.png" alt="JellyChub" width="128" height="128"/>
 </p>
 
 ![Platform](https://img.shields.io/badge/platform-Android-green)
-![Android TV](https://img.shields.io/badge/Android%20TV-supported-green)
-![iOS](https://img.shields.io/badge/iOS-coming%20soon-lightgrey)
+![Android TV](https://img.shields.io/badge/Android%20TV-beta-yellow)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
 ## Download
 
 **[Download Latest APK](https://github.com/adibenedetto117/JellyChub/releases/latest)**
 
-Requires Android 8.0 (API 26) or higher.
+Requires Android 8.0 or higher.
 
 ## Features
 
-### Video & TV Shows
-- Subtitle support: VTT, SRT, ASS, SSA with customizable appearance
-- Multiple audio track selection (30+ languages)
-- Picture-in-Picture mode
-- Skip intro/credits buttons (Jellyfin media segments)
-- Auto-play next episode
-- Trickplay thumbnail previews while seeking
-- Hardware acceleration
+### Video Player
+- Multiple audio track selection
+- Subtitle support (VTT, SRT, ASS, SSA)
+- Customizable subtitle appearance (size, color, background)
+- Subtitle timing offset adjustment
+- OpenSubtitles search and download
+- Skip intro and credits (Jellyfin media segments)
+- Chapter navigation with markers
+- Trickplay thumbnail previews
+- Playback speed control (0.25x - 2x)
+- A-B loop for repeating sections
+- Sleep timer
+- Lock controls mode
+- Picture-in-Picture
 - External player support (VLC, Infuse, nPlayer)
 - Chromecast support
+- Hardware acceleration
+- Auto-play next episode
+- Resume playback position
 
 ### Live TV (Beta)
-- Live channel streaming
-- EPG (Electronic Program Guide) with grid view
-- Channel groups and favorites
-- Program details and scheduling
-- *Note: Still in testing*
+- Channel streaming
+- EPG grid view
+- Channel groups
+- Program details
 
-### Music
-- Background playback with lock screen controls
+### Music Player
+- Background playback
+- Lock screen controls
 - Synced lyrics with auto-scroll
-- Audio visualizer
-- Gapless playback
-- Mini player with quick controls
-- Playlist management
 - Equalizer presets
+- Mini player
+- Queue management
+- Playlist support
+- Sleep timer
+- Playback speed control
 
-### Audiobooks
-- Chapter navigation with visual timeline
-- Sleep timer (5 min to 2 hours)
-- Bookmarks with custom labels
-- Variable playback speed (0.5x - 2x)
+### Audiobook Player
+- Chapter navigation
+- Sleep timer (5 min - 2 hours)
+- Bookmarks
+- Playback speed (0.5x - 2x)
 - M4B chapter parsing
 - Background playback
+- Progress sync
 
 ### EPUB Reader
-- Full EPUB rendering with epub.js
-- Reading themes: Dark, Light, Sepia
+- Full EPUB rendering
+- Reading themes (Dark, Light, Sepia)
 - Adjustable font size
-- Bookmarks with sync to Jellyfin
+- Bookmarks
 - Progress tracking
 
 ### PDF Reader
-- Native PDF rendering with progress tracking
+- Native rendering
+- Progress tracking
 
 ### Comic Reader (Beta)
-- Comic/manga reader support
-- *Note: Still in testing*
+- Page-by-page viewing
+- Progress tracking
 
-### Downloads & Offline Mode
-- Download movies, TV shows, music, and audiobooks
-- Organized by content type with collapsible groups
-- Quality options: original, high, medium, low
-- Background download queue
+### Downloads
+- Download any media type
+- Encrypted storage (AES)
+- Quality selection (Original, High, Medium, Low)
+- Background downloads
 - WiFi-only option
+- Auto-remove watched content
 - Full offline playback
-- Offline mode for downloaded content only
+
+### Offline Mode
+- Browse and play downloaded content
+- Access settings
+- No server connection required
 
 ### Jellyseerr Integration
-- Browse trending and popular content
+- Browse trending content
 - Request movies and TV shows
-- View request status and history
+- View request status
 
 ### Radarr & Sonarr Integration
-- Add movies directly to Radarr
-- Add TV shows directly to Sonarr
-- View download queue status
+- Add movies to Radarr
+- Add shows to Sonarr
 - Quality profile selection
+- Root folder selection
+- Manage existing entries
 
 ### Server Administration
-- Active sessions with remote control (play, pause, stop)
-- Scheduled task management
-- User management (create, delete, permissions)
-- Library refresh controls
+- View active sessions
+- Remote playback control
+- Scheduled tasks
+- User management
+- Library refresh
 - Activity logs
 - Server restart/shutdown
 
-### Android TV Support (In Development)
-- Full D-pad/remote navigation
-- TV-optimized UI with sidebar navigation
-- Large artwork and readable text
-- Focus-based navigation
-- TV-specific player controls
-- *Note: Work in progress, not fully optimized yet*
+### Android TV (Beta)
+- D-pad navigation
+- Sidebar navigation
+- TV-optimized controls
 
 ### Security
-- PIN lock for app access
-- Biometric authentication support
+- PIN lock
+- Biometric authentication
 
-### Customizable Interface
-- Configurable navigation bar (choose and reorder tabs)
-- Set any tab as landing page
-- Multiple accent color themes
-- Hide media info mode (screenshot mode)
+### Customization
+- Customizable bottom navigation
+- Reorder tabs
+- Set landing page
+- Accent color themes
 
-### Multi-Server Support
+### Multi-Server
+- Multiple server connections
 - Quick Connect authentication
-- Switch between servers and users
-- Per-server settings
-
-## Tech Stack
-
-| Component | Technology |
-|-----------|------------|
-| Framework | React Native 0.81 / Expo 54 |
-| Language | TypeScript |
-| Styling | NativeWind (Tailwind CSS) |
-| State Management | Zustand |
-| Data Fetching | TanStack Query (React Query) |
-| Local Storage | MMKV |
-| Video Player | expo-video |
-| Audio Player | expo-audio |
+- Easy user switching
 
 ## Building from Source
 
@@ -142,17 +144,10 @@ Requires Android 8.0 (API 26) or higher.
 ### Build Steps
 
 ```bash
-# Clone the repository
 git clone https://github.com/adibenedetto117/JellyChub.git
 cd JellyChub
-
-# Install dependencies
 npm install --legacy-peer-deps
-
-# Generate native code
 npx expo prebuild
-
-# Build release APK
 cd android && ./gradlew assembleRelease
 ```
 
@@ -161,46 +156,32 @@ The APK will be at `android/app/build/outputs/apk/release/app-release.apk`
 ### Development
 
 ```bash
-# Start development server
 npx expo start
-
-# Run on Android device/emulator
 npx expo run:android
 ```
 
 ## Roadmap
 
-### In Progress
-- [ ] iOS build and testing
-- [ ] OpenSubtitles integration
-- [ ] Improved Chromecast controls
-
 ### Planned
-- [ ] iOS release
-- [ ] SyncPlay (watch together)
-- [ ] Play Store release
-- [ ] App Store release
-- [ ] Widget for currently playing
-- [ ] Wear OS companion app
-- [ ] CarPlay / Android Auto
+- iOS release
+- SyncPlay (watch together)
+- Play Store release
+- Widget for currently playing
+- Wear OS companion app
+- CarPlay / Android Auto
 
 ## Acknowledgments
 
 - [Jellyfin](https://jellyfin.org/) - The free software media system
-- [Expo](https://expo.dev/) - React Native framework and tooling
-- [React Native](https://reactnative.dev/) - Mobile app framework
+- [Expo](https://expo.dev/) - React Native framework
 - [Jellyseerr](https://github.com/Fallenbagel/jellyseerr) - Request management
 - [Radarr](https://radarr.video/) / [Sonarr](https://sonarr.tv/) - Media management
-- [TanStack Query](https://tanstack.com/query) - Data fetching and caching
-- [Zustand](https://github.com/pmndrs/zustand) - State management
-- [NativeWind](https://www.nativewind.dev/) - Tailwind CSS for React Native
-- [MMKV](https://github.com/mrousavy/react-native-mmkv) - Fast key-value storage
-- [epub.js](https://github.com/futurepress/epub.js) - EPUB rendering
+- [OpenSubtitles](https://www.opensubtitles.org/) - Subtitle database
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+MIT License - see [LICENSE](LICENSE) for details.
 
 ---
 
-*JellyChub is an independent project and is not affiliated with or endorsed by Jellyfin.*
+*JellyChub is not affiliated with or endorsed by Jellyfin.*
