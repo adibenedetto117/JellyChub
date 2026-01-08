@@ -104,6 +104,7 @@ Requires Android 8.0 or higher.
 - Quality profile selection
 - Root folder selection
 - Manage existing entries
+- Calendar view for upcoming releases
 
 ### Server Administration
 - View active sessions
