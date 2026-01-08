@@ -1,8 +1,3 @@
----
-layout: default
-title: Privacy Policy
----
-
 # Privacy Policy for JellyChub
 
 **Last updated:** January 7, 2026

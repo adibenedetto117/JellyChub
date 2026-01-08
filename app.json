@@ -17,11 +17,26 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.jellychub.app",
       "infoPlist": {
-        "UIBackgroundModes": ["audio", "fetch"],
+        "UIBackgroundModes": [
+          "audio",
+          "fetch"
+        ],
         "NSAppleMusicUsageDescription": "Access your music library for playback",
+        "NSLocalNetworkUsageDescription": "JellyChub needs local network access to connect to your Jellyfin server on your home network.",
+        "NSBonjourServices": [
+          "_jellyfin._tcp"
+        ],
         "NSAppTransportSecurity": {
-          "NSAllowsArbitraryLoads": true
-        }
+          "NSAllowsArbitraryLoads": true,
+          "NSAllowsLocalNetworking": true
+        },
+        "LSApplicationQueriesSchemes": [
+          "vlc",
+          "vlc-x-callback",
+          "infuse",
+          "nplayer-http",
+          "nplayer-https"
+        ]
       }
     },
     "android": {
@@ -64,7 +79,15 @@
           "enableBackgroundAudio": true,
           "audioSessionCategory": "playback"
         }
-      ]
+      ],
+      [
+        "react-native-google-cast",
+        {
+          "receiverAppId": "CC1AD845"
+        }
+      ],
+      "expo-font",
+      "expo-asset"
     ],
     "experiments": {
       "typedRoutes": true
