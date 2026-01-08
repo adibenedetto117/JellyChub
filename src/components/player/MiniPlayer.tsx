@@ -1,18 +1,19 @@
-import { View, Text, Pressable, Dimensions } from 'react-native';
+import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import Animated, { useSharedValue, useAnimatedStyle, withSpring, withTiming, runOnJS } from 'react-native-reanimated';
+import Animated, { useSharedValue, useAnimatedStyle, withSpring, withTiming } from 'react-native-reanimated';
 import { usePlayerStore, useSettingsStore } from '@/stores';
 import { audioService } from '@/services';
 import { getImageUrl } from '@/api';
 import { getDisplayName, getDisplayImageUrl } from '@/utils';
 import { CachedImage } from '@/components/ui/CachedImage';
-import { useCallback, useMemo, useState, useEffect } from 'react';
+import { memo, useCallback, useMemo, useState, useEffect } from 'react';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+// Paths where MiniPlayer should be hidden
+const HIDDEN_PATHS = ['/player/music', '/player/video', '/player/audiobook', '/(auth)', '/login'];
 
-export function MiniPlayer() {
+export const MiniPlayer = memo(function MiniPlayer() {
   const router = useRouter();
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
@@ -36,12 +37,12 @@ export function MiniPlayer() {
     }
   }, [currentItem, isDismissing, scale, opacity]);
 
-  const isOnMusicPlayer = pathname?.includes('/player/music') ?? false;
-  const isOnVideoPlayer = pathname?.includes('/player/video') ?? false;
-  const isOnAudiobookPlayer = pathname?.includes('/player/audiobook') ?? false;
-  const isOnAuth = pathname?.includes('/(auth)') || pathname?.includes('/login') || false;
+  // Memoize path checking to avoid repeated string operations
+  const shouldHide = useMemo(() => {
+    if (!pathname) return true;
+    return HIDDEN_PATHS.some(path => pathname.includes(path));
+  }, [pathname]);
 
-  const shouldHide = isOnMusicPlayer || isOnVideoPlayer || isOnAudiobookPlayer || isOnAuth || !pathname;
   const shouldShow = currentItem && (mediaType === 'audio' || mediaType === 'audiobook') && !shouldHide;
 
   const item = currentItem?.item;
@@ -117,85 +118,117 @@ export function MiniPlayer() {
   if (!shouldShow) return null;
 
   return (
-    <Animated.View
-      style={[
-        {
-          position: 'absolute',
-          top: insets.top + 8,
-          alignSelf: 'center',
-          left: '50%',
-          width: 160,
-          height: 40,
-          zIndex: 100,
-        },
-        animatedStyle,
-      ]}
-    >
-      <Pressable
-        onPress={handlePress}
-        style={{
-          width: '100%',
-          height: '100%',
-          backgroundColor: '#1a1a1a',
-          borderRadius: 20,
-          flexDirection: 'row',
-          alignItems: 'center',
-          paddingLeft: 3,
-          paddingRight: 3,
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: 2 },
-          shadowOpacity: 0.3,
-          shadowRadius: 6,
-          elevation: 10,
-          overflow: 'hidden',
-        }}
-      >
-      <View
-        style={{
-          position: 'absolute',
-          bottom: 0,
-          left: 0,
-          height: 2,
-          backgroundColor: accentColor,
-          width: `${progressPercent}%`,
-          borderRadius: 1,
-        }}
-      />
-
-      <CachedImage
-        uri={albumArtUrl}
-        style={{ width: 34, height: 34 }}
-        borderRadius={mediaType === 'audiobook' ? 4 : 17}
-        showSkeleton={false}
-      />
-
-      <View style={{ flex: 1, marginLeft: 6, marginRight: 2 }}>
-        <Text style={{ color: '#fff', fontSize: 10, fontWeight: '600' }} numberOfLines={1}>
-          {displayName}
-        </Text>
-      </View>
-
-      <Pressable
-        onPress={handlePlayPausePress}
-        hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
-        style={{ width: 26, height: 26, alignItems: 'center', justifyContent: 'center' }}
-      >
-        <Ionicons
-          name={isPlaying ? 'pause' : 'play'}
-          size={16}
-          color="#fff"
-          style={{ marginLeft: isPlaying ? 0 : 2 }}
+    <Animated.View style={[miniPlayerStyles.container, { top: insets.top + 8 }, animatedStyle]}>
+      <Pressable onPress={handlePress} style={miniPlayerStyles.pressable}>
+        <View
+          style={[
+            miniPlayerStyles.progressBar,
+            { backgroundColor: accentColor, width: `${progressPercent}%` },
+          ]}
         />
-      </Pressable>
 
-      <Pressable
-        onPress={handleClosePress}
-        hitSlop={{ top: 8, bottom: 8, left: 4, right: 8 }}
-        style={{ width: 26, height: 26, alignItems: 'center', justifyContent: 'center' }}
-      >
-        <Ionicons name="close" size={14} color="rgba(255,255,255,0.6)" />
-      </Pressable>
+        <CachedImage
+          uri={albumArtUrl}
+          style={miniPlayerStyles.albumArt}
+          borderRadius={mediaType === 'audiobook' ? 4 : 17}
+          showSkeleton={false}
+        />
+
+        <View style={miniPlayerStyles.textContainer}>
+          <Text style={miniPlayerStyles.displayName} numberOfLines={1}>
+            {displayName}
+          </Text>
+        </View>
+
+        <Pressable
+          onPress={handlePlayPausePress}
+          hitSlop={miniPlayerStyles.hitSlop}
+          style={miniPlayerStyles.controlButton}
+        >
+          <Ionicons
+            name={isPlaying ? 'pause' : 'play'}
+            size={16}
+            color="#fff"
+            style={{ marginLeft: isPlaying ? 0 : 2 }}
+          />
+        </Pressable>
+
+        <Pressable
+          onPress={handleClosePress}
+          hitSlop={miniPlayerStyles.closeHitSlop}
+          style={miniPlayerStyles.controlButton}
+        >
+          <Ionicons name="close" size={14} color="rgba(255,255,255,0.6)" />
+        </Pressable>
       </Pressable>
     </Animated.View>
   );
-}
+});
+
+// Static styles moved outside component
+const miniPlayerStyles = StyleSheet.create({
+  container: {
+    position: 'absolute',
+    alignSelf: 'center',
+    left: '50%',
+    width: 160,
+    height: 40,
+    zIndex: 100,
+    transform: [{ translateX: -80 }],
+  },
+  pressable: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#1a1a1a',
+    borderRadius: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingLeft: 3,
+    paddingRight: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 10,
+    overflow: 'hidden',
+  },
+  progressBar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    height: 2,
+    borderRadius: 1,
+  },
+  albumArt: {
+    width: 34,
+    height: 34,
+  },
+  textContainer: {
+    flex: 1,
+    marginLeft: 6,
+    marginRight: 2,
+  },
+  displayName: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  controlButton: {
+    width: 26,
+    height: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  hitSlop: {
+    top: 8,
+    bottom: 8,
+    left: 4,
+    right: 4,
+  },
+  closeHitSlop: {
+    top: 8,
+    bottom: 8,
+    left: 4,
+    right: 8,
+  },
+});

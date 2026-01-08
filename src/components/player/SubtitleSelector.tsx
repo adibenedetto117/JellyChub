@@ -17,6 +17,17 @@ interface Props {
   onSelectTrack: (index: number | undefined) => void;
 }
 
+const IMAGE_BASED_CODECS = [
+  'pgs', 'pgssub', 'hdmv_pgs_subtitle', 'hdmv_pgs',
+  'dvdsub', 'dvd_subtitle', 'vobsub',
+  'dvbsub', 'dvb_subtitle', 'xsub',
+];
+
+function isImageBasedCodec(codec?: string): boolean {
+  if (!codec) return false;
+  return IMAGE_BASED_CODECS.includes(codec.toLowerCase());
+}
+
 function SubtitleIcon({ size = 20 }: { size?: number }) {
   return (
     <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
@@ -46,19 +57,97 @@ export function SubtitleSelector({ onClose, tracks, selectedIndex, onSelectTrack
   const getLanguageName = (lang?: string) => {
     if (!lang) return null;
     const langMap: Record<string, string> = {
+      // Major world languages
       eng: 'English',
-      jpn: 'Japanese',
       spa: 'Spanish',
       fre: 'French',
+      fra: 'French',
       ger: 'German',
+      deu: 'German',
       ita: 'Italian',
       por: 'Portuguese',
       rus: 'Russian',
+      jpn: 'Japanese',
       kor: 'Korean',
       chi: 'Chinese',
+      zho: 'Chinese',
+      cmn: 'Mandarin',
+      yue: 'Cantonese',
       ara: 'Arabic',
       hin: 'Hindi',
+      ben: 'Bengali',
+      pan: 'Punjabi',
+      tam: 'Tamil',
+      tel: 'Telugu',
+      mar: 'Marathi',
+      urd: 'Urdu',
+      vie: 'Vietnamese',
+      tha: 'Thai',
+      ind: 'Indonesian',
+      may: 'Malay',
+      msa: 'Malay',
+      fil: 'Filipino',
+      tgl: 'Tagalog',
+      // European languages
+      nld: 'Dutch',
+      dut: 'Dutch',
+      pol: 'Polish',
+      ukr: 'Ukrainian',
+      ces: 'Czech',
+      cze: 'Czech',
+      slk: 'Slovak',
+      slo: 'Slovak',
+      hun: 'Hungarian',
+      ron: 'Romanian',
+      rum: 'Romanian',
+      bul: 'Bulgarian',
+      hrv: 'Croatian',
+      srp: 'Serbian',
+      slv: 'Slovenian',
+      bos: 'Bosnian',
+      mkd: 'Macedonian',
+      mac: 'Macedonian',
+      ell: 'Greek',
+      gre: 'Greek',
+      tur: 'Turkish',
+      swe: 'Swedish',
+      nor: 'Norwegian',
+      nob: 'Norwegian',
+      nno: 'Norwegian',
+      dan: 'Danish',
+      fin: 'Finnish',
+      est: 'Estonian',
+      lav: 'Latvian',
+      lit: 'Lithuanian',
+      isl: 'Icelandic',
+      ice: 'Icelandic',
+      cat: 'Catalan',
+      eus: 'Basque',
+      baq: 'Basque',
+      glg: 'Galician',
+      // Middle Eastern & African
+      heb: 'Hebrew',
+      fas: 'Persian',
+      per: 'Persian',
+      kur: 'Kurdish',
+      amh: 'Amharic',
+      swa: 'Swahili',
+      zul: 'Zulu',
+      afr: 'Afrikaans',
+      // Other Asian
+      nep: 'Nepali',
+      sin: 'Sinhala',
+      mya: 'Burmese',
+      bur: 'Burmese',
+      khm: 'Khmer',
+      lao: 'Lao',
+      mon: 'Mongolian',
+      // Special codes
       und: 'Unknown',
+      mul: 'Multiple',
+      zxx: 'No Language',
+      qaa: 'Original',
+      mis: 'Miscellaneous',
     };
     return langMap[lang.toLowerCase()] || lang.toUpperCase();
   };
@@ -128,10 +217,12 @@ export function SubtitleSelector({ onClose, tracks, selectedIndex, onSelectTrack
             const isSelected = selectedIndex === track.index;
             const formatLabel = getFormatLabel(track.codec);
             const langName = track.title ? getLanguageName(track.language) : null;
+            const isImageBased = isImageBasedCodec(track.codec);
 
             const badges: string[] = [];
             if (track.isForced) badges.push('Forced');
             if (track.isDefault) badges.push('Default');
+            if (isImageBased) badges.push('Burn-in');
 
             return (
               <Pressable
@@ -140,30 +231,49 @@ export function SubtitleSelector({ onClose, tracks, selectedIndex, onSelectTrack
                 style={[
                   styles.trackItem,
                   isSelected && { backgroundColor: accentColor + '20' },
+                  isImageBased && styles.trackItemDisabled,
                 ]}
               >
                 <View style={styles.trackInfo}>
                   <View style={styles.trackMainRow}>
-                    <Text style={[styles.trackLabel, isSelected && { color: accentColor }]}>
+                    <Text style={[
+                      styles.trackLabel,
+                      isSelected && { color: accentColor },
+                      isImageBased && styles.trackLabelDisabled,
+                    ]}>
                       {getTrackLabel(track)}
                     </Text>
                     {badges.map((badge) => (
-                      <View key={badge} style={[styles.badge, { backgroundColor: accentColor + '30' }]}>
-                        <Text style={[styles.badgeText, { color: accentColor }]}>{badge}</Text>
+                      <View
+                        key={badge}
+                        style={[
+                          styles.badge,
+                          { backgroundColor: badge === 'Burn-in' ? 'rgba(255,150,50,0.3)' : accentColor + '30' },
+                        ]}
+                      >
+                        <Text style={[
+                          styles.badgeText,
+                          { color: badge === 'Burn-in' ? '#ff9632' : accentColor },
+                        ]}>
+                          {badge}
+                        </Text>
                       </View>
                     ))}
                   </View>
                   <View style={styles.trackDetailsRow}>
                     {langName && (
                       <>
-                        <Text style={styles.trackDetail}>{langName}</Text>
+                        <Text style={[styles.trackDetail, isImageBased && styles.trackDetailDisabled]}>{langName}</Text>
                         {formatLabel && <Text style={styles.trackDetailDot}>-</Text>}
                       </>
                     )}
                     {formatLabel && (
-                      <Text style={styles.trackDetail}>{formatLabel}</Text>
+                      <Text style={[styles.trackDetail, isImageBased && styles.trackDetailDisabled]}>{formatLabel}</Text>
                     )}
                   </View>
+                  {isImageBased && (
+                    <Text style={styles.trackWarning}>Requires transcoding</Text>
+                  )}
                 </View>
               </Pressable>
             );
@@ -325,5 +435,19 @@ const styles = StyleSheet.create({
   emptyText: {
     color: 'rgba(255,255,255,0.4)',
     fontSize: 15,
+  },
+  trackItemDisabled: {
+    opacity: 0.7,
+  },
+  trackLabelDisabled: {
+    color: 'rgba(255,255,255,0.6)',
+  },
+  trackDetailDisabled: {
+    color: 'rgba(255,255,255,0.35)',
+  },
+  trackWarning: {
+    color: '#ff9632',
+    fontSize: 11,
+    marginTop: 4,
   },
 });
