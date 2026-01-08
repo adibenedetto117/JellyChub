@@ -20,6 +20,7 @@ export {
   getLibraries,
   getItems,
   getItem,
+  getCollectionItems,
   getResumeItems,
   getLatestMedia,
   getNextUp,

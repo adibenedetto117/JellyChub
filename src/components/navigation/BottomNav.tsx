@@ -186,7 +186,9 @@ export const BottomNav = memo(function BottomNav() {
         : null;
     }
     if (tabId === 'library') {
-      return { id: 'library', name: 'Library', icon: icons.library.outline, iconFilled: icons.library.filled, route: '/(tabs)/library' };
+      return bottomBarConfig.showLibrary
+        ? { id: 'library', name: 'Library', icon: icons.library.outline, iconFilled: icons.library.filled, route: '/(tabs)/library' }
+        : null;
     }
     if (tabId === 'downloads') {
       return bottomBarConfig.showDownloads

@@ -149,6 +149,8 @@ const DEFAULT_FIELDS = [
   'ParentId',
   'ParentIndexNumber',
   'IndexNumber',
+  'ImageTags',
+  'PrimaryImageAspectRatio',
   'ParentBackdropImageTags',
   'SeriesPrimaryImageTag',
   'Chapters',
@@ -216,6 +218,16 @@ export async function getItem<T extends BaseItem = BaseItem>(
 ): Promise<T> {
   const response = await jellyfinClient.api.get<T>(
     `/Users/${userId}/Items/${itemId}?Fields=${DEFAULT_FIELDS.join(',')}`
+  );
+  return response.data;
+}
+
+export async function getCollectionItems(
+  userId: string,
+  collectionId: string
+): Promise<ItemsResponse<BaseItem>> {
+  const response = await jellyfinClient.api.get<ItemsResponse<BaseItem>>(
+    `/Users/${userId}/Items?ParentId=${collectionId}&Fields=${DEFAULT_FIELDS.join(',')}&SortBy=SortName&SortOrder=Ascending`
   );
   return response.data;
 }
@@ -585,6 +597,12 @@ export async function getFavorites(
   itemTypes: string[],
   limit: number = 12
 ): Promise<ItemsResponse<BaseItem>> {
+  const fields = [
+    ...DEFAULT_FIELDS,
+    'PrimaryImageAspectRatio',
+    'BackdropImageTags',
+  ];
+
   const params = new URLSearchParams();
   params.set('IncludeItemTypes', itemTypes.join(','));
   params.set('Filters', 'IsFavorite');
@@ -592,7 +610,8 @@ export async function getFavorites(
   params.set('SortOrder', 'Descending');
   params.set('Recursive', 'true');
   params.set('Limit', limit.toString());
-  params.set('Fields', DEFAULT_FIELDS.join(','));
+  params.set('Fields', fields.join(','));
+  params.set('EnableImageTypes', 'Primary,Backdrop,Thumb');
 
   const response = await jellyfinClient.api.get<ItemsResponse<BaseItem>>(
     `/Users/${userId}/Items?${params.toString()}`

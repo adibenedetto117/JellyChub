@@ -302,7 +302,7 @@ export function LibrarySelector() {
 
     return tabOrder.filter((tabId) => {
       if (tabId === 'home') return bottomBarConfig.showHome;
-      if (tabId === 'library') return true;
+      if (tabId === 'library') return bottomBarConfig.showLibrary;
       if (tabId === 'downloads') return bottomBarConfig.showDownloads;
       if (tabId === 'requests') return hasJellyseerr && bottomBarConfig.showRequests;
       if (tabId === 'admin') return isAdmin && bottomBarConfig.showAdmin;
@@ -333,7 +333,7 @@ export function LibrarySelector() {
   return (
     <View>
       <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 12, marginBottom: 12 }}>
-        Choose which tabs appear on the bottom bar. Library and Settings are always visible.
+        Choose which tabs appear on the bottom bar. Only Settings is always visible.
       </Text>
 
       <View style={{ marginBottom: 16 }}>
@@ -347,6 +347,14 @@ export function LibrarySelector() {
           isSelected={bottomBarConfig.showHome}
           accentColor={accentColor}
           onToggle={() => setBottomBarConfig({ showHome: !bottomBarConfig.showHome })}
+        />
+        <SpecialRow
+          icon="library"
+          title="Library"
+          subtitle="Browse all your libraries"
+          isSelected={bottomBarConfig.showLibrary}
+          accentColor={accentColor}
+          onToggle={() => setBottomBarConfig({ showLibrary: !bottomBarConfig.showLibrary })}
         />
         <SpecialRow
           icon="download"
@@ -438,7 +446,7 @@ export function LibrarySelector() {
       </View>
 
       <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 12, marginTop: 16 }}>
-        Library and Settings tabs are always available.
+        Settings tab is always available.
       </Text>
     </View>
   );

@@ -37,6 +37,7 @@ export const DEFAULT_TAB_ORDER: TabId[] = [
 // Tab bar configuration - libraries are now dynamic based on Jellyfin
 export interface BottomBarConfig {
   showHome: boolean;
+  showLibrary: boolean;
   showDownloads: boolean;
   showAdmin: boolean;
   showRequests: boolean;
@@ -47,6 +48,7 @@ export interface BottomBarConfig {
 
 export const DEFAULT_BOTTOM_BAR_CONFIG: BottomBarConfig = {
   showHome: true,
+  showLibrary: true,
   showDownloads: true,
   showAdmin: true,
   showRequests: true,

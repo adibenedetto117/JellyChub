@@ -142,7 +142,7 @@ export default function LiveTvPlayerScreen() {
   }, [showControls, hideControls, showControlsWithTimeout]);
 
   const handleBack = useCallback(() => {
-    goBack();
+    goBack('/(tabs)/home');
   }, []);
 
   const handleChannelChange = useCallback((channel: LiveTvChannel) => {
