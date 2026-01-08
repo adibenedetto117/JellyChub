@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, Pressable, StatusBar, Dimensions, ActivityIndicator, ScrollView, Alert, Platform } from 'react-native';
+import { View, Text, Pressable, StatusBar, Dimensions, ActivityIndicator, Alert, Platform } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
 import { useLocalSearchParams, router } from 'expo-router';
@@ -14,6 +14,7 @@ import Animated, {
   runOnJS,
   interpolate,
   Extrapolation,
+  cancelAnimation,
 } from 'react-native-reanimated';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -48,22 +49,38 @@ import { SubtitleSelector } from '@/components/player/SubtitleSelector';
 import { SubtitleDisplay } from '@/components/player/SubtitleDisplay';
 import { SubtitleStyleModal } from '@/components/player/SubtitleStyleModal';
 import { BrightnessIndicator, VolumeIndicator, SubtitleOffsetControl, SeekIndicator } from '@/components/player/VideoPlayerControls';
-import { VideoOptionsMenu } from '@/components/player/VideoOptionsMenu';
 import { TVVideoPlayerControls } from '@/components/player/TVVideoPlayerControls';
-import { SleepTimerSelector, SleepTimerIndicator } from '@/components/player/SleepTimerSelector';
-import { OpenSubtitlesSearch } from '@/components/player/OpenSubtitlesSearch';
+import { SleepTimerSelector } from '@/components/player/SleepTimerSelector';
 import { ChapterList, ChapterMarkers, CurrentChapterDisplay, ChapterNavigation, type ChapterInfo } from '@/components/player/ChapterList';
 import { TrickplayPreview, TimeOnlyPreview } from '@/components/player/TrickplayPreview';
-import { openSubtitlesService } from '@/services';
+import { OpenSubtitlesSearch } from '@/components/player/OpenSubtitlesSearch';
 import type { MediaSource, TrickplayInfo } from '@/types/jellyfin';
 import type { VideoSleepTimer } from '@/types/player';
-import { isChromecastSupported, isAirPlaySupported, type CastMediaInfo } from '@/utils/casting';
-import { useChromecast, useCastButton } from '@/hooks';
+import { isChromecastSupported, type CastMediaInfo } from '@/utils/casting';
+import { useChromecast } from '@/hooks';
 import { CastRemoteControl } from '@/components/player/CastRemoteControl';
+
+interface ControlIconButtonProps {
+  icon: keyof typeof Ionicons.glyphMap;
+  onPress: () => void;
+  isActive?: boolean;
+  accentColor: string;
+}
+
+function ControlIconButton({ icon, onPress, isActive, accentColor }: ControlIconButtonProps) {
+  return (
+    <Pressable
+      onPress={onPress}
+      className="w-10 h-10 rounded-full items-center justify-center mx-1"
+      style={{ backgroundColor: isActive ? accentColor + '60' : 'rgba(0,0,0,0.5)' }}
+    >
+      <Ionicons name={icon} size={21} color={isActive ? accentColor : '#fff'} />
+    </Pressable>
+  );
+}
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-// Playback speed options for video player (0.25x to 3x)
 const VIDEO_SPEED_OPTIONS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3];
 
 const subtitleCache = new Map<string, Array<{ start: number; end: number; text: string }>>();
@@ -106,7 +123,6 @@ function findSubtitleCue(cues: Array<{ start: number; end: number; text: string 
   return null;
 }
 
-// Custom SkipIcon component - kept because it displays the seconds text overlay on the refresh icon
 function SkipIcon({ size = 24, seconds = 10, direction = 'forward', color = '#fff' }: { size?: number; seconds?: number; direction?: 'forward' | 'back'; color?: string }) {
   const isBack = direction === 'back';
   return (
@@ -130,6 +146,7 @@ export default function VideoPlayerScreen() {
   const subtitleSettings = useSettingsStore((s) => s.player);
   const externalPlayerEnabled = useSettingsStore((s) => s.player.externalPlayerEnabled ?? true);
   const hideMedia = useSettingsStore((s) => s.hideMedia);
+  const openSubtitlesApiKey = useSettingsStore((s) => s.openSubtitlesApiKey);
   const getDownloadedItem = useDownloadStore((s) => s.getDownloadedItem);
   const userId = currentUser?.Id ?? '';
   const insets = useSafeAreaInsets();
@@ -188,7 +205,6 @@ export default function VideoPlayerScreen() {
   const [showSubtitleSelector, setShowSubtitleSelector] = useState(false);
   const [showSubtitleStyleModal, setShowSubtitleStyleModal] = useState(false);
   const [showSubtitleOffset, setShowSubtitleOffset] = useState(false);
-  const [showOpenSubtitlesSearch, setShowOpenSubtitlesSearch] = useState(false);
   const [externalSubtitleCues, setExternalSubtitleCues] = useState<Array<{ start: number; end: number; text: string }> | null>(null);
   const [showSpeedSelector, setShowSpeedSelector] = useState(false);
   const [showSleepTimerSelector, setShowSleepTimerSelector] = useState(false);
@@ -217,14 +233,14 @@ export default function VideoPlayerScreen() {
   const [subtitlesLoading, setSubtitlesLoading] = useState(false);
   const [subtitleLoadError, setSubtitleLoadError] = useState<string | null>(null);
   const [showChapterList, setShowChapterList] = useState(false);
-  const [showOptionsMenu, setShowOptionsMenu] = useState(false);
+  const [showOpenSubtitlesSearch, setShowOpenSubtitlesSearch] = useState(false);
+  const [showMoreOptions, setShowMoreOptions] = useState(false);
 
   const [abLoop, setAbLoop] = useState<{ a: number | null; b: number | null }>({ a: null, b: null });
   const [controlsLocked, setControlsLocked] = useState(false);
   const [showFrameControls, setShowFrameControls] = useState(false);
 
   const chromecast = useChromecast();
-  const CastButton = useCastButton();
   const [showCastRemote, setShowCastRemote] = useState(false);
   const [castMediaInfo, setCastMediaInfo] = useState<CastMediaInfo | null>(null);
   const wasCasting = useRef(false);
@@ -1300,15 +1316,21 @@ export default function VideoPlayerScreen() {
     const opacity = direction === 'left' ? skipLeftOpacity : skipRightOpacity;
     const scale = direction === 'left' ? skipLeftScale : skipRightScale;
 
+    cancelAnimation(opacity);
+    cancelAnimation(scale);
+
+    opacity.value = 0;
+    scale.value = 0.5;
+
     opacity.value = withSequence(
-      withTiming(1, { duration: 150 }),
-      withTiming(0, { duration: 400 })
+      withTiming(1, { duration: 100 }),
+      withTiming(0, { duration: 300 })
     );
     scale.value = withSequence(
-      withSpring(1.2, { damping: 8 }),
-      withSpring(0.5, { damping: 12 })
+      withTiming(1.2, { duration: 100 }),
+      withTiming(0.5, { duration: 300 })
     );
-  }, []);
+  }, [skipLeftOpacity, skipRightOpacity, skipLeftScale, skipRightScale]);
 
   const handleDoubleTapSeek = useCallback((direction: 'left' | 'right') => {
     const seekAmount = direction === 'left' ? -10000 : 10000;
@@ -1367,6 +1389,13 @@ export default function VideoPlayerScreen() {
   const toggleControlsLock = useCallback(() => {
     setControlsLocked(prev => !prev);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  }, []);
+
+  const handleEnterPiP = useCallback(() => {
+    try {
+      videoViewRef.current?.startPictureInPicture();
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    } catch (e) {}
   }, []);
 
   const handleStartCasting = useCallback(async () => {
@@ -1964,58 +1993,71 @@ export default function VideoPlayerScreen() {
             />
 
             <View
-              className="absolute top-0 left-0 right-0 px-8"
-              style={{ paddingTop: isPortrait ? insets.top + 12 : 24, paddingBottom: 16 }}
+              className="absolute top-0 left-0 right-0"
+              style={{
+                paddingTop: isPortrait ? insets.top + 8 : 20,
+                paddingBottom: 8,
+                paddingLeft: Math.max(48, insets.left + 24),
+                paddingRight: Math.max(48, insets.right + 24),
+              }}
             >
               <View className="flex-row items-center">
-                <Pressable
-                  onPress={handleClose}
-                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                  className="w-11 h-11 rounded-full bg-white/15 items-center justify-center mr-3 active:bg-white/30"
-                >
-                  <Ionicons name="close" size={22} color="#fff" />
-                </Pressable>
-
-                <View className="flex-1 mr-2">
-                  <Text className="text-white text-base font-bold" numberOfLines={1}>
+                <View className="flex-1 mr-4">
+                  <Text className="text-white text-lg font-bold" numberOfLines={1}>
                     {getDisplayName(item, hideMedia)}
                   </Text>
                   {getSubtitle() && (
-                    <Text className="text-white/60 text-xs mt-0.5" numberOfLines={1}>
+                    <Text className="text-white/60 text-sm mt-1" numberOfLines={1}>
                       {getSubtitle()}
                     </Text>
                   )}
                 </View>
 
                 <Pressable
-                  onPress={() => setShowAudioSelector(true)}
-                  className="w-11 h-11 rounded-full bg-white/15 items-center justify-center active:bg-white/30 mr-2"
-                >
-                  <Ionicons name="musical-notes-outline" size={20} color="#fff" />
-                </Pressable>
-
-                <Pressable
-                  onPress={() => setShowSubtitleSelector(true)}
-                  className="w-11 h-11 rounded-full items-center justify-center active:bg-white/30 mr-2"
-                  style={{
-                    backgroundColor: (selectedSubtitleIndex !== undefined || externalSubtitleCues !== null)
-                      ? accentColor + '40'
-                      : 'rgba(255,255,255,0.15)'
-                  }}
-                >
-                  <Ionicons
-                    name="text-outline"
-                    size={20}
-                    color={(selectedSubtitleIndex !== undefined || externalSubtitleCues !== null) ? accentColor : '#fff'}
-                  />
-                </Pressable>
-
-                <Pressable
-                  onPress={() => setShowOptionsMenu(true)}
+                  onPress={handleClose}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                   className="w-11 h-11 rounded-full bg-white/15 items-center justify-center active:bg-white/30"
                 >
-                  <Ionicons name="ellipsis-horizontal" size={22} color="#fff" />
+                  <Ionicons name="close" size={22} color="#fff" />
                 </Pressable>
+              </View>
+
+              <View className="flex-row items-center justify-center mt-3">
+                <ControlIconButton
+                  icon="speedometer-outline"
+                  onPress={() => setShowSpeedSelector(true)}
+                  isActive={videoPlaybackSpeed !== 1}
+                  accentColor={accentColor}
+                />
+                <ControlIconButton
+                  icon="musical-notes-outline"
+                  onPress={() => setShowAudioSelector(true)}
+                  accentColor={accentColor}
+                />
+                <ControlIconButton
+                  icon="text-outline"
+                  onPress={() => setShowSubtitleSelector(true)}
+                  isActive={selectedSubtitleIndex !== undefined || externalSubtitleCues !== null}
+                  accentColor={accentColor}
+                />
+                {(item?.Chapters as any[])?.length > 0 && (
+                  <ControlIconButton
+                    icon="list-outline"
+                    onPress={() => setShowChapterList(true)}
+                    accentColor={accentColor}
+                  />
+                )}
+                <ControlIconButton
+                  icon="moon-outline"
+                  onPress={() => setShowSleepTimerSelector(true)}
+                  isActive={!!sleepTimer}
+                  accentColor={accentColor}
+                />
+                <ControlIconButton
+                  icon="ellipsis-horizontal"
+                  onPress={() => setShowMoreOptions(true)}
+                  accentColor={accentColor}
+                />
               </View>
             </View>
 
@@ -2071,7 +2113,13 @@ export default function VideoPlayerScreen() {
               )}
             </View>
 
-            <View className="absolute bottom-0 left-0 right-0 px-8 pb-8">
+            <View
+              className="absolute bottom-0 left-0 right-0 pb-8"
+              style={{
+                paddingLeft: Math.max(32, insets.left + 16),
+                paddingRight: Math.max(32, insets.right + 16),
+              }}
+            >
               {item?.Chapters && item.Chapters.length > 0 && (
                 <View className="flex-row items-center justify-between mb-2">
                   <CurrentChapterDisplay
@@ -2263,25 +2311,6 @@ export default function VideoPlayerScreen() {
                   {formatPlayerTime(progress.duration)}
                 </Text>
               </View>
-
-              {isPortrait && (
-                <View className="flex-row items-center justify-center gap-4 mt-3">
-                  <Pressable
-                    onPress={toggleOrientation}
-                    className="w-11 h-11 rounded-full items-center justify-center active:bg-white/20"
-                    style={{ backgroundColor: 'rgba(255,255,255,0.1)', opacity: isRotationLocked ? 0.5 : 1 }}
-                  >
-                    <Ionicons name="phone-landscape-outline" size={20} color="#fff" />
-                  </Pressable>
-
-                  <Pressable
-                    onPress={() => setShowOptionsMenu(true)}
-                    className="w-11 h-11 rounded-full bg-white/15 items-center justify-center active:bg-white/30"
-                  >
-                    <Ionicons name="ellipsis-horizontal" size={22} color="#fff" />
-                  </Pressable>
-                </View>
-              )}
             </View>
           </Animated.View>
           )}
@@ -2371,24 +2400,88 @@ export default function VideoPlayerScreen() {
         episodeEndTimeMs={progress.duration > 0 ? progress.duration - progress.position : undefined}
       />
 
-      {showOpenSubtitlesSearch && (
-        <OpenSubtitlesSearch
-          onClose={() => setShowOpenSubtitlesSearch(false)}
-          onSelectSubtitle={handleExternalSubtitleSelect}
-          initialQuery={item?.Name || ''}
-          initialYear={item?.ProductionYear}
-          type={item?.Type === 'Episode' ? 'episode' : 'movie'}
-          seasonNumber={item?.ParentIndexNumber}
-          episodeNumber={item?.IndexNumber}
-          tmdbId={(item as any)?.ProviderIds?.Tmdb ? parseInt((item as any).ProviderIds.Tmdb, 10) : undefined}
-          imdbId={(item as any)?.ProviderIds?.Imdb}
-        />
-      )}
-
       <SubtitleStyleModal
         visible={showSubtitleStyleModal}
         onClose={() => setShowSubtitleStyleModal(false)}
       />
+
+      {showMoreOptions && (
+        <Pressable
+          onPress={() => setShowMoreOptions(false)}
+          className="absolute inset-0 bg-black/80 items-center justify-center z-50"
+        >
+          <View className="bg-zinc-900 rounded-2xl p-6 w-80">
+            <Text className="text-white text-lg font-bold mb-4 text-center">More Options</Text>
+            {openSubtitlesApiKey && (
+              <Pressable
+                onPress={() => { setShowMoreOptions(false); setShowOpenSubtitlesSearch(true); }}
+                className="flex-row items-center py-3 border-b border-white/10"
+              >
+                <Ionicons name="search-outline" size={20} color="#fff" />
+                <Text className="text-white ml-3">Search Subtitles</Text>
+              </Pressable>
+            )}
+            {(selectedSubtitleIndex !== undefined || externalSubtitleCues !== null) && (
+              <>
+                <Pressable
+                  onPress={() => { setShowMoreOptions(false); setShowSubtitleStyleModal(true); }}
+                  className="flex-row items-center py-3 border-b border-white/10"
+                >
+                  <Ionicons name="color-palette-outline" size={20} color="#fff" />
+                  <Text className="text-white ml-3">Subtitle Style</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => { setShowMoreOptions(false); setShowSubtitleOffset(!showSubtitleOffset); }}
+                  className="flex-row items-center py-3 border-b border-white/10"
+                >
+                  <Ionicons name="time-outline" size={20} color={subtitleOffset !== 0 ? accentColor : '#fff'} />
+                  <Text className="text-white ml-3">
+                    {subtitleOffset !== 0 ? `Sync: ${subtitleOffset > 0 ? '+' : ''}${(subtitleOffset / 1000).toFixed(1)}s` : 'Subtitle Sync'}
+                  </Text>
+                </Pressable>
+              </>
+            )}
+            <Pressable
+              onPress={() => { setShowMoreOptions(false); toggleControlsLock(); }}
+              className="flex-row items-center py-3 border-b border-white/10"
+            >
+              <Ionicons name={controlsLocked ? 'lock-closed' : 'lock-open-outline'} size={20} color={controlsLocked ? accentColor : '#fff'} />
+              <Text className="text-white ml-3">{controlsLocked ? 'Unlock Controls' : 'Lock Controls'}</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => { setShowMoreOptions(false); handleEnterPiP(); }}
+              className="flex-row items-center py-3 border-b border-white/10"
+            >
+              <Ionicons name="albums-outline" size={20} color="#fff" />
+              <Text className="text-white ml-3">Picture in Picture</Text>
+            </Pressable>
+            {externalPlayerAvailable && externalPlayerEnabled && streamUrl && (
+              <Pressable
+                onPress={() => { setShowMoreOptions(false); handleOpenExternalPlayer(); }}
+                className="flex-row items-center py-3 border-b border-white/10"
+              >
+                <Ionicons name="open-outline" size={20} color="#fff" />
+                <Text className="text-white ml-3">External Player</Text>
+              </Pressable>
+            )}
+            {isChromecastSupported && chromecast.isAvailable && (
+              <Pressable
+                onPress={() => { setShowMoreOptions(false); chromecast.isConnected ? setShowCastRemote(true) : handleStartCasting(); }}
+                className="flex-row items-center py-3 border-b border-white/10"
+              >
+                <Ionicons name={chromecast.isConnected ? 'tv' : 'tv-outline'} size={20} color={chromecast.isConnected ? accentColor : '#fff'} />
+                <Text className="text-white ml-3">{chromecast.isConnected ? 'Cast Controls' : 'Cast'}</Text>
+              </Pressable>
+            )}
+            <Pressable
+              onPress={() => setShowMoreOptions(false)}
+              className="mt-4 py-3 rounded-lg bg-white/10 items-center"
+            >
+              <Text className="text-white font-medium">Close</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      )}
 
       <ChapterList
         visible={showChapterList}
@@ -2408,36 +2501,19 @@ export default function VideoPlayerScreen() {
         onClose={handleCastRemoteClose}
       />
 
-      <VideoOptionsMenu
-        visible={showOptionsMenu}
-        onClose={() => setShowOptionsMenu(false)}
-        accentColor={accentColor}
-        onSpeedPress={() => setShowSpeedSelector(true)}
-        currentSpeed={videoPlaybackSpeed}
-        onSubtitleStylePress={() => setShowSubtitleStyleModal(true)}
-        onChapterPress={() => setShowChapterList(true)}
-        hasChapters={!!item?.Chapters && item.Chapters.length > 0}
-        onLoopAPress={handleSetLoopA}
-        onLoopBPress={handleSetLoopB}
-        onLoopClearPress={handleClearLoop}
-        loopA={abLoop.a}
-        loopB={abLoop.b}
-        onLockPress={toggleControlsLock}
-        isLocked={controlsLocked}
-        onSleepTimerPress={() => setShowSleepTimerSelector(true)}
-        hasSleepTimer={!!sleepTimer}
-        sleepTimerLabel={sleepTimer ? `${Math.ceil((sleepTimer.endTime - Date.now()) / 60000)} min` : undefined}
-        onExternalPlayerPress={handleOpenExternalPlayer}
-        hasExternalPlayer={externalPlayerEnabled && externalPlayerAvailable}
-        onOpenSubtitlesPress={() => setShowOpenSubtitlesSearch(true)}
-        hasOpenSubtitles={openSubtitlesService.isConfigured()}
-        hasSubtitle={selectedSubtitleIndex !== undefined || externalSubtitleCues !== null}
-        onPipPress={() => videoViewRef.current?.startPictureInPicture()}
-        chromecastConnected={chromecast.isConnected}
-        onCastPress={handleStartCasting}
-        onCastRemotePress={() => setShowCastRemote(true)}
-        CastButton={CastButton}
-      />
+      {showOpenSubtitlesSearch && (
+        <OpenSubtitlesSearch
+          onClose={() => setShowOpenSubtitlesSearch(false)}
+          onSelectSubtitle={handleExternalSubtitleSelect}
+          initialQuery={item?.Name || ''}
+          initialYear={item?.ProductionYear}
+          type={item?.Type === 'Episode' ? 'episode' : 'movie'}
+          seasonNumber={item?.ParentIndexNumber}
+          episodeNumber={item?.IndexNumber}
+          tmdbId={item?.ProviderIds?.Tmdb ? parseInt(item.ProviderIds.Tmdb, 10) : undefined}
+          imdbId={item?.ProviderIds?.Imdb}
+        />
+      )}
     </View>
   );
 }

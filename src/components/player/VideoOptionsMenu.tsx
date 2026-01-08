@@ -1,7 +1,6 @@
 import { View, Text, Pressable, ScrollView, Modal } from 'react-native';
-import { memo, useState } from 'react';
+import { memo } from 'react';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { isChromecastSupported } from '@/utils/casting';
 
 interface OptionRowProps {
@@ -11,8 +10,6 @@ interface OptionRowProps {
   onPress: () => void;
   isActive?: boolean;
   accentColor: string;
-  disabled?: boolean;
-  rightContent?: React.ReactNode;
 }
 
 const OptionRow = memo(function OptionRow({
@@ -22,15 +19,11 @@ const OptionRow = memo(function OptionRow({
   onPress,
   isActive = false,
   accentColor,
-  disabled = false,
-  rightContent,
 }: OptionRowProps) {
   return (
     <Pressable
       onPress={onPress}
-      disabled={disabled}
       className="flex-row items-center py-4 px-4 active:bg-white/10"
-      style={{ opacity: disabled ? 0.5 : 1 }}
     >
       <View
         className="w-10 h-10 rounded-full items-center justify-center mr-4"
@@ -44,7 +37,6 @@ const OptionRow = memo(function OptionRow({
           <Text className="text-white/60 text-sm mt-0.5">{value}</Text>
         )}
       </View>
-      {rightContent}
     </Pressable>
   );
 });
@@ -58,22 +50,12 @@ interface VideoOptionsMenuProps {
   onSubtitleStylePress: () => void;
   onChapterPress: () => void;
   hasChapters: boolean;
-  onLoopAPress: () => void;
-  onLoopBPress: () => void;
-  onLoopClearPress: () => void;
-  loopA: number | null;
-  loopB: number | null;
-  onLockPress: () => void;
-  isLocked: boolean;
   onSleepTimerPress: () => void;
   hasSleepTimer: boolean;
   sleepTimerLabel?: string;
-  onExternalPlayerPress: () => void;
-  hasExternalPlayer: boolean;
   onOpenSubtitlesPress: () => void;
   hasOpenSubtitles: boolean;
   hasSubtitle: boolean;
-  onPipPress: () => void;
   chromecastConnected: boolean;
   onCastPress: () => void;
   onCastRemotePress: () => void;
@@ -89,45 +71,18 @@ export const VideoOptionsMenu = memo(function VideoOptionsMenu({
   onSubtitleStylePress,
   onChapterPress,
   hasChapters,
-  onLoopAPress,
-  onLoopBPress,
-  onLoopClearPress,
-  loopA,
-  loopB,
-  onLockPress,
-  isLocked,
   onSleepTimerPress,
   hasSleepTimer,
   sleepTimerLabel,
-  onExternalPlayerPress,
-  hasExternalPlayer,
   onOpenSubtitlesPress,
   hasOpenSubtitles,
   hasSubtitle,
-  onPipPress,
   chromecastConnected,
   onCastPress,
   onCastRemotePress,
   CastButton,
 }: VideoOptionsMenuProps) {
-  const [showScrollIndicator, setShowScrollIndicator] = useState(true);
-
   if (!visible) return null;
-
-  const hasLoop = loopA !== null || loopB !== null;
-  const loopLabel = hasLoop
-    ? loopA !== null && loopB !== null
-      ? 'A-B Loop Active'
-      : loopA !== null
-        ? 'Point A Set'
-        : 'Point B Set'
-    : 'Set loop points';
-
-  const handleScroll = (event: any) => {
-    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
-    const isNearBottom = contentOffset.y + layoutMeasurement.height >= contentSize.height - 20;
-    setShowScrollIndicator(!isNearBottom);
-  };
 
   return (
     <Modal
@@ -141,7 +96,7 @@ export const VideoOptionsMenu = memo(function VideoOptionsMenu({
         className="flex-1 bg-black/70 justify-end items-center"
       >
         <Pressable onPress={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 400 }}>
-          <View className="bg-neutral-900 rounded-t-3xl" style={{ maxHeight: '70%' }}>
+          <View className="bg-neutral-900 rounded-t-3xl">
             <View className="flex-row items-center justify-between px-6 py-4 border-b border-white/10">
               <Text className="text-white text-lg font-bold">Options</Text>
               <Pressable
@@ -152,12 +107,7 @@ export const VideoOptionsMenu = memo(function VideoOptionsMenu({
               </Pressable>
             </View>
 
-            <ScrollView
-              className="px-2"
-              showsVerticalScrollIndicator={false}
-              onScroll={handleScroll}
-              scrollEventThrottle={16}
-            >
+            <ScrollView className="px-2" showsVerticalScrollIndicator={false}>
               <OptionRow
                 icon="speedometer-outline"
                 label="Playback Speed"
@@ -194,78 +144,12 @@ export const VideoOptionsMenu = memo(function VideoOptionsMenu({
                 />
               )}
 
-              <View className="flex-row items-center py-4 px-4">
-                <View
-                  className="w-10 h-10 rounded-full items-center justify-center mr-4"
-                  style={{ backgroundColor: hasLoop ? accentColor + '40' : 'rgba(255,255,255,0.1)' }}
-                >
-                  <Ionicons name="repeat-outline" size={20} color={hasLoop ? accentColor : '#fff'} />
-                </View>
-                <View className="flex-1">
-                  <Text className="text-white text-base font-medium">A-B Loop</Text>
-                  <Text className="text-white/60 text-sm mt-0.5">{loopLabel}</Text>
-                </View>
-                <View className="flex-row gap-2">
-                  <Pressable
-                    onPress={onLoopAPress}
-                    className="h-9 px-3 rounded-full items-center justify-center"
-                    style={{ backgroundColor: loopA !== null ? accentColor : 'rgba(255,255,255,0.15)' }}
-                  >
-                    <Text className="text-white text-sm font-bold">A</Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={onLoopBPress}
-                    disabled={loopA === null}
-                    className="h-9 px-3 rounded-full items-center justify-center"
-                    style={{
-                      backgroundColor: loopB !== null ? accentColor : 'rgba(255,255,255,0.15)',
-                      opacity: loopA === null ? 0.5 : 1
-                    }}
-                  >
-                    <Text className="text-white text-sm font-bold">B</Text>
-                  </Pressable>
-                  {hasLoop && (
-                    <Pressable
-                      onPress={onLoopClearPress}
-                      className="h-9 px-3 rounded-full bg-red-500/60 items-center justify-center"
-                    >
-                      <Ionicons name="close" size={16} color="#fff" />
-                    </Pressable>
-                  )}
-                </View>
-              </View>
-
-              <OptionRow
-                icon={isLocked ? 'lock-closed' : 'lock-open-outline'}
-                label="Lock Controls"
-                value={isLocked ? 'Locked' : 'Unlocked'}
-                onPress={onLockPress}
-                isActive={isLocked}
-                accentColor={isLocked ? '#ef4444' : accentColor}
-              />
-
               <OptionRow
                 icon="moon-outline"
                 label="Sleep Timer"
                 value={hasSleepTimer ? sleepTimerLabel : 'Off'}
                 onPress={() => { onClose(); onSleepTimerPress(); }}
                 isActive={hasSleepTimer}
-                accentColor={accentColor}
-              />
-
-              {hasExternalPlayer && (
-                <OptionRow
-                  icon="open-outline"
-                  label="External Player"
-                  onPress={onExternalPlayerPress}
-                  accentColor={accentColor}
-                />
-              )}
-
-              <OptionRow
-                icon="browsers-outline"
-                label="Picture in Picture"
-                onPress={onPipPress}
                 accentColor={accentColor}
               />
 
@@ -309,20 +193,6 @@ export const VideoOptionsMenu = memo(function VideoOptionsMenu({
 
               <View className="h-8" />
             </ScrollView>
-
-            {showScrollIndicator && (
-              <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0 }}>
-                <LinearGradient
-                  colors={['transparent', 'rgba(23,23,23,0.95)']}
-                  style={{ height: 60, justifyContent: 'flex-end', alignItems: 'center', paddingBottom: 8 }}
-                >
-                  <View className="flex-row items-center gap-1">
-                    <Ionicons name="chevron-down" size={16} color="rgba(255,255,255,0.5)" />
-                    <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12 }}>Scroll for more</Text>
-                  </View>
-                </LinearGradient>
-              </View>
-            )}
           </View>
         </Pressable>
       </Pressable>
