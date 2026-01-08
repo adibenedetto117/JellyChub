@@ -24,9 +24,10 @@ import {
   jellyfinClient,
   getPlaylists,
   addToPlaylist,
+  getInstantMix,
 } from '@/api';
 import { formatPlayerTime, ticksToMs, getDisplayName, getDisplayArtist, getDisplayImageUrl, goBack, dismissModal } from '@/utils';
-import { EqualizerModal, SleepTimerSelector, SleepTimerIndicator, AudioVisualizer } from '@/components/player';
+import { EqualizerModal, SleepTimerSelector, SleepTimerIndicator } from '@/components/player';
 import type { VideoSleepTimer } from '@/types/player';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -62,12 +63,13 @@ export default function MusicPlayerScreen() {
     progress,
     music,
     currentItem,
-    toggleShuffle,
+    cycleShuffleMode,
     cycleRepeatMode,
     setShowLyrics,
     setProgress,
     addToPlayNext,
     setMusicSleepTimer,
+    setQueue,
   } = usePlayerStore();
 
   const [isFavorite, setIsFavorite] = useState(false);
@@ -75,7 +77,6 @@ export default function MusicPlayerScreen() {
   const [showPlaylistPicker, setShowPlaylistPicker] = useState(false);
   const [showEqualizer, setShowEqualizer] = useState(false);
   const [showSleepTimer, setShowSleepTimer] = useState(false);
-  const [showVisualizer, setShowVisualizer] = useState(false);
   const [playMethod, setPlayMethod] = useState<string>('Direct Stream');
   const [lyrics, setLyrics] = useState<LyricLine[] | null>(null);
   const [lyricsLoading, setLyricsLoading] = useState(false);
@@ -108,6 +109,43 @@ export default function MusicPlayerScreen() {
       Alert.alert('Error', 'Failed to add to playlist');
     },
   });
+
+  const instantMixMutation = useMutation({
+    mutationFn: async () => {
+      if (!item?.Id) throw new Error('No item');
+      const result = await getInstantMix(item.Id, userId, 50);
+      return result.Items ?? [];
+    },
+    onSuccess: (tracks) => {
+      if (tracks.length === 0) {
+        Alert.alert('No Mix Found', 'Could not generate an instant mix for this track.');
+        return;
+      }
+
+      // Create queue from instant mix tracks
+      const queueItems = tracks.map((track, index) => ({
+        id: track.Id,
+        item: track,
+        index,
+      }));
+
+      // Set the queue and start playing the first track
+      setQueue(queueItems, 0);
+      audioService.loadAndPlay(tracks[0], userId);
+
+      setShowOptions(false);
+      setAddedToast('Instant Mix');
+      setTimeout(() => setAddedToast(null), 2500);
+    },
+    onError: () => {
+      Alert.alert('Error', 'Failed to generate instant mix');
+    },
+  });
+
+  const handleInstantMix = () => {
+    instantMixMutation.mutate();
+  };
+
   const hasStartedPlayback = useRef(false);
   const seekPositionRef = useRef(0);
   const wasPlayingRef = useRef(false);
@@ -648,62 +686,34 @@ export default function MusicPlayerScreen() {
           </ScrollView>
         ) : (
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 }}>
-            <Pressable onPress={() => setShowVisualizer(!showVisualizer)}>
-              <Animated.View style={albumStyle}>
-                {showVisualizer ? (
-                  <View
-                    style={{
-                      width: SCREEN_WIDTH - 80,
-                      height: SCREEN_WIDTH - 80,
-                      borderRadius: 12,
-                      backgroundColor: '#1a1a1a',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      shadowColor: '#000',
-                      shadowOffset: { width: 0, height: 20 },
-                      shadowOpacity: 0.5,
-                      shadowRadius: 30,
-                      elevation: 20,
-                      marginBottom: 32,
-                    }}
-                  >
-                    <AudioVisualizer
-                      style="bars"
-                      barCount={32}
-                      height={SCREEN_WIDTH - 160}
-                      activeColor={accentColor}
-                    />
-                  </View>
+            <Animated.View style={albumStyle}>
+              <View
+                style={{
+                  width: SCREEN_WIDTH - 80,
+                  height: SCREEN_WIDTH - 80,
+                  borderRadius: 12,
+                  overflow: 'hidden',
+                  shadowColor: '#000',
+                  shadowOffset: { width: 0, height: 20 },
+                  shadowOpacity: 0.5,
+                  shadowRadius: 30,
+                  elevation: 20,
+                  marginBottom: 32,
+                }}
+              >
+                {albumArtUrl ? (
+                  <Image
+                    source={{ uri: albumArtUrl }}
+                    style={{ width: '100%', height: '100%' }}
+                    resizeMode="cover"
+                  />
                 ) : (
-                  <View
-                    style={{
-                      width: SCREEN_WIDTH - 80,
-                      height: SCREEN_WIDTH - 80,
-                      borderRadius: 12,
-                      overflow: 'hidden',
-                      shadowColor: '#000',
-                      shadowOffset: { width: 0, height: 20 },
-                      shadowOpacity: 0.5,
-                      shadowRadius: 30,
-                      elevation: 20,
-                      marginBottom: 32,
-                    }}
-                  >
-                    {albumArtUrl ? (
-                      <Image
-                        source={{ uri: albumArtUrl }}
-                        style={{ width: '100%', height: '100%' }}
-                        resizeMode="cover"
-                      />
-                    ) : (
-                      <View style={{ width: '100%', height: '100%', backgroundColor: '#1a1a1a', alignItems: 'center', justifyContent: 'center' }}>
-                        <Ionicons name="musical-note" size={80} color="rgba(255,255,255,0.3)" />
-                      </View>
-                    )}
+                  <View style={{ width: '100%', height: '100%', backgroundColor: '#1a1a1a', alignItems: 'center', justifyContent: 'center' }}>
+                    <Ionicons name="musical-note" size={80} color="rgba(255,255,255,0.3)" />
                   </View>
                 )}
-              </Animated.View>
-            </Pressable>
+              </View>
+            </Animated.View>
 
             <View style={{ width: '100%', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
               <View style={{ flex: 1, marginRight: 16 }}>
@@ -768,7 +778,7 @@ export default function MusicPlayerScreen() {
 
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 8 }}>
             <Pressable
-              onPress={toggleShuffle}
+              onPress={cycleShuffleMode}
               style={{
                 width: 44,
                 height: 44,
@@ -776,14 +786,18 @@ export default function MusicPlayerScreen() {
                 justifyContent: 'center',
               }}
             >
-              <Ionicons
-                name="shuffle"
-                size={24}
-                color={music.shuffle ? accentColor : 'rgba(255,255,255,0.5)'}
-              />
-              {music.shuffle && (
-                <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: accentColor, marginTop: 4 }} />
-              )}
+              <View style={{ alignItems: 'center' }}>
+                <Ionicons
+                  name={music.shuffleMode === 'album' ? 'albums' : 'shuffle'}
+                  size={24}
+                  color={music.shuffleMode !== 'off' ? accentColor : 'rgba(255,255,255,0.5)'}
+                />
+                {music.shuffleMode !== 'off' && (
+                  <Text style={{ fontSize: 8, color: accentColor, marginTop: 2, fontWeight: '600' }}>
+                    {music.shuffleMode === 'all' ? 'ALL' : music.shuffleMode === 'album' ? 'ALB' : 'NEW'}
+                  </Text>
+                )}
+              </View>
             </Pressable>
 
             <Pressable onPress={() => audioService.skipToPrevious()} style={{ width: 56, height: 56, alignItems: 'center', justifyContent: 'center' }}>
@@ -865,20 +879,6 @@ export default function MusicPlayerScreen() {
             >
               <Ionicons name="text" size={18} color="#fff" />
               <Text style={{ color: '#fff', fontSize: 13, marginLeft: 6 }}>Lyrics</Text>
-            </Pressable>
-            <Pressable
-              onPress={() => setShowVisualizer(!showVisualizer)}
-              style={{
-                paddingHorizontal: 14,
-                paddingVertical: 8,
-                borderRadius: 20,
-                flexDirection: 'row',
-                alignItems: 'center',
-                backgroundColor: showVisualizer ? accentColor : 'rgba(255,255,255,0.1)',
-              }}
-            >
-              <Ionicons name="pulse" size={18} color="#fff" />
-              <Text style={{ color: '#fff', fontSize: 13, marginLeft: 6 }}>Viz</Text>
             </Pressable>
             <Pressable
               onPress={() => setShowEqualizer(true)}
@@ -991,6 +991,21 @@ export default function MusicPlayerScreen() {
                   >
                     <Ionicons name="play-forward" size={24} color="#fff" />
                     <Text style={{ color: '#fff', fontSize: 16, marginLeft: 16 }}>Play Next</Text>
+                  </Pressable>
+
+                  <Pressable
+                    style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.1)' }}
+                    onPress={handleInstantMix}
+                    disabled={instantMixMutation.isPending}
+                  >
+                    {instantMixMutation.isPending ? (
+                      <ActivityIndicator size={24} color={accentColor} />
+                    ) : (
+                      <Ionicons name="sparkles" size={24} color={accentColor} />
+                    )}
+                    <Text style={{ color: accentColor, fontSize: 16, marginLeft: 16 }}>
+                      {instantMixMutation.isPending ? 'Creating Mix...' : 'Start Instant Mix'}
+                    </Text>
                   </Pressable>
 
                   <Pressable

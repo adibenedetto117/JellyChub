@@ -5,6 +5,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { getStreamUrl, getAudioStreamUrl, getBookDownloadUrl } from '@/api';
 import { notificationService } from './notificationService';
+import { encryptionService } from './encryptionService';
 import type { BaseItem } from '@/types/jellyfin';
 
 const DOWNLOAD_DIR = `${FileSystem.documentDirectory}jellychub/downloads/`;
@@ -176,7 +177,11 @@ class DownloadManager {
     this.activeTasks.delete(downloadId);
 
     if (result?.uri) {
-      store.completeDownload(downloadId, result.uri);
+      const encryptedPath = `${localPath}.enc`;
+      await encryptionService.encryptFile(result.uri, encryptedPath);
+      await FileSystem.deleteAsync(result.uri, { idempotent: true });
+
+      store.completeDownload(downloadId, encryptedPath);
       notificationService.showDownloadComplete(
         item.Name || 'Download',
         item.Type || 'Media'
@@ -277,6 +282,21 @@ class DownloadManager {
     const store = useDownloadStore.getState();
     const download = store.getDownloadedItem(itemId);
     return download?.localPath ?? null;
+  }
+
+  async getDecryptedPath(itemId: string): Promise<string | null> {
+    const store = useDownloadStore.getState();
+    const download = store.getDownloadedItem(itemId);
+    if (!download?.localPath) return null;
+
+    const fileInfo = await FileSystem.getInfoAsync(download.localPath);
+    if (!fileInfo.exists) return null;
+
+    if (download.localPath.endsWith('.enc')) {
+      return encryptionService.getDecryptedUri(download.localPath);
+    }
+
+    return download.localPath;
   }
 
   isDownloaded(itemId: string): boolean {

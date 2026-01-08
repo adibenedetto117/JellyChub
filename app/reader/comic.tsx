@@ -35,7 +35,7 @@ import JSZip from 'jszip';
 import { useAuthStore, useSettingsStore, useDownloadStore } from '@/stores';
 import { useReadingProgressStore } from '@/stores/readingProgressStore';
 import { useResponsive } from '@/hooks/useResponsive';
-import { downloadManager } from '@/services';
+import { downloadManager, encryptionService } from '@/services';
 import { getItem, getBookDownloadUrl, reportPlaybackProgress, generatePlaySessionId } from '@/api';
 import { goBack } from '@/utils';
 
@@ -165,7 +165,11 @@ export default function ComicReaderScreen() {
         if (downloaded?.localPath) {
           const fileInfo = await FileSystem.getInfoAsync(downloaded.localPath);
           if (fileInfo.exists) {
-            localUri = downloaded.localPath;
+            if (downloaded.localPath.endsWith('.enc')) {
+              localUri = await encryptionService.getDecryptedUri(downloaded.localPath);
+            } else {
+              localUri = downloaded.localPath;
+            }
             setDownloadProgress(1);
           } else {
             localUri = await downloadToCache();

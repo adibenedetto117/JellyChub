@@ -15,7 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useAuthStore, useSettingsStore, useDownloadStore } from '@/stores';
 import { useReadingProgressStore } from '@/stores/readingProgressStore';
-import { downloadManager } from '@/services';
+import { downloadManager, encryptionService } from '@/services';
 import { getItem, getBookDownloadUrl, reportPlaybackProgress, generatePlaySessionId } from '@/api';
 import { goBack } from '@/utils';
 
@@ -71,21 +71,20 @@ export default function PdfReaderScreen() {
 
         let localUri: string;
 
-        // Check if PDF is already downloaded persistently
         const downloaded = getDownloadedItem(itemId);
         if (downloaded?.localPath) {
           const fileInfo = await FileSystem.getInfoAsync(downloaded.localPath);
           if (fileInfo.exists) {
             setDebugInfo('Loading downloaded PDF...');
-            console.log('Using persistently downloaded PDF:', downloaded.localPath);
-            localUri = downloaded.localPath;
+            if (downloaded.localPath.endsWith('.enc')) {
+              localUri = await encryptionService.getDecryptedUri(downloaded.localPath);
+            } else {
+              localUri = downloaded.localPath;
+            }
           } else {
-            // File missing, fall back to cache download
-            console.log('Downloaded file missing, falling back to cache');
             localUri = await downloadToCache();
           }
         } else {
-          // Not downloaded, use cache
           localUri = await downloadToCache();
         }
 

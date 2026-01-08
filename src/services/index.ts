@@ -6,6 +6,7 @@ export { openSubtitlesService } from './openSubtitlesService';
 export { notificationService } from './notificationService';
 export { radarrService } from './radarrService';
 export { sonarrService } from './sonarrService';
+export { encryptionService } from './encryptionService';
 export type {
   OpenSubtitlesSearchResult,
   OpenSubtitlesSearchResponse,
