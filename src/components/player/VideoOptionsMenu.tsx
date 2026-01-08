@@ -1,8 +1,8 @@
 import { View, Text, Pressable, ScrollView, Modal } from 'react-native';
-import { memo } from 'react';
+import { memo, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
-import { VideoAirPlayButton } from 'expo-video';
-import { isAirPlaySupported, isChromecastSupported } from '@/utils/casting';
+import { LinearGradient } from 'expo-linear-gradient';
+import { isChromecastSupported } from '@/utils/casting';
 
 interface OptionRowProps {
   icon: keyof typeof Ionicons.glyphMap;
@@ -55,11 +55,6 @@ interface VideoOptionsMenuProps {
   accentColor: string;
   onSpeedPress: () => void;
   currentSpeed: number;
-  onAudioPress: () => void;
-  currentAudio?: string;
-  onSubtitlePress: () => void;
-  hasSubtitle: boolean;
-  currentSubtitle?: string;
   onSubtitleStylePress: () => void;
   onChapterPress: () => void;
   hasChapters: boolean;
@@ -77,6 +72,7 @@ interface VideoOptionsMenuProps {
   hasExternalPlayer: boolean;
   onOpenSubtitlesPress: () => void;
   hasOpenSubtitles: boolean;
+  hasSubtitle: boolean;
   onPipPress: () => void;
   chromecastConnected: boolean;
   onCastPress: () => void;
@@ -90,11 +86,6 @@ export const VideoOptionsMenu = memo(function VideoOptionsMenu({
   accentColor,
   onSpeedPress,
   currentSpeed,
-  onAudioPress,
-  currentAudio,
-  onSubtitlePress,
-  hasSubtitle,
-  currentSubtitle,
   onSubtitleStylePress,
   onChapterPress,
   hasChapters,
@@ -112,12 +103,15 @@ export const VideoOptionsMenu = memo(function VideoOptionsMenu({
   hasExternalPlayer,
   onOpenSubtitlesPress,
   hasOpenSubtitles,
+  hasSubtitle,
   onPipPress,
   chromecastConnected,
   onCastPress,
   onCastRemotePress,
   CastButton,
 }: VideoOptionsMenuProps) {
+  const [showScrollIndicator, setShowScrollIndicator] = useState(true);
+
   if (!visible) return null;
 
   const hasLoop = loopA !== null || loopB !== null;
@@ -129,6 +123,12 @@ export const VideoOptionsMenu = memo(function VideoOptionsMenu({
         : 'Point B Set'
     : 'Set loop points';
 
+  const handleScroll = (event: any) => {
+    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+    const isNearBottom = contentOffset.y + layoutMeasurement.height >= contentSize.height - 20;
+    setShowScrollIndicator(!isNearBottom);
+  };
+
   return (
     <Modal
       visible={visible}
@@ -138,10 +138,10 @@ export const VideoOptionsMenu = memo(function VideoOptionsMenu({
     >
       <Pressable
         onPress={onClose}
-        className="flex-1 bg-black/70 justify-end"
+        className="flex-1 bg-black/70 justify-end items-center"
       >
-        <Pressable onPress={(e) => e.stopPropagation()}>
-          <View className="bg-neutral-900 rounded-t-3xl max-h-[70%]">
+        <Pressable onPress={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 400 }}>
+          <View className="bg-neutral-900 rounded-t-3xl" style={{ maxHeight: '70%' }}>
             <View className="flex-row items-center justify-between px-6 py-4 border-b border-white/10">
               <Text className="text-white text-lg font-bold">Options</Text>
               <Pressable
@@ -152,30 +152,18 @@ export const VideoOptionsMenu = memo(function VideoOptionsMenu({
               </Pressable>
             </View>
 
-            <ScrollView className="px-2" showsVerticalScrollIndicator={false}>
+            <ScrollView
+              className="px-2"
+              showsVerticalScrollIndicator={false}
+              onScroll={handleScroll}
+              scrollEventThrottle={16}
+            >
               <OptionRow
                 icon="speedometer-outline"
                 label="Playback Speed"
                 value={`${currentSpeed}x`}
                 onPress={() => { onClose(); onSpeedPress(); }}
                 isActive={currentSpeed !== 1}
-                accentColor={accentColor}
-              />
-
-              <OptionRow
-                icon="musical-notes-outline"
-                label="Audio Track"
-                value={currentAudio || 'Default'}
-                onPress={() => { onClose(); onAudioPress(); }}
-                accentColor={accentColor}
-              />
-
-              <OptionRow
-                icon="text-outline"
-                label="Subtitles"
-                value={hasSubtitle ? currentSubtitle || 'On' : 'Off'}
-                onPress={() => { onClose(); onSubtitlePress(); }}
-                isActive={hasSubtitle}
                 accentColor={accentColor}
               />
 
@@ -281,19 +269,6 @@ export const VideoOptionsMenu = memo(function VideoOptionsMenu({
                 accentColor={accentColor}
               />
 
-              {isAirPlaySupported && (
-                <View className="flex-row items-center py-4 px-4">
-                  <View className="w-10 h-10 rounded-full bg-white/10 items-center justify-center mr-4 overflow-hidden">
-                    <VideoAirPlayButton
-                      tintColor="#fff"
-                      activeTintColor={accentColor}
-                      style={{ width: 40, height: 40 }}
-                    />
-                  </View>
-                  <Text className="text-white text-base font-medium">AirPlay</Text>
-                </View>
-              )}
-
               {isChromecastSupported && CastButton && (
                 <View className="flex-row items-center py-4 px-4">
                   <View
@@ -334,6 +309,20 @@ export const VideoOptionsMenu = memo(function VideoOptionsMenu({
 
               <View className="h-8" />
             </ScrollView>
+
+            {showScrollIndicator && (
+              <View pointerEvents="none" style={{ position: 'absolute', bottom: 0, left: 0, right: 0 }}>
+                <LinearGradient
+                  colors={['transparent', 'rgba(23,23,23,0.95)']}
+                  style={{ height: 60, justifyContent: 'flex-end', alignItems: 'center', paddingBottom: 8 }}
+                >
+                  <View className="flex-row items-center gap-1">
+                    <Ionicons name="chevron-down" size={16} color="rgba(255,255,255,0.5)" />
+                    <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12 }}>Scroll for more</Text>
+                  </View>
+                </LinearGradient>
+              </View>
+            )}
           </View>
         </Pressable>
       </Pressable>
