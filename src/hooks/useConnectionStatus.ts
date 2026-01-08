@@ -35,7 +35,6 @@ export function useConnectionStatus() {
 
     try {
       const url = `${activeServer.url}/System/Info/Public`;
-      console.log('[Connection] Checking:', url);
 
       const response = await fetch(url, {
         method: 'GET',
@@ -46,7 +45,6 @@ export function useConnectionStatus() {
       clearTimeout(timeoutId);
 
       if (response.ok) {
-        console.log('[Connection] Success');
         setState({
           status: 'connected',
           error: null,
@@ -55,7 +53,6 @@ export function useConnectionStatus() {
         return true;
       } else {
         const errorMsg = `Server returned HTTP ${response.status}`;
-        console.log('[Connection] Failed:', errorMsg);
         setState({
           status: 'disconnected',
           error: errorMsg,
@@ -65,7 +62,6 @@ export function useConnectionStatus() {
       }
     } catch (error: any) {
       clearTimeout(timeoutId);
-      console.log('[Connection] Error:', error.name, error.message);
 
       let errorMessage = 'Unable to connect to server';
 

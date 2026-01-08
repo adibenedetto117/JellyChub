@@ -93,10 +93,28 @@ export const safeAreaDefaults = platformSelect({
 
 // TV-specific constants
 export const tvConstants = {
+  // Focus animations
   focusScale: 1.05,
   focusDuration: 150,
+
+  // Layout dimensions
   rowItemWidth: 200,
   rowItemHeight: 300,
   headerHeight: 80,
   sidebarWidth: 300,
+
+  // Video player controls
+  controlButtonSize: 80,
+  seekButtonSize: 64,
+  smallButtonSize: 48,
+  focusRingWidth: 4,
+
+  // Playback
+  seekStepMs: 10000, // 10 seconds
+  volumeStep: 0.1, // 10% volume change
+
+  // Spacing
+  controlBarPadding: 48,
+  buttonGap: 16,
+  progressBarHeight: 8,
 };

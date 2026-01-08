@@ -47,8 +47,8 @@ export async function clearImageCache(): Promise<void> {
   try {
     await Image.clearDiskCache();
     await Image.clearMemoryCache();
-  } catch (e) {
-    console.log('Error clearing image cache:', e);
+  } catch {
+    // Silently handle cache clearing errors
   }
 }
 
@@ -59,8 +59,8 @@ export async function clearDownloadCache(): Promise<void> {
       await FileSystem.deleteAsync(DOWNLOAD_DIR, { idempotent: true });
       await FileSystem.makeDirectoryAsync(DOWNLOAD_DIR, { intermediates: true });
     }
-  } catch (e) {
-    console.log('Error clearing download cache:', e);
+  } catch {
+    // Silently handle cache clearing errors
   }
 }
 

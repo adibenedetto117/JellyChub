@@ -2,3 +2,8 @@ export * from './platform';
 export * from './formatters';
 export * from './mediaHelpers';
 export * from './cache';
+export * from './screenshotMode';
+export * from './casting';
+export * from './externalPlayer';
+export * from './navigation';
+export * from './haptics';

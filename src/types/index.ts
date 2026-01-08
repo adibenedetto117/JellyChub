@@ -1,5 +1,6 @@
 export * from './jellyfin';
 export * from './player';
+export * from './livetv';
 
 // App-specific types
 export interface AppSettings {

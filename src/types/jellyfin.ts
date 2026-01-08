@@ -59,6 +59,22 @@ export interface ChapterInfo {
   ImageDateModified?: string;
 }
 
+export interface TrickplayInfo {
+  Width: number;
+  Height: number;
+  TileWidth: number;
+  TileHeight: number;
+  ThumbnailCount: number;
+  Interval: number;
+  Bandwidth: number;
+}
+
+export interface TrickplayData {
+  [mediaSourceId: string]: {
+    [resolution: string]: TrickplayInfo;
+  };
+}
+
 export interface BaseItem {
   Id: string;
   Name: string;
@@ -91,6 +107,7 @@ export interface BaseItem {
   ParentIndexNumber?: number;
   Chapters?: ChapterInfo[];
   Container?: string;
+  Trickplay?: TrickplayData;
 }
 
 export interface Movie extends BaseItem {

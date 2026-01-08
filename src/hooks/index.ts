@@ -27,6 +27,14 @@ export {
 export { useDeepLinking } from './useDeepLinking';
 export { useConnectionStatus, type ConnectionStatus } from './useConnectionStatus';
 export {
+  useTVRemoteHandler,
+  useIsTV,
+  type TVRemoteEventType,
+  type TVRemoteHandlerOptions,
+} from './useTVRemoteHandler';
+export { useBackHandler, useFocusedBackHandler } from './useBackHandler';
+export { useChromecast, useCastButton, type UseChromecastReturn } from './useChromecast';
+export {
   useJellyseerrStatus,
   useJellyseerrUser,
   useDiscoverMovies,
