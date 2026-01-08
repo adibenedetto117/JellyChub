@@ -53,7 +53,8 @@
         "android.permission.FOREGROUND_SERVICE",
         "android.permission.WAKE_LOCK",
         "android.permission.RECEIVE_BOOT_COMPLETED",
-        "android.permission.PICTURE_IN_PICTURE"
+        "android.permission.PICTURE_IN_PICTURE",
+        "android.permission.POST_NOTIFICATIONS"
       ]
     },
     "androidTV": {
@@ -87,7 +88,14 @@
         }
       ],
       "expo-font",
-      "expo-asset"
+      "expo-asset",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#0ea5e9"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
