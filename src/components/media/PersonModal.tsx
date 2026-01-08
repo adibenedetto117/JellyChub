@@ -4,6 +4,7 @@ import { router } from 'expo-router';
 import { useSettingsStore, useAuthStore } from '@/stores';
 import { getPerson, getPersonItems, getImageUrl } from '@/api';
 import { CachedImage } from '@/components/ui/CachedImage';
+import { getDisplayName, getDisplayImageUrl } from '@/utils';
 import type { BaseItem } from '@/types/jellyfin';
 
 interface PersonModalProps {
@@ -16,6 +17,7 @@ interface PersonModalProps {
 
 export function PersonModal({ personId, personName, personImageTag, visible, onClose }: PersonModalProps) {
   const accentColor = useSettingsStore((s) => s.accentColor);
+  const hideMedia = useSettingsStore((s) => s.hideMedia);
   const userId = useAuthStore((s) => s.currentUser?.Id ?? '');
 
   const { data: person, isLoading: isLoadingPerson, error: personError } = useQuery({
@@ -36,11 +38,13 @@ export function PersonModal({ personId, personName, personImageTag, visible, onC
 
   if (!visible) return null;
 
-  const imageUrl = personImageTag && personId
+  const rawImageUrl = personImageTag && personId
     ? getImageUrl(personId, 'Primary', { maxWidth: 400, tag: personImageTag })
     : person?.ImageTags?.Primary
       ? getImageUrl(personId!, 'Primary', { maxWidth: 400, tag: person.ImageTags.Primary })
       : null;
+  const imageUrl = personId ? getDisplayImageUrl(personId, rawImageUrl, hideMedia, 'Primary') : null;
+  const displayPersonName = person ? getDisplayName(person as any, hideMedia) : personName;
 
   const formatBirthInfo = () => {
     if (!person?.PremiereDate) return null;
@@ -76,7 +80,7 @@ export function PersonModal({ personId, personName, personImageTag, visible, onC
           {/* Header */}
           <View style={styles.header}>
             <Text style={styles.headerTitle} numberOfLines={1}>
-              {personName || person?.Name || 'Loading...'}
+              {displayPersonName || 'Loading...'}
             </Text>
             <Pressable onPress={onClose} style={styles.closeButton}>
               <Text style={styles.closeText}>✕</Text>
@@ -96,13 +100,13 @@ export function PersonModal({ personId, personName, personImageTag, visible, onC
                 ) : (
                   <View style={[styles.personImage, styles.placeholderImage]}>
                     <Text style={styles.placeholderText}>
-                      {(personName || person?.Name || '?').charAt(0)}
+                      {(displayPersonName || '?').charAt(0)}
                     </Text>
                   </View>
                 )}
               </View>
               <View style={styles.personInfo}>
-                <Text style={styles.personName}>{personName || person?.Name}</Text>
+                <Text style={styles.personName}>{displayPersonName}</Text>
                 {formatBirthInfo() && (
                   <Text style={styles.birthInfo}>{formatBirthInfo()}</Text>
                 )}
@@ -136,9 +140,11 @@ export function PersonModal({ personId, personName, personImageTag, visible, onC
               ) : personItems && personItems.Items && personItems.Items.length > 0 ? (
                 <View style={styles.itemsRow}>
                   {personItems.Items.map((item) => {
-                    const itemImageUrl = item.ImageTags?.Primary
+                    const rawItemImageUrl = item.ImageTags?.Primary
                       ? getImageUrl(item.Id, 'Primary', { maxWidth: 200, tag: item.ImageTags.Primary })
                       : null;
+                    const itemImageUrl = getDisplayImageUrl(item.Id, rawItemImageUrl, hideMedia, 'Primary');
+                    const itemDisplayName = getDisplayName(item, hideMedia);
 
                     return (
                       <Pressable
@@ -156,13 +162,13 @@ export function PersonModal({ personId, personName, personImageTag, visible, onC
                           ) : (
                             <View style={[styles.itemImage, styles.itemPlaceholder]}>
                               <Text style={styles.itemPlaceholderText}>
-                                {item.Name?.charAt(0) || '?'}
+                                {itemDisplayName?.charAt(0) || '?'}
                               </Text>
                             </View>
                           )}
                         </View>
                         <Text style={styles.itemTitle} numberOfLines={2}>
-                          {item.Name}
+                          {itemDisplayName}
                         </Text>
                         {item.ProductionYear && (
                           <Text style={styles.itemYear}>{item.ProductionYear}</Text>

@@ -1,7 +1,9 @@
-import { View, Text, ScrollView, StyleSheet } from 'react-native';
-import { memo } from 'react';
+import { View, Text, FlatList, StyleSheet } from 'react-native';
+import { memo, useCallback } from 'react';
+import { Ionicons } from '@expo/vector-icons';
 import { NextUpCard } from './NextUpCard';
 import { useResponsive } from '@/hooks';
+import { useSettingsStore } from '@/stores';
 import type { Episode } from '@/types/jellyfin';
 
 interface Props {
@@ -9,34 +11,55 @@ interface Props {
   onItemPress: (item: Episode) => void;
 }
 
+const ITEM_WIDTH = 314;
+
 export const NextUpRow = memo(function NextUpRow({ items, onItemPress }: Props) {
   const { isTablet, isTV, fontSize } = useResponsive();
+  const accentColor = useSettingsStore((s) => s.accentColor);
 
   if (!items.length) return null;
 
   const horizontalPadding = isTV ? 48 : isTablet ? 24 : 16;
   const marginBottom = isTV ? 40 : isTablet ? 32 : 24;
   const headerMarginBottom = isTV ? 16 : isTablet ? 14 : 12;
+  const scale = isTV ? 1.4 : isTablet ? 1.2 : 1;
+  const itemWidth = Math.round(ITEM_WIDTH * scale);
+
+  const renderItem = useCallback(({ item }: { item: Episode }) => (
+    <NextUpCard item={item} onPress={() => onItemPress(item)} />
+  ), [onItemPress]);
+
+  const getItemLayout = useCallback((_: any, index: number) => ({
+    length: itemWidth,
+    offset: itemWidth * index + horizontalPadding,
+    index,
+  }), [itemWidth, horizontalPadding]);
+
+  const keyExtractor = useCallback((item: Episode, index: number) => `${item.Id}-${index}`, []);
 
   return (
     <View style={{ marginBottom }}>
       <View style={[styles.header, { paddingHorizontal: horizontalPadding, marginBottom: headerMarginBottom }]}>
-        <Text style={[styles.title, { fontSize: fontSize.lg }]}>Next Up</Text>
+        <View style={styles.headerLeft}>
+          <Ionicons name="arrow-forward-circle" size={22} color={accentColor} />
+          <Text style={[styles.title, { fontSize: fontSize.lg }]}>Next Up</Text>
+        </View>
+        <Text style={[styles.itemCount, { fontSize: fontSize.sm }]}>{items.length} episodes</Text>
       </View>
 
-      <ScrollView
+      <FlatList
         horizontal
+        data={items}
+        renderItem={renderItem}
+        keyExtractor={keyExtractor}
+        getItemLayout={getItemLayout}
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={{ paddingHorizontal: horizontalPadding }}
-      >
-        {items.map((item, index) => (
-          <NextUpCard
-            key={`${item.Id}-${index}`}
-            item={item}
-            onPress={() => onItemPress(item)}
-          />
-        ))}
-      </ScrollView>
+        initialNumToRender={3}
+        maxToRenderPerBatch={3}
+        windowSize={5}
+        removeClippedSubviews
+      />
     </View>
   );
 });
@@ -47,8 +70,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   title: {
     color: '#fff',
-    fontWeight: '600',
+    fontWeight: '700',
+  },
+  itemCount: {
+    color: 'rgba(255,255,255,0.5)',
   },
 });

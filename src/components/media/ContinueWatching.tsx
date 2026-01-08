@@ -1,13 +1,14 @@
-import { View, Text, ScrollView, Pressable, StyleSheet } from 'react-native';
-import { memo } from 'react';
-import Animated, { FadeIn } from 'react-native-reanimated';
+import { View, Text, FlatList, Pressable, StyleSheet } from 'react-native';
+import { memo, useCallback, useMemo } from 'react';
+import Animated, { FadeIn, useSharedValue, useAnimatedStyle, withSpring } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 import { getImageUrl } from '@/api';
-import { formatDuration, getWatchProgress, formatEpisodeNumber, ticksToMs } from '@/utils';
+import { formatDuration, getWatchProgress, formatEpisodeNumber, ticksToMs, getDisplayName, getDisplayImageUrl, getDisplaySeriesName, getDisplayYear } from '@/utils';
 import { CachedImage } from '@/components/ui/CachedImage';
 import { useResponsive } from '@/hooks';
 import { useSettingsStore } from '@/stores';
-import type { BaseItem } from '@/types/jellyfin';
+import type { BaseItem, Episode } from '@/types/jellyfin';
 
 interface Props {
   items: BaseItem[];
@@ -21,17 +22,34 @@ interface ContinueCardProps {
   cardHeight: number;
   fontSize: { xs: number; sm: number; base: number };
   accentColor: string;
+  hideMedia: boolean;
 }
 
-const ContinueCard = memo(function ContinueCard({ item, onPress, cardWidth, cardHeight, fontSize, accentColor }: ContinueCardProps) {
+const SPRING_CONFIG = { damping: 15, stiffness: 400 };
+
+const ContinueCard = memo(function ContinueCard({ item, onPress, cardWidth, cardHeight, fontSize, accentColor, hideMedia }: ContinueCardProps) {
   const progress = getWatchProgress(item);
   const remainingTicks = (item.RunTimeTicks ?? 0) - (item.UserData?.PlaybackPositionTicks ?? 0);
   const remainingTime = formatDuration(ticksToMs(remainingTicks));
 
+  const scale = useSharedValue(1);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  const handlePressIn = useCallback(() => {
+    scale.value = withSpring(0.97, SPRING_CONFIG);
+  }, [scale]);
+
+  const handlePressOut = useCallback(() => {
+    scale.value = withSpring(1, SPRING_CONFIG);
+  }, [scale]);
+
   const imageTag = item.BackdropImageTags?.[0] ?? item.ImageTags?.Primary;
   const imageType = item.BackdropImageTags?.[0] ? 'Backdrop' : 'Primary';
 
-  const imageUrl = imageTag
+  const rawImageUrl = imageTag
     ? getImageUrl(item.Id, imageType, {
         maxWidth: cardWidth * 2,
         maxHeight: cardHeight * 2,
@@ -39,16 +57,21 @@ const ContinueCard = memo(function ContinueCard({ item, onPress, cardWidth, card
       })
     : null;
 
+  const imageUrl = getDisplayImageUrl(item.Id, rawImageUrl, hideMedia, imageType);
+  const displayName = getDisplayName(item, hideMedia);
+
   const subtitle = item.Type === 'Episode'
-    ? `${(item as { SeriesName?: string }).SeriesName} ${formatEpisodeNumber(
+    ? `${getDisplaySeriesName(item as Episode, hideMedia)} ${formatEpisodeNumber(
         (item as { ParentIndexNumber?: number }).ParentIndexNumber,
         (item as { IndexNumber?: number }).IndexNumber
       )}`
-    : item.ProductionYear?.toString();
+    : getDisplayYear(item.ProductionYear, hideMedia)?.toString();
+
+  const typeIcon = item.Type === 'Episode' ? 'tv-outline' : 'film-outline';
 
   return (
-    <Pressable onPress={onPress} style={styles.cardPressable}>
-      <Animated.View entering={FadeIn.duration(150)}>
+    <Pressable onPress={onPress} onPressIn={handlePressIn} onPressOut={handlePressOut} style={styles.cardPressable}>
+      <Animated.View entering={FadeIn.duration(150)} style={animatedStyle}>
         <View style={[styles.card, { width: cardWidth }]}>
           <View style={[styles.imageContainer, { height: cardHeight }]}>
             <CachedImage
@@ -59,14 +82,24 @@ const ContinueCard = memo(function ContinueCard({ item, onPress, cardWidth, card
             />
 
             <LinearGradient
-              colors={['transparent', 'rgba(0,0,0,0.8)']}
+              colors={['transparent', 'rgba(0,0,0,0.3)', 'rgba(0,0,0,0.9)']}
+              locations={[0, 0.5, 1]}
               style={StyleSheet.absoluteFill}
             />
 
+            <View style={styles.playIconContainer}>
+              <View style={[styles.playIcon, { backgroundColor: accentColor }]}>
+                <Ionicons name="play" size={24} color="#fff" style={{ marginLeft: 2 }} />
+              </View>
+            </View>
+
             <View style={styles.cardContent}>
-              <Text style={[styles.cardTitle, { fontSize: fontSize.base }]} numberOfLines={1}>
-                {item.Name}
-              </Text>
+              <View style={styles.titleRow}>
+                <Ionicons name={typeIcon} size={14} color="rgba(255,255,255,0.7)" />
+                <Text style={[styles.cardTitle, { fontSize: fontSize.base }]} numberOfLines={1}>
+                  {displayName}
+                </Text>
+              </View>
               {subtitle && (
                 <Text style={[styles.cardSubtitle, { fontSize: fontSize.xs }]} numberOfLines={1}>
                   {subtitle}
@@ -80,11 +113,14 @@ const ContinueCard = memo(function ContinueCard({ item, onPress, cardWidth, card
           </View>
 
           <View style={styles.footer}>
-            <Text style={[styles.remainingText, { fontSize: fontSize.xs }]}>
-              {remainingTime} remaining
-            </Text>
-            <View style={[styles.resumeButton, { backgroundColor: accentColor + '33' }]}>
-              <Text style={[styles.resumeText, { fontSize: fontSize.xs, color: accentColor }]}>Resume</Text>
+            <View style={styles.footerLeft}>
+              <Ionicons name="time-outline" size={14} color="rgba(255,255,255,0.5)" />
+              <Text style={[styles.remainingText, { fontSize: fontSize.xs }]}>
+                {remainingTime} left
+              </Text>
+            </View>
+            <View style={[styles.resumeButton, { backgroundColor: accentColor }]}>
+              <Text style={[styles.resumeText, { fontSize: fontSize.xs }]}>Resume</Text>
             </View>
           </View>
         </View>
@@ -99,6 +135,7 @@ export const ContinueWatching = memo(function ContinueWatching({
 }: Props) {
   const { isTablet, isTV, fontSize } = useResponsive();
   const accentColor = useSettingsStore((s) => s.accentColor);
+  const hideMedia = useSettingsStore((s) => s.hideMedia);
 
   if (!items.length) return null;
 
@@ -106,30 +143,51 @@ export const ContinueWatching = memo(function ContinueWatching({
   const cardHeight = isTV ? 225 : isTablet ? 190 : 160;
   const horizontalPadding = isTV ? 48 : isTablet ? 24 : 16;
   const marginBottom = isTV ? 40 : isTablet ? 32 : 24;
+  const itemWidth = cardWidth + 16; // card width + margin
+
+  const renderItem = useCallback(({ item }: { item: BaseItem }) => (
+    <ContinueCard
+      item={item}
+      onPress={() => onItemPress(item)}
+      cardWidth={cardWidth}
+      cardHeight={cardHeight}
+      fontSize={fontSize}
+      accentColor={accentColor}
+      hideMedia={hideMedia}
+    />
+  ), [onItemPress, cardWidth, cardHeight, fontSize, accentColor, hideMedia]);
+
+  const getItemLayout = useCallback((_: any, index: number) => ({
+    length: itemWidth,
+    offset: itemWidth * index + horizontalPadding,
+    index,
+  }), [itemWidth, horizontalPadding]);
+
+  const keyExtractor = useCallback((item: BaseItem) => item.Id, []);
 
   return (
     <View style={{ marginBottom }}>
       <View style={[styles.header, { paddingHorizontal: horizontalPadding }]}>
-        <Text style={[styles.title, { fontSize: fontSize.lg }]}>Continue Watching</Text>
+        <View style={styles.headerLeft}>
+          <Ionicons name="play-circle" size={22} color={accentColor} />
+          <Text style={[styles.title, { fontSize: fontSize.lg }]}>Continue Watching</Text>
+        </View>
+        <Text style={[styles.itemCount, { fontSize: fontSize.sm }]}>{items.length} items</Text>
       </View>
 
-      <ScrollView
+      <FlatList
         horizontal
+        data={items}
+        renderItem={renderItem}
+        keyExtractor={keyExtractor}
+        getItemLayout={getItemLayout}
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={{ paddingHorizontal: horizontalPadding }}
-      >
-        {items.map((item) => (
-          <ContinueCard
-            key={item.Id}
-            item={item}
-            onPress={() => onItemPress(item)}
-            cardWidth={cardWidth}
-            cardHeight={cardHeight}
-            fontSize={fontSize}
-            accentColor={accentColor}
-          />
-        ))}
-      </ScrollView>
+        initialNumToRender={3}
+        maxToRenderPerBatch={3}
+        windowSize={5}
+        removeClippedSubviews
+      />
     </View>
   );
 });
@@ -139,12 +197,33 @@ const styles = StyleSheet.create({
     marginRight: 16,
   },
   card: {
-    borderRadius: 12,
+    borderRadius: 16,
     overflow: 'hidden',
-    backgroundColor: '#1c1c1c',
+    backgroundColor: '#1a1a1a',
   },
   imageContainer: {
     position: 'relative',
+  },
+  playIconContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  playIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
   },
   cardContent: {
     position: 'absolute',
@@ -153,47 +232,73 @@ const styles = StyleSheet.create({
     right: 0,
     padding: 12,
   },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
   cardTitle: {
     color: '#fff',
     fontWeight: '600',
+    flex: 1,
   },
   cardSubtitle: {
     color: 'rgba(255,255,255,0.6)',
-    marginTop: 2,
+    marginTop: 4,
+    marginLeft: 20,
   },
   progressTrack: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    height: 3,
+    height: 4,
     backgroundColor: 'rgba(255,255,255,0.2)',
   },
   progressFill: {
     height: '100%',
+    borderRadius: 2,
   },
   footer: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: 12,
+    paddingTop: 10,
+  },
+  footerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
   remainingText: {
     color: 'rgba(255,255,255,0.5)',
   },
   resumeButton: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 4,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 6,
   },
   resumeText: {
-    fontWeight: '500',
+    fontWeight: '600',
+    color: '#fff',
   },
   header: {
-    marginBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 14,
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   title: {
     color: '#fff',
-    fontWeight: '600',
+    fontWeight: '700',
+  },
+  itemCount: {
+    color: 'rgba(255,255,255,0.5)',
   },
 });
