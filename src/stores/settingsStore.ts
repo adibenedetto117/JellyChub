@@ -128,6 +128,10 @@ interface SettingsState extends Omit<AppSettings, 'servers'> {
   jellyseerrUrl: string | null;
   jellyseerrAuthToken: string | null;
   jellyseerrUsername: string | null;
+  // Jellyfin auth credentials for Jellyseerr re-authentication
+  jellyseerrJellyfinServerUrl: string | null;
+  jellyseerrJellyfinUserId: string | null;
+  jellyseerrJellyfinToken: string | null;
 
   // TV mode
   isTVMode: boolean;
@@ -165,6 +169,9 @@ interface SettingsState extends Omit<AppSettings, 'servers'> {
     nowPlaying: boolean;
   };
 
+  // Language
+  language: string | null; // null means use device language
+
   // Actions
   setTheme: (theme: 'dark' | 'light' | 'system') => void;
   setAccentColor: (color: string) => void;
@@ -182,7 +189,12 @@ interface SettingsState extends Omit<AppSettings, 'servers'> {
   setAutoRemoveWatchedDownloads: (enabled: boolean) => void;
   setMaxDownloadSize: (size: number) => void;
 
-  setJellyseerrCredentials: (url: string | null, authToken: string | null, username?: string | null) => void;
+  setJellyseerrCredentials: (
+    url: string | null,
+    authToken: string | null,
+    username?: string | null,
+    jellyfinAuth?: { serverUrl: string; userId: string; token: string } | null
+  ) => void;
   clearJellyseerrCredentials: () => void;
 
   setTVMode: (enabled: boolean) => void;
@@ -212,6 +224,8 @@ interface SettingsState extends Omit<AppSettings, 'servers'> {
 
   setNotificationSetting: (key: keyof SettingsState['notifications'], enabled: boolean) => void;
 
+  setLanguage: (language: string | null) => void;
+
   resetToDefaults: () => void;
 }
 
@@ -230,6 +244,9 @@ const initialState = {
   jellyseerrUrl: null,
   jellyseerrAuthToken: null,
   jellyseerrUsername: null,
+  jellyseerrJellyfinServerUrl: null,
+  jellyseerrJellyfinUserId: null,
+  jellyseerrJellyfinToken: null,
   isTVMode: isTV,
   offlineMode: false,
   hideMedia: false,
@@ -246,6 +263,7 @@ const initialState = {
     downloadComplete: true,
     nowPlaying: false,
   },
+  language: null, // null means use device language
 };
 
 export const useSettingsStore = create<SettingsState>()(
@@ -350,17 +368,23 @@ export const useSettingsStore = create<SettingsState>()(
 
       setMaxDownloadSize: (maxDownloadSize) => set({ maxDownloadSize }),
 
-      setJellyseerrCredentials: (url, authToken, username) =>
+      setJellyseerrCredentials: (url, authToken, username, jellyfinAuth) =>
         set({
           jellyseerrUrl: url,
           jellyseerrAuthToken: authToken,
           jellyseerrUsername: username ?? null,
+          jellyseerrJellyfinServerUrl: jellyfinAuth?.serverUrl ?? null,
+          jellyseerrJellyfinUserId: jellyfinAuth?.userId ?? null,
+          jellyseerrJellyfinToken: jellyfinAuth?.token ?? null,
         }),
 
       clearJellyseerrCredentials: () =>
         set({
           jellyseerrUrl: null,
           jellyseerrAuthToken: null,
+          jellyseerrJellyfinServerUrl: null,
+          jellyseerrJellyfinUserId: null,
+          jellyseerrJellyfinToken: null,
           jellyseerrUsername: null,
         }),
 
@@ -417,6 +441,8 @@ export const useSettingsStore = create<SettingsState>()(
             [key]: enabled,
           },
         })),
+
+      setLanguage: (language) => set({ language }),
 
       resetToDefaults: () => set(initialState),
     }),

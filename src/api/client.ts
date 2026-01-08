@@ -129,6 +129,7 @@ export function getStreamUrl(
     startTimeTicks?: number;
     maxStreamingBitrate?: number;
     useHls?: boolean;
+    transcode?: boolean;
   } = {}
 ): string {
   if (!jellyfinClient.isInitialized()) {
@@ -171,6 +172,18 @@ export function getStreamUrl(
     params.set('transcodingMaxAudioChannels', '6');
     params.set('breakOnNonKeyFrames', 'true');
     return `${jellyfinClient.url}/Videos/${itemId}/master.m3u8?${params.toString()}`;
+  }
+
+  // For transcoded downloads (non-HLS), use the stream endpoint with transcoding params
+  if (options.transcode && options.maxStreamingBitrate) {
+    params.set('videoCodec', 'h264');
+    params.set('audioCodec', 'aac');
+    params.set('maxStreamingBitrate', options.maxStreamingBitrate.toString());
+    params.set('container', 'mp4');
+    params.set('context', 'Static');
+    params.set('transcodingContainer', 'mp4');
+    params.set('transcodingProtocol', 'http');
+    return `${jellyfinClient.url}/Videos/${itemId}/stream.mp4?${params.toString()}`;
   }
 
   params.set('static', 'true');

@@ -1,4 +1,13 @@
 import { useSettingsStore } from '@/stores';
+import { apiCache } from '@/utils';
+
+// Cache TTLs
+const CACHE_TTL = {
+  movies: 2 * 60 * 1000,       // 2 minutes for movie list
+  queue: 30 * 1000,            // 30 seconds for queue
+  config: 10 * 60 * 1000,      // 10 minutes for root folders/quality profiles
+  calendar: 5 * 60 * 1000,     // 5 minutes for calendar
+};
 
 export interface RadarrMovie {
   id: number;
@@ -223,8 +232,19 @@ class RadarrService {
     }
   }
 
-  async getMovies(): Promise<RadarrMovie[]> {
-    return this.request<RadarrMovie[]>('/movie');
+  async getMovies(skipCache = false): Promise<RadarrMovie[]> {
+    const cacheKey = 'radarr:movies';
+    if (!skipCache) {
+      const cached = apiCache.get<RadarrMovie[]>(cacheKey);
+      if (cached) return cached;
+    }
+    const data = await this.request<RadarrMovie[]>('/movie');
+    apiCache.set(cacheKey, data, CACHE_TTL.movies);
+    return data;
+  }
+
+  invalidateMoviesCache(): void {
+    apiCache.invalidatePattern('^radarr:');
   }
 
   async getMovieByTmdbId(tmdbId: number): Promise<RadarrMovie | null> {
@@ -241,12 +261,26 @@ class RadarrService {
     return results.length > 0 ? results[0] : null;
   }
 
-  async getRootFolders(): Promise<RadarrRootFolder[]> {
-    return this.request<RadarrRootFolder[]>('/rootfolder');
+  async getRootFolders(skipCache = false): Promise<RadarrRootFolder[]> {
+    const cacheKey = 'radarr:rootfolders';
+    if (!skipCache) {
+      const cached = apiCache.get<RadarrRootFolder[]>(cacheKey);
+      if (cached) return cached;
+    }
+    const data = await this.request<RadarrRootFolder[]>('/rootfolder');
+    apiCache.set(cacheKey, data, CACHE_TTL.config);
+    return data;
   }
 
-  async getQualityProfiles(): Promise<RadarrQualityProfile[]> {
-    return this.request<RadarrQualityProfile[]>('/qualityprofile');
+  async getQualityProfiles(skipCache = false): Promise<RadarrQualityProfile[]> {
+    const cacheKey = 'radarr:qualityprofiles';
+    if (!skipCache) {
+      const cached = apiCache.get<RadarrQualityProfile[]>(cacheKey);
+      if (cached) return cached;
+    }
+    const data = await this.request<RadarrQualityProfile[]>('/qualityprofile');
+    apiCache.set(cacheKey, data, CACHE_TTL.config);
+    return data;
   }
 
   async addMovie(options: RadarrAddMovieOptions): Promise<RadarrMovie> {
@@ -272,10 +306,17 @@ class RadarrService {
     });
   }
 
-  async getQueue(page = 1, pageSize = 20): Promise<RadarrQueueResponse> {
-    return this.request<RadarrQueueResponse>(
+  async getQueue(page = 1, pageSize = 20, skipCache = false): Promise<RadarrQueueResponse> {
+    const cacheKey = `radarr:queue:${page}:${pageSize}`;
+    if (!skipCache) {
+      const cached = apiCache.get<RadarrQueueResponse>(cacheKey);
+      if (cached) return cached;
+    }
+    const data = await this.request<RadarrQueueResponse>(
       `/queue?page=${page}&pageSize=${pageSize}&includeMovie=true`
     );
+    apiCache.set(cacheKey, data, CACHE_TTL.queue);
+    return data;
   }
 
   async removeFromQueue(id: number, removeFromClient = true, blocklist = false): Promise<void> {
@@ -333,10 +374,17 @@ class RadarrService {
     });
   }
 
-  async getCalendar(startDate: string, endDate: string): Promise<RadarrCalendarMovie[]> {
-    return this.request<RadarrCalendarMovie[]>(
+  async getCalendar(startDate: string, endDate: string, skipCache = false): Promise<RadarrCalendarMovie[]> {
+    const cacheKey = `radarr:calendar:${startDate}:${endDate}`;
+    if (!skipCache) {
+      const cached = apiCache.get<RadarrCalendarMovie[]>(cacheKey);
+      if (cached) return cached;
+    }
+    const data = await this.request<RadarrCalendarMovie[]>(
       `/calendar?start=${startDate}&end=${endDate}&unmonitored=false`
     );
+    apiCache.set(cacheKey, data, CACHE_TTL.calendar);
+    return data;
   }
 
   isConfigured(): boolean {

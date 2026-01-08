@@ -8,6 +8,8 @@ import { notificationService } from './notificationService';
 import { encryptionService } from './encryptionService';
 import type { BaseItem } from '@/types/jellyfin';
 
+export type DownloadQualityOption = 'original' | 'high' | 'medium' | 'low';
+
 const DOWNLOAD_DIR = `${FileSystem.documentDirectory}jellychub/downloads/`;
 
 interface DownloadTask {
@@ -53,7 +55,7 @@ class DownloadManager {
     return { canStart: true };
   }
 
-  async startDownload(item: BaseItem, serverId: string): Promise<string | null> {
+  async startDownload(item: BaseItem, serverId: string, quality?: DownloadQualityOption): Promise<string | null> {
     const store = useDownloadStore.getState();
     const authStore = useAuthStore.getState();
     const server = authStore.servers.find((s) => s.id === serverId);
@@ -80,7 +82,7 @@ class DownloadManager {
     const fileInfo = await FileSystem.getInfoAsync(localPath);
     const estimatedSize = item.MediaSources?.[0]?.Size ?? 500 * 1024 * 1024;
 
-    const downloadId = store.addDownload(item, serverId, estimatedSize);
+    const downloadId = store.addDownload(item, serverId, estimatedSize, quality);
 
     this.processQueue();
 
@@ -125,6 +127,25 @@ class DownloadManager {
     this.isProcessing = false;
   }
 
+  private getDownloadBitrate(quality?: DownloadQualityOption): { bitrate: number | null; useTranscode: boolean } {
+    // Use per-download quality if provided, otherwise fall back to global setting
+    const settings = useSettingsStore.getState();
+    const effectiveQuality = quality ?? settings.downloadQuality;
+
+    switch (effectiveQuality) {
+      case 'original':
+        return { bitrate: null, useTranscode: false };
+      case 'high':
+        return { bitrate: 15000000, useTranscode: true }; // 15 Mbps
+      case 'medium':
+        return { bitrate: 8000000, useTranscode: true }; // 8 Mbps
+      case 'low':
+        return { bitrate: 4000000, useTranscode: true }; // 4 Mbps
+      default:
+        return { bitrate: null, useTranscode: false };
+    }
+  }
+
   private async executeDownload(downloadId: string): Promise<void> {
     const store = useDownloadStore.getState();
     const authStore = useAuthStore.getState();
@@ -150,7 +171,11 @@ class DownloadManager {
       downloadUrl = getAudioStreamUrl(item.Id);
     } else {
       const mediaSourceId = item.MediaSources?.[0]?.Id ?? item.Id;
-      downloadUrl = getStreamUrl(item.Id, mediaSourceId);
+      const { bitrate, useTranscode } = this.getDownloadBitrate(download.quality);
+      downloadUrl = getStreamUrl(item.Id, mediaSourceId, {
+        maxStreamingBitrate: bitrate ?? undefined,
+        transcode: useTranscode,
+      });
     }
 
     const downloadResumable = FileSystem.createDownloadResumable(

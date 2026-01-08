@@ -621,11 +621,11 @@ export default function MusicScreen() {
   }, [refetchRecent, refetchAdded, refetchAlbums, refetchArtists, refetchPlaylists, refetchRecentTracks, refetchMostPlayed, refetchSongs]);
 
   const handleAlbumPress = useCallback((item: BaseItem) => {
-    router.push(`/(tabs)/details/album/${item.Id}`);
+    router.push(`/details/album/${item.Id}`);
   }, []);
 
   const handleArtistPress = useCallback((item: BaseItem) => {
-    router.push(`/(tabs)/details/artist/${item.Id}`);
+    router.push(`/details/artist/${item.Id}`);
   }, []);
 
   const handlePlaylistPress = useCallback((item: BaseItem) => {

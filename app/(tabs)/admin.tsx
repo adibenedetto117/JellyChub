@@ -3,6 +3,7 @@ import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 import { useAuthStore, useSettingsStore } from '@/stores';
 import {
   getSystemInfo,
@@ -46,6 +47,7 @@ interface ServerHealth {
 }
 
 export default function AdminScreen() {
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const [refreshing, setRefreshing] = useState(false);
   const [editingUser, setEditingUser] = useState<UserInfo | null>(null);

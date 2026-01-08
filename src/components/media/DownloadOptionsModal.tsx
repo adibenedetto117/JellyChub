@@ -1,21 +1,23 @@
 import { useState, useEffect } from 'react';
-import { View, Text, Pressable, ScrollView, ActivityIndicator, StyleSheet, Modal } from 'react-native';
+import { View, Text, Pressable, ScrollView, ActivityIndicator, StyleSheet, Modal, Switch } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { useSettingsStore } from '@/stores';
 import { getPlaybackInfo } from '@/api';
 import { getAudioStreams, getSubtitleStreams, formatBytes } from '@/utils';
 import type { BaseItem } from '@/types/jellyfin';
 
+export type DownloadQuality = 'original' | 'high' | 'medium' | 'low';
+
 interface DownloadOptionsModalProps {
   item: BaseItem;
   userId: string;
   visible: boolean;
   onClose: () => void;
-  onConfirm: (audioIndex?: number, subtitleIndex?: number) => void;
+  onConfirm: (audioIndex?: number, subtitleIndex?: number, quality?: DownloadQuality) => void;
 }
 
-interface DropdownOption {
-  value: number | undefined;
+interface DropdownOption<T = number | undefined> {
+  value: T;
   label: string;
   subtitle?: string;
 }
@@ -40,15 +42,15 @@ function CheckIcon({ size = 18, color = '#fff' }: { size?: number; color?: strin
   );
 }
 
-interface DropdownProps {
+interface DropdownProps<T> {
   label: string;
-  options: DropdownOption[];
-  selectedValue: number | undefined;
-  onSelect: (value: number | undefined) => void;
+  options: DropdownOption<T>[];
+  selectedValue: T;
+  onSelect: (value: T) => void;
   accentColor: string;
 }
 
-function Dropdown({ label, options, selectedValue, onSelect, accentColor }: DropdownProps) {
+function Dropdown<T>({ label, options, selectedValue, onSelect, accentColor }: DropdownProps<T>) {
   const [isOpen, setIsOpen] = useState(false);
   const selectedOption = options.find(o => o.value === selectedValue);
 
@@ -89,7 +91,7 @@ function Dropdown({ label, options, selectedValue, onSelect, accentColor }: Drop
             <ScrollView style={styles.dropdownScroll} showsVerticalScrollIndicator={false}>
               {options.map((option, index) => (
                 <Pressable
-                  key={option.value ?? 'none'}
+                  key={String(option.value ?? 'none')}
                   onPress={() => {
                     onSelect(option.value);
                     setIsOpen(false);
@@ -119,10 +121,27 @@ function Dropdown({ label, options, selectedValue, onSelect, accentColor }: Drop
   );
 }
 
+const QUALITY_OPTIONS: DropdownOption<DownloadQuality>[] = [
+  { value: 'original', label: 'Original', subtitle: 'Direct stream • No transcoding' },
+  { value: 'high', label: 'High', subtitle: '~15 Mbps • ~1.5 GB/hour' },
+  { value: 'medium', label: 'Medium', subtitle: '~8 Mbps • ~1 GB/hour' },
+  { value: 'low', label: 'Low', subtitle: '~4 Mbps • ~500 MB/hour' },
+];
+
 export function DownloadOptionsModal({ item, userId, visible, onClose, onConfirm }: DownloadOptionsModalProps) {
   const accentColor = useSettingsStore((s) => s.accentColor);
+  const downloadQuality = useSettingsStore((s) => s.downloadQuality);
+  const downloadOverWifiOnly = useSettingsStore((s) => s.downloadOverWifiOnly);
+  const autoRemoveWatchedDownloads = useSettingsStore((s) => s.autoRemoveWatchedDownloads);
+  const setDownloadQuality = useSettingsStore((s) => s.setDownloadQuality);
+  const setDownloadOverWifiOnly = useSettingsStore((s) => s.setDownloadOverWifiOnly);
+  const setAutoRemoveWatchedDownloads = useSettingsStore((s) => s.setAutoRemoveWatchedDownloads);
+
   const [selectedAudio, setSelectedAudio] = useState<number | undefined>(undefined);
   const [selectedSubtitle, setSelectedSubtitle] = useState<number | undefined>(undefined);
+  const [selectedQuality, setSelectedQuality] = useState<DownloadQuality>(downloadQuality);
+  const [wifiOnly, setWifiOnly] = useState(downloadOverWifiOnly);
+  const [autoRemove, setAutoRemove] = useState(autoRemoveWatchedDownloads);
 
   const { data: playbackInfo, isLoading } = useQuery({
     queryKey: ['playback-download', userId, item.Id],
@@ -143,13 +162,18 @@ export function DownloadOptionsModal({ item, userId, visible, onClose, onConfirm
     }
   }, [audioTracks]);
 
-  // Reset when modal closes
+  // Reset when modal closes/opens
   useEffect(() => {
     if (!visible) {
       setSelectedAudio(undefined);
       setSelectedSubtitle(undefined);
+    } else {
+      // Reset to current settings when modal opens
+      setSelectedQuality(downloadQuality);
+      setWifiOnly(downloadOverWifiOnly);
+      setAutoRemove(autoRemoveWatchedDownloads);
     }
-  }, [visible]);
+  }, [visible, downloadQuality, downloadOverWifiOnly, autoRemoveWatchedDownloads]);
 
   if (!visible) return null;
 
@@ -227,6 +251,43 @@ export function DownloadOptionsModal({ item, userId, visible, onClose, onConfirm
                 accentColor={accentColor}
               />
             </View>
+
+            {/* Quality Dropdown */}
+            <View style={styles.dropdownContainer}>
+              <Dropdown<DownloadQuality>
+                label="Download Quality"
+                options={QUALITY_OPTIONS}
+                selectedValue={selectedQuality}
+                onSelect={setSelectedQuality}
+                accentColor={accentColor}
+              />
+            </View>
+
+            {/* Settings Toggles */}
+            <View style={styles.settingsSection}>
+              <View style={styles.settingRow}>
+                <View style={styles.settingInfo}>
+                  <Text style={styles.settingLabel}>Wi-Fi Only</Text>
+                  <Text style={styles.settingSubtext}>Only download on Wi-Fi</Text>
+                </View>
+                <Switch
+                  value={wifiOnly}
+                  onValueChange={setWifiOnly}
+                  trackColor={{ false: '#3a3a3a', true: accentColor }}
+                />
+              </View>
+              <View style={styles.settingRow}>
+                <View style={styles.settingInfo}>
+                  <Text style={styles.settingLabel}>Auto-Remove Watched</Text>
+                  <Text style={styles.settingSubtext}>Delete after watching</Text>
+                </View>
+                <Switch
+                  value={autoRemove}
+                  onValueChange={setAutoRemove}
+                  trackColor={{ false: '#3a3a3a', true: accentColor }}
+                />
+              </View>
+            </View>
           </View>
         )}
 
@@ -236,7 +297,13 @@ export function DownloadOptionsModal({ item, userId, visible, onClose, onConfirm
             <Text style={styles.cancelText}>Cancel</Text>
           </Pressable>
           <Pressable
-            onPress={() => onConfirm(selectedAudio, selectedSubtitle)}
+            onPress={() => {
+              // Save settings if changed
+              if (selectedQuality !== downloadQuality) setDownloadQuality(selectedQuality);
+              if (wifiOnly !== downloadOverWifiOnly) setDownloadOverWifiOnly(wifiOnly);
+              if (autoRemove !== autoRemoveWatchedDownloads) setAutoRemoveWatchedDownloads(autoRemove);
+              onConfirm(selectedAudio, selectedSubtitle, selectedQuality);
+            }}
             style={[styles.downloadButton, { backgroundColor: accentColor }]}
             disabled={isLoading}
           >
@@ -318,6 +385,35 @@ const styles = StyleSheet.create({
   },
   dropdownContainer: {
     marginBottom: 16,
+  },
+  settingsSection: {
+    marginTop: 8,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  settingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.05)',
+  },
+  settingInfo: {
+    flex: 1,
+    marginRight: 12,
+  },
+  settingLabel: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  settingSubtext: {
+    color: 'rgba(255,255,255,0.4)',
+    fontSize: 12,
+    marginTop: 2,
   },
   dropdownLabel: {
     color: 'rgba(255,255,255,0.6)',

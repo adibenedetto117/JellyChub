@@ -1,10 +1,18 @@
-import { View, Text, Pressable, StyleSheet, Modal } from 'react-native';
-import { memo, useCallback, useMemo, useState } from 'react';
+import { View, Text, Pressable, StyleSheet, Dimensions } from 'react-native';
+import { memo, useCallback, useMemo, useState, useEffect } from 'react';
 import { Ionicons } from '@expo/vector-icons';
-import Animated, { useSharedValue, useAnimatedStyle, withSpring } from 'react-native-reanimated';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+  withTiming,
+  runOnJS,
+} from 'react-native-reanimated';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useRouter, usePathname } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { useSettingsStore, useAuthStore } from '@/stores';
 import { selectHasJellyseerr, DEFAULT_TAB_ORDER, type TabId } from '@/stores/settingsStore';
 import { getLibraries } from '@/api';
@@ -129,7 +137,7 @@ const TAB_ROUTES: Record<string, string> = {
   radarr: '/settings/radarr-manage',
   sonarr: '/settings/sonarr-manage',
   favorites: '/(tabs)/favorites',
-  livetv: '/(tabs)/live-tv',
+  livetv: '/(tabs)/livetv',
 };
 
 const TAB_NAMES: Record<string, string> = {
@@ -156,7 +164,13 @@ interface MoreMenuProps {
   hasJellyseerr: boolean;
   hasLiveTV: boolean;
   libraries: Library[] | undefined;
+  t: (key: string) => string;
 }
+
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+const SHEET_MAX_HEIGHT = SCREEN_HEIGHT * 0.6;
+const DISMISS_THRESHOLD = 80;
+const VELOCITY_THRESHOLD = 400;
 
 const MoreMenu = memo(function MoreMenu({
   visible,
@@ -168,8 +182,12 @@ const MoreMenu = memo(function MoreMenu({
   hasJellyseerr,
   hasLiveTV,
   libraries,
+  t,
 }: MoreMenuProps) {
   const insets = useSafeAreaInsets();
+  const translateY = useSharedValue(SHEET_MAX_HEIGHT);
+  const overlayOpacity = useSharedValue(0);
+  const isOpen = useSharedValue(false);
 
   const visibleItems = useMemo(() => {
     return moreMenuTabs.filter((tabId) => {
@@ -177,7 +195,6 @@ const MoreMenu = memo(function MoreMenu({
       if (tabId === 'sonarr' && !hasSonarr) return false;
       if (tabId === 'jellyseerr' && !hasJellyseerr) return false;
       if (tabId === 'livetv' && !hasLiveTV) return false;
-      // Check if tabId is a library ID (not in TAB_ICONS) and verify the library exists
       if (!(tabId in TAB_ICONS)) {
         const libraryExists = libraries?.some((lib) => lib.Id === tabId);
         if (!libraryExists) return false;
@@ -186,9 +203,7 @@ const MoreMenu = memo(function MoreMenu({
     });
   }, [moreMenuTabs, hasRadarr, hasSonarr, hasJellyseerr, hasLiveTV, libraries]);
 
-  // Helper function to get item info for both regular tabs and libraries
-  const getItemInfo = useCallback((tabId: string): { icon: IconName; name: string; route: string } | null => {
-    // Check if it's a library ID (not in TAB_ICONS)
+  const getItemInfo = useCallback((tabId: string): { icon: IconName; name: string; route: string; color: string } | null => {
     if (!(tabId in TAB_ICONS)) {
       const library = libraries?.find((lib) => lib.Id === tabId);
       if (library) {
@@ -197,73 +212,158 @@ const MoreMenu = memo(function MoreMenu({
         return {
           icon: icons.outline,
           name: library.Name,
-          route: `/(tabs)/library/${library.Id}`,
+          route: `/library/${library.Id}`,
+          color: '#8b5cf6',
         };
       }
       return null;
     }
 
-    // Regular tab
     const icons = TAB_ICONS[tabId];
     const route = TAB_ROUTES[tabId];
     if (!route) return null;
 
+    const tabNameKeys: Record<string, string> = {
+      home: 'nav.home',
+      library: 'nav.library',
+      downloads: 'nav.downloads',
+      jellyseerr: 'nav.jellyseerr',
+      admin: 'nav.admin',
+      settings: 'nav.settings',
+      radarr: 'nav.radarr',
+      sonarr: 'nav.sonarr',
+      favorites: 'nav.favorites',
+      livetv: 'nav.liveTV',
+      more: 'nav.more',
+    };
+    const translatedName = tabNameKeys[tabId] ? t(tabNameKeys[tabId]) : (TAB_NAMES[tabId] || tabId);
+
     return {
       icon: icons?.outline || 'ellipse-outline',
-      name: TAB_NAMES[tabId] || tabId,
+      name: translatedName,
       route,
+      color: TAB_COLORS[tabId] || '#8b5cf6',
     };
-  }, [libraries]);
+  }, [libraries, t]);
 
-  if (!visible || visibleItems.length === 0) return null;
+  // Open/close animation
+  useEffect(() => {
+    if (visible) {
+      isOpen.value = true;
+      translateY.value = withTiming(0, { duration: 280 });
+      overlayOpacity.value = withTiming(1, { duration: 200 });
+    } else {
+      translateY.value = withTiming(SHEET_MAX_HEIGHT, { duration: 220 });
+      overlayOpacity.value = withTiming(0, { duration: 180 });
+      setTimeout(() => {
+        isOpen.value = false;
+      }, 220);
+    }
+  }, [visible, translateY, overlayOpacity, isOpen]);
+
+  const closeSheet = useCallback(() => {
+    translateY.value = withTiming(SHEET_MAX_HEIGHT, { duration: 200 });
+    overlayOpacity.value = withTiming(0, { duration: 150 }, () => {
+      runOnJS(onClose)();
+    });
+  }, [onClose, translateY, overlayOpacity]);
+
+  const panGesture = useMemo(() => Gesture.Pan()
+    .onUpdate((event) => {
+      // Only allow dragging down, with rubber band effect for up
+      if (event.translationY < 0) {
+        translateY.value = event.translationY * 0.2; // Rubber band up
+      } else {
+        translateY.value = event.translationY;
+      }
+      // Update overlay opacity based on drag
+      const progress = Math.min(1, event.translationY / SHEET_MAX_HEIGHT);
+      overlayOpacity.value = 1 - progress;
+    })
+    .onEnd((event) => {
+      const shouldDismiss =
+        translateY.value > DISMISS_THRESHOLD ||
+        event.velocityY > VELOCITY_THRESHOLD;
+
+      if (shouldDismiss) {
+        runOnJS(closeSheet)();
+      } else {
+        translateY.value = withTiming(0, { duration: 200 });
+        overlayOpacity.value = withTiming(1, { duration: 150 });
+      }
+    }), [translateY, overlayOpacity, closeSheet]);
+
+  const sheetStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: translateY.value }],
+  }));
+
+  const overlayStyle = useAnimatedStyle(() => ({
+    opacity: overlayOpacity.value,
+    pointerEvents: overlayOpacity.value > 0 ? 'auto' : 'none',
+  }));
+
+  const containerStyle = useAnimatedStyle(() => ({
+    pointerEvents: isOpen.value ? 'auto' : 'none',
+  }));
+
+  if (visibleItems.length === 0) return null;
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={moreStyles.overlay}>
-        <Pressable style={moreStyles.overlayPress} onPress={onClose} />
+    <Animated.View style={[moreStyles.fullScreen, containerStyle]}>
+      {/* Backdrop */}
+      <Animated.View style={[moreStyles.overlayBackground, overlayStyle]}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={closeSheet} />
+      </Animated.View>
 
-        <View style={[moreStyles.sheet, { paddingBottom: insets.bottom + 20 }]}>
+      {/* Bottom Sheet */}
+      <GestureDetector gesture={panGesture}>
+        <Animated.View style={[moreStyles.sheet, { paddingBottom: insets.bottom + 16 }, sheetStyle]}>
           {/* Drag Handle */}
           <View style={moreStyles.handleContainer}>
             <View style={moreStyles.handle} />
           </View>
 
           {/* Title */}
-          <Text style={moreStyles.title}>More</Text>
+          <View style={moreStyles.titleContainer}>
+            <Text style={moreStyles.title}>{t('nav.more')}</Text>
+          </View>
 
           {/* Menu Items */}
           <View style={moreStyles.itemsContainer}>
-              {visibleItems.map((tabId, index) => {
-                const itemInfo = getItemInfo(tabId);
-                if (!itemInfo) return null;
-                const isLast = index === visibleItems.length - 1;
+            {visibleItems.map((tabId, index) => {
+              const itemInfo = getItemInfo(tabId);
+              if (!itemInfo) return null;
+              const isLast = index === visibleItems.length - 1;
 
-                return (
-                  <View key={tabId}>
-                    <Pressable
-                      style={({ pressed }) => [
-                        moreStyles.menuItem,
-                        pressed && moreStyles.menuItemPressed,
-                      ]}
-                      onPress={() => {
-                        haptics.light();
-                        onClose();
-                        setTimeout(() => onNavigate(itemInfo.route), 100);
-                      }}
-                    >
-                      <View style={moreStyles.menuItemContent}>
-                        <Ionicons name={itemInfo.icon} size={28} color="#fff" />
-                        <Text style={moreStyles.itemName}>{itemInfo.name}</Text>
+              return (
+                <View key={tabId}>
+                  <Pressable
+                    style={({ pressed }) => [
+                      moreStyles.menuItem,
+                      pressed && moreStyles.menuItemPressed,
+                    ]}
+                    onPress={() => {
+                      haptics.light();
+                      closeSheet();
+                      setTimeout(() => onNavigate(itemInfo.route), 200);
+                    }}
+                  >
+                    <View style={moreStyles.menuItemRow}>
+                      <View style={[moreStyles.iconBackground, { backgroundColor: itemInfo.color + '15' }]}>
+                        <Ionicons name={itemInfo.icon} size={22} color={itemInfo.color} />
                       </View>
-                    </Pressable>
-                    {!isLast && <View style={moreStyles.separator} />}
-                  </View>
-                );
-              })}
-            </View>
-        </View>
-      </View>
-    </Modal>
+                      <Text style={moreStyles.itemName} numberOfLines={1}>{itemInfo.name}</Text>
+                      <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.3)" />
+                    </View>
+                  </Pressable>
+                  {!isLast && <View style={moreStyles.separator} />}
+                </View>
+              );
+            })}
+          </View>
+        </Animated.View>
+      </GestureDetector>
+    </Animated.View>
   );
 });
 
@@ -287,6 +387,7 @@ function getLibraryScreenName(collectionType: Library['CollectionType']): string
 }
 
 export const BottomNav = memo(function BottomNav() {
+  const { t } = useTranslation();
   const router = useRouter();
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
@@ -348,65 +449,65 @@ export const BottomNav = memo(function BottomNav() {
 
     if (offlineMode) {
       if (tabId === 'downloads') {
-        return { id: 'downloads', name: 'Downloads', icon: icons.downloads.outline, iconFilled: icons.downloads.filled, route: '/(tabs)/downloads' };
+        return { id: 'downloads', name: t('nav.downloads'), icon: icons.downloads.outline, iconFilled: icons.downloads.filled, route: '/(tabs)/downloads' };
       }
       if (tabId === 'settings') {
-        return { id: 'settings', name: 'Settings', icon: icons.settings.outline, iconFilled: icons.settings.filled, route: '/(tabs)/settings' };
+        return { id: 'settings', name: t('nav.settings'), icon: icons.settings.outline, iconFilled: icons.settings.filled, route: '/(tabs)/settings' };
       }
       return null;
     }
 
     if (tabId === 'home') {
       return bottomBarConfig.showHome
-        ? { id: 'home', name: 'Home', icon: icons.home.outline, iconFilled: icons.home.filled, route: '/(tabs)/home' }
+        ? { id: 'home', name: t('nav.home'), icon: icons.home.outline, iconFilled: icons.home.filled, route: '/(tabs)/home' }
         : null;
     }
     if (tabId === 'library') {
       return bottomBarConfig.showLibrary
-        ? { id: 'library', name: 'Library', icon: icons.library.outline, iconFilled: icons.library.filled, route: '/(tabs)/library' }
+        ? { id: 'library', name: t('nav.library'), icon: icons.library.outline, iconFilled: icons.library.filled, route: '/(tabs)/library' }
         : null;
     }
     if (tabId === 'downloads') {
       return bottomBarConfig.showDownloads
-        ? { id: 'downloads', name: 'Downloads', icon: icons.downloads.outline, iconFilled: icons.downloads.filled, route: '/(tabs)/downloads' }
+        ? { id: 'downloads', name: t('nav.downloads'), icon: icons.downloads.outline, iconFilled: icons.downloads.filled, route: '/(tabs)/downloads' }
         : null;
     }
     if (tabId === 'jellyseerr') {
       return hasJellyseerr && bottomBarConfig.showJellyseerr
-        ? { id: 'jellyseerr', name: 'Jellyseerr', icon: icons.jellyseerr.outline, iconFilled: icons.jellyseerr.filled, route: '/(tabs)/requests' }
+        ? { id: 'jellyseerr', name: t('nav.jellyseerr'), icon: icons.jellyseerr.outline, iconFilled: icons.jellyseerr.filled, route: '/(tabs)/requests' }
         : null;
     }
     if (tabId === 'admin') {
       return isAdmin && bottomBarConfig.showAdmin
-        ? { id: 'admin', name: 'Admin', icon: icons.admin.outline, iconFilled: icons.admin.filled, route: '/(tabs)/admin' }
+        ? { id: 'admin', name: t('nav.admin'), icon: icons.admin.outline, iconFilled: icons.admin.filled, route: '/(tabs)/admin' }
         : null;
     }
     if (tabId === 'radarr') {
       return hasRadarr && bottomBarConfig.showRadarr
-        ? { id: 'radarr', name: 'Radarr', icon: icons.radarr.outline, iconFilled: icons.radarr.filled, route: '/settings/radarr-manage' }
+        ? { id: 'radarr', name: t('nav.radarr'), icon: icons.radarr.outline, iconFilled: icons.radarr.filled, route: '/settings/radarr-manage' }
         : null;
     }
     if (tabId === 'sonarr') {
       return hasSonarr && bottomBarConfig.showSonarr
-        ? { id: 'sonarr', name: 'Sonarr', icon: icons.sonarr.outline, iconFilled: icons.sonarr.filled, route: '/settings/sonarr-manage' }
+        ? { id: 'sonarr', name: t('nav.sonarr'), icon: icons.sonarr.outline, iconFilled: icons.sonarr.filled, route: '/settings/sonarr-manage' }
         : null;
     }
     if (tabId === 'favorites') {
       return bottomBarConfig.showFavorites
-        ? { id: 'favorites', name: 'Favorites', icon: icons.favorites.outline, iconFilled: icons.favorites.filled, route: '/(tabs)/favorites' }
+        ? { id: 'favorites', name: t('nav.favorites'), icon: icons.favorites.outline, iconFilled: icons.favorites.filled, route: '/(tabs)/favorites' }
         : null;
     }
     if (tabId === 'livetv') {
       return hasLiveTV && bottomBarConfig.showLiveTV
-        ? { id: 'livetv', name: 'Live TV', icon: icons.livetv.outline, iconFilled: icons.livetv.filled, route: '/(tabs)/live-tv' }
+        ? { id: 'livetv', name: t('nav.liveTV'), icon: icons.livetv.outline, iconFilled: icons.livetv.filled, route: '/(tabs)/livetv' }
         : null;
     }
     if (tabId === 'settings') {
-      return { id: 'settings', name: 'Settings', icon: icons.settings.outline, iconFilled: icons.settings.filled, route: '/(tabs)/settings' };
+      return { id: 'settings', name: t('nav.settings'), icon: icons.settings.outline, iconFilled: icons.settings.filled, route: '/(tabs)/settings' };
     }
     if (tabId === 'more') {
       return bottomBarConfig.showMore
-        ? { id: 'more', name: 'More', icon: icons.more.outline, iconFilled: icons.more.filled, route: 'more' }
+        ? { id: 'more', name: t('nav.more'), icon: icons.more.outline, iconFilled: icons.more.filled, route: 'more' }
         : null;
     }
 
@@ -420,7 +521,7 @@ export const BottomNav = memo(function BottomNav() {
     }
 
     return null;
-  }, [offlineMode, bottomBarConfig, hasJellyseerr, isAdmin, libraries, hasRadarr, hasSonarr, hasLiveTV]);
+  }, [offlineMode, bottomBarConfig, hasJellyseerr, isAdmin, libraries, hasRadarr, hasSonarr, hasLiveTV, t]);
 
   // Memoize the entire tabs array computation
   const tabs = useMemo(() => {
@@ -497,6 +598,7 @@ export const BottomNav = memo(function BottomNav() {
         hasJellyseerr={hasJellyseerr}
         hasLiveTV={hasLiveTV}
         libraries={libraries}
+        t={t}
       />
     </>
   );
@@ -546,65 +648,88 @@ const styles = StyleSheet.create({
 });
 
 const moreStyles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'flex-end',
+  fullScreen: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 1000,
   },
-  overlayPress: {
-    flex: 1,
+  overlayBackground: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.6)',
   },
   sheet: {
-    backgroundColor: '#1a1a1a',
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#151515',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 20,
   },
   handleContainer: {
-    paddingTop: 16,
-    paddingBottom: 16,
+    paddingTop: 12,
+    paddingBottom: 4,
     alignItems: 'center',
-    width: '100%',
   },
   handle: {
-    width: 44,
+    width: 40,
     height: 5,
-    backgroundColor: 'rgba(255,255,255,0.5)',
-    borderRadius: 2.5,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+    borderRadius: 3,
+  },
+  titleContainer: {
+    paddingVertical: 16,
+    paddingHorizontal: 20,
   },
   title: {
-    fontSize: 18,
-    fontWeight: '600',
+    fontSize: 20,
+    fontWeight: '700',
     color: '#fff',
-    textAlign: 'center',
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.15)',
+    letterSpacing: -0.3,
   },
   itemsContainer: {
-    paddingHorizontal: 16,
-    paddingTop: 8,
+    paddingHorizontal: 12,
     paddingBottom: 8,
   },
   menuItem: {
-    paddingVertical: 22,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderRadius: 12,
   },
-  menuItemContent: {
+  menuItemPressed: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  menuItemRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 18,
   },
-  menuItemLast: {},
-  menuItemPressed: {
-    opacity: 0.6,
+  iconBackground: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
   },
   itemName: {
-    fontSize: 17,
+    flex: 1,
+    fontSize: 16,
     fontWeight: '500',
-    color: '#ffffff',
+    color: '#fff',
   },
   separator: {
     height: 1,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    marginHorizontal: 0,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    marginLeft: 70,
+    marginRight: 12,
+    marginVertical: 4,
   },
 });

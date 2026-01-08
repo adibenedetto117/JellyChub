@@ -82,6 +82,7 @@ export interface ProgramsResponse {
 export interface RecordingInfo {
   Id: string;
   ChannelId: string;
+  ChannelName?: string;
   Name: string;
   Overview?: string;
   StartDate: string;

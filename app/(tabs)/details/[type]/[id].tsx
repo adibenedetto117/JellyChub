@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeIn, FadeOut, useSharedValue, useAnimatedStyle, withTiming, runOnJS, Easing } from 'react-native-reanimated';
+import { useTranslation } from 'react-i18next';
 import { useAuthStore, useSettingsStore, usePlayerStore, useDownloadStore } from '@/stores';
 import { getItem, getImageUrl, getSimilarItems, getSeasons, getEpisodes, getAlbumTracks, getArtistAlbums, getPlaylistItems, getCollectionItems, getNextUp, markAsFavorite } from '@/api';
 import { formatDuration, formatYear, formatRating, ticksToMs, getWatchProgress, getDisplayName, getDisplayImageUrl, getDisplaySeriesName, getDisplayArtist, goBack } from '@/utils';
@@ -17,6 +18,7 @@ import { TrackOptionsMenu } from '@/components/music/TrackOptionsMenu';
 import { DownloadOptionsModal } from '@/components/media/DownloadOptionsModal';
 import { PersonModal } from '@/components/media/PersonModal';
 import { downloadManager } from '@/services';
+import type { DownloadQuality } from '@/components/media/DownloadOptionsModal';
 import type { BaseItem, Episode, Series } from '@/types/jellyfin';
 
 function DownloadIcon({ size = 22, color = '#fff' }: { size?: number; color?: string }) {
@@ -39,7 +41,7 @@ function CheckIcon({ size = 22, color = '#22c55e' }: { size?: number; color?: st
 
 const DESCRIPTION_LINE_LIMIT = 3;
 
-function CollapsibleDescription({ text, accentColor }: { text: string; accentColor: string }) {
+function CollapsibleDescription({ text, accentColor, t }: { text: string; accentColor: string; t: (key: string) => string }) {
   const [expanded, setExpanded] = useState(false);
   const [needsTruncation, setNeedsTruncation] = useState(false);
 
@@ -62,7 +64,7 @@ function CollapsibleDescription({ text, accentColor }: { text: string; accentCol
           className="mt-2"
         >
           <Text style={{ color: accentColor }} className="text-sm font-medium">
-            {expanded ? 'Show less' : 'Show more'}
+            {expanded ? t('details.showLess') : t('details.showMore')}
           </Text>
         </Pressable>
       )}
@@ -71,7 +73,8 @@ function CollapsibleDescription({ text, accentColor }: { text: string; accentCol
 }
 
 export default function DetailScreen() {
-  const { type: rawType, id } = useLocalSearchParams<{ type: string; id: string }>();
+  const { t } = useTranslation();
+  const { type: rawType, id, from } = useLocalSearchParams<{ type: string; id: string; from?: string }>();
   const type = rawType?.toLowerCase();
   const currentUser = useAuthStore((state) => state.currentUser);
   const activeServerId = useAuthStore((state) => state.activeServerId);
@@ -103,9 +106,9 @@ export default function DetailScreen() {
   }));
 
   const handleGoBack = () => {
-    // Navigate back to appropriate screen based on content type
+    // Navigate back to the source screen (from URL param) or fallback
     const fallback = type === 'boxset' ? '/(tabs)/library' : '/(tabs)/home';
-    goBack(fallback);
+    goBack(from, fallback);
   };
 
   // Check download status
@@ -117,8 +120,7 @@ export default function DetailScreen() {
     queryKey: ['item', userId, id],
     queryFn: () => getItem(userId, id),
     enabled: !!userId && !!id,
-    staleTime: 1000 * 30,
-    refetchOnMount: 'always',
+    staleTime: 1000 * 60, // 1 minute - balance freshness with performance
   });
 
   const currentFavorite = isFavorite ?? item?.UserData?.IsFavorite ?? false;
@@ -186,7 +188,7 @@ export default function DetailScreen() {
     queryKey: ['episodes', seriesId, id, userId],
     queryFn: () => getEpisodes(seriesId!, userId, id),
     enabled: !!userId && !!id && !!seriesId && type === 'season',
-    refetchOnMount: 'always',
+    staleTime: 1000 * 60, // 1 minute
   });
 
   const { data: nextUp } = useQuery({
@@ -217,14 +219,14 @@ export default function DetailScreen() {
         className="flex-1 bg-background items-center justify-center px-4"
       >
         <Ionicons name="alert-circle-outline" size={48} color="#f87171" />
-        <Text className="text-red-400 text-center mt-4">Error loading item</Text>
-        <Text className="text-text-tertiary text-center mt-2">{(itemError as any)?.message || 'Unknown error'}</Text>
+        <Text className="text-red-400 text-center mt-4">{t('details.errorLoading')}</Text>
+        <Text className="text-text-tertiary text-center mt-2">{(itemError as any)?.message || t('errors.unknown')}</Text>
         <Pressable
           onPress={handleGoBack}
           className="mt-6 px-6 py-3 rounded-lg"
           style={{ backgroundColor: accentColor }}
         >
-          <Text className="text-white font-medium">Go Back</Text>
+          <Text className="text-white font-medium">{t('common.goBack')}</Text>
         </Pressable>
       </Animated.View>
     );
@@ -240,7 +242,7 @@ export default function DetailScreen() {
         router.push(`/player/video?itemId=${nextUpEpisode.Id}${hasNextUpProgress ? '&resume=true' : ''}`);
       } else if (seasons?.Items?.[0]) {
         // Fallback: go to first season
-        router.push(`/(tabs)/details/season/${seasons.Items[0].Id}`);
+        router.push(`/details/season/${seasons.Items[0].Id}`);
       }
     } else if (type === 'season') {
       // Play the episode we determined above
@@ -296,7 +298,7 @@ export default function DetailScreen() {
     setShowDownloadOptions(true);
   };
 
-  const startDownloadWithOptions = async (audioIndex?: number, subtitleIndex?: number) => {
+  const startDownloadWithOptions = async (audioIndex?: number, subtitleIndex?: number, quality?: DownloadQuality) => {
     // Handle episode download if selected
     if (selectedEpisodeForDownload) {
       const episode = selectedEpisodeForDownload;
@@ -305,7 +307,7 @@ export default function DetailScreen() {
       setDownloadingEpisodeId(episode.Id);
 
       try {
-        await downloadManager.startDownload(episode, activeServerId!);
+        await downloadManager.startDownload(episode, activeServerId!, quality);
         Alert.alert('Download Started', `${episode.Name} has been added to your downloads.`);
       } catch (error) {
         Alert.alert('Download Failed', 'Could not start download. Please try again.');
@@ -322,7 +324,7 @@ export default function DetailScreen() {
     setIsDownloading(true);
 
     try {
-      await downloadManager.startDownload(item, activeServerId);
+      await downloadManager.startDownload(item, activeServerId, quality);
       Alert.alert('Download Started', `${item.Name} has been added to your downloads.`);
     } catch (error) {
       Alert.alert('Download Failed', 'Could not start download. Please try again.');
@@ -416,7 +418,7 @@ export default function DetailScreen() {
   };
 
   const handleItemPress = (pressedItem: BaseItem) => {
-    router.push(`/(tabs)/details/${pressedItem.Type.toLowerCase()}/${pressedItem.Id}`);
+    router.push(`/details/${pressedItem.Type.toLowerCase()}/${pressedItem.Id}`);
   };
 
   const backdropTag = item?.BackdropImageTags?.[0];
@@ -530,14 +532,14 @@ export default function DetailScreen() {
             {/* Info Column */}
             <View className="flex-1 justify-end pb-1">
               {type === 'season' && displaySeriesName && item && (
-                <Pressable onPress={() => router.push(`/(tabs)/details/series/${item.SeriesId || item.ParentId}`)}>
+                <Pressable onPress={() => router.push(`/details/series/${item.SeriesId || item.ParentId}`)}>
                   <Text className="text-text-secondary text-sm mb-1" numberOfLines={1}>
                     {displaySeriesName}
                   </Text>
                 </Pressable>
               )}
               {type === 'episode' && displaySeriesName && item && (
-                <Pressable onPress={() => router.push(`/(tabs)/details/series/${item.SeriesId}`)}>
+                <Pressable onPress={() => router.push(`/details/series/${item.SeriesId}`)}>
                   <Text className="text-text-secondary text-sm mb-1" numberOfLines={1}>
                     {displaySeriesName} • S{item.ParentIndexNumber} E{item.IndexNumber}
                   </Text>
@@ -596,10 +598,10 @@ export default function DetailScreen() {
                 <Button
                   title={
                     type === 'series'
-                      ? (hasNextUpProgress ? 'Continue' : (nextUpEpisode ? 'Play' : 'View Seasons'))
+                      ? (hasNextUpProgress ? t('details.continue') : (nextUpEpisode ? t('details.play') : t('details.viewSeasons')))
                       : type === 'season'
-                        ? (hasSeasonProgress ? 'Continue' : 'Play')
-                        : (hasProgress ? 'Continue' : 'Play')
+                        ? (hasSeasonProgress ? t('details.continue') : t('details.play'))
+                        : (hasProgress ? t('details.continue') : t('details.play'))
                   }
                   onPress={() => handlePlay(
                     type === 'series' ? hasNextUpProgress :
@@ -726,16 +728,16 @@ export default function DetailScreen() {
           )}
 
           {item?.Overview && !hideMedia && (
-            <CollapsibleDescription text={item.Overview} accentColor={accentColor} />
+            <CollapsibleDescription text={item.Overview} accentColor={accentColor} t={t} />
           )}
           {item?.Overview && hideMedia && (
-            <CollapsibleDescription text="A wonderful collection that showcases the best of this content. Enjoy the experience and discover something new." accentColor={accentColor} />
+            <CollapsibleDescription text="A wonderful collection that showcases the best of this content. Enjoy the experience and discover something new." accentColor={accentColor} t={t} />
           )}
 
           {type === 'series' && (
             <View className="mt-6">
               <Text className="text-white text-lg font-semibold mb-3">
-                {seasons ? `${seasons.Items.length} ${seasons.Items.length === 1 ? 'Season' : 'Seasons'}` : 'Seasons'}
+                {seasons ? t('details.seasonsCount', { count: seasons.Items.length }) : t('details.seasons')}
               </Text>
               {isLoadingSeasons ? (
                 <View className="py-8 items-center">
@@ -755,7 +757,7 @@ export default function DetailScreen() {
                       key={season.Id}
                       className="bg-surface rounded-xl mb-3 flex-row items-center overflow-hidden"
                       onPress={() =>
-                        router.push(`/(tabs)/details/season/${season.Id}`)
+                        router.push(`/details/season/${season.Id}`)
                       }
                     >
                       {/* Season poster */}
@@ -778,7 +780,7 @@ export default function DetailScreen() {
                         <View className="flex-row items-center mt-1">
                           {(season as any).ChildCount != null && (
                             <Text className="text-text-tertiary text-xs">
-                              {(season as any).ChildCount} {(season as any).ChildCount === 1 ? 'Episode' : 'Episodes'}
+                              {t('details.episodesCount', { count: (season as any).ChildCount })}
                             </Text>
                           )}
                           {season.CommunityRating && (
@@ -800,7 +802,7 @@ export default function DetailScreen() {
                   );
                 })
               ) : (
-                <Text className="text-text-tertiary text-center py-4">No seasons found</Text>
+                <Text className="text-text-tertiary text-center py-4">{t('details.noSeasonsFound')}</Text>
               )}
             </View>
           )}
@@ -809,7 +811,7 @@ export default function DetailScreen() {
             <View className="mt-6">
               <View className="flex-row items-center justify-between mb-3">
                 <Text className="text-white text-lg font-semibold">
-                  {episodes ? `${episodes.Items.length} ${episodes.Items.length === 1 ? 'Episode' : 'Episodes'}` : 'Episodes'}
+                  {episodes ? t('details.episodesCount', { count: episodes.Items.length }) : t('details.episodes')}
                 </Text>
                 {episodes && episodes.Items.length > 0 && (
                   <Pressable
@@ -824,7 +826,7 @@ export default function DetailScreen() {
                       <>
                         <DownloadIcon size={16} color={accentColor} />
                         <Text style={{ color: accentColor }} className="text-sm font-medium ml-2">
-                          Download Season
+                          {t('details.downloadSeason')}
                         </Text>
                       </>
                     )}
@@ -885,7 +887,7 @@ export default function DetailScreen() {
                         {/* Episode info */}
                         <View className="flex-1 ml-6 py-2 justify-center">
                           <Text className="text-text-tertiary text-xs mb-0.5">
-                            Episode {episode.IndexNumber}
+                            {t('details.episode')} {episode.IndexNumber}
                           </Text>
                           <Text className="text-white font-medium" numberOfLines={1}>
                             {episodeDisplayName}
@@ -939,7 +941,7 @@ export default function DetailScreen() {
                   );
                 })
               ) : (
-                <Text className="text-text-tertiary text-center py-4">No episodes found</Text>
+                <Text className="text-text-tertiary text-center py-4">{t('details.noEpisodesFound')}</Text>
               )}
             </View>
           )}
@@ -948,7 +950,7 @@ export default function DetailScreen() {
             <View className="mt-6">
               <View className="flex-row items-center justify-between mb-3">
                 <Text className="text-white text-lg font-semibold">
-                  {tracks ? `${tracks.Items.length} ${tracks.Items.length === 1 ? 'Track' : 'Tracks'}` : 'Tracks'}
+                  {tracks ? t('details.tracksCount', { count: tracks.Items.length }) : t('details.tracks')}
                 </Text>
                 {tracks && tracks.Items.length > 0 && (
                   <Pressable
@@ -963,7 +965,7 @@ export default function DetailScreen() {
                       <>
                         <DownloadIcon size={16} color={accentColor} />
                         <Text style={{ color: accentColor }} className="text-sm font-medium ml-2">
-                          Download Album
+                          {t('details.downloadAlbum')}
                         </Text>
                       </>
                     )}
@@ -1023,7 +1025,7 @@ export default function DetailScreen() {
                   );
                 })
               ) : (
-                <Text className="text-text-tertiary text-center py-4">No tracks found</Text>
+                <Text className="text-text-tertiary text-center py-4">{t('details.noTracksFound')}</Text>
               )}
             </View>
           )}
@@ -1112,7 +1114,7 @@ export default function DetailScreen() {
                   );
                 })
               ) : (
-                <Text className="text-text-tertiary text-center py-4">This playlist is empty</Text>
+                <Text className="text-text-tertiary text-center py-4">{t('details.playlistEmpty')}</Text>
               )}
             </View>
           )}
@@ -1120,7 +1122,7 @@ export default function DetailScreen() {
           {type === 'artist' && (
             <View className="mt-6">
               <Text className="text-white text-lg font-semibold mb-3">
-                {artistAlbums ? `${artistAlbums.TotalRecordCount} ${artistAlbums.TotalRecordCount === 1 ? 'Album' : 'Albums'}` : 'Albums'}
+                {artistAlbums ? t('details.albumsCount', { count: artistAlbums.TotalRecordCount }) : t('details.albums')}
               </Text>
               {isLoadingArtistAlbums ? (
                 <>
@@ -1146,7 +1148,7 @@ export default function DetailScreen() {
                     <Pressable
                       key={album.Id}
                       className="bg-surface p-3 rounded-xl mb-2 flex-row items-center"
-                      onPress={() => router.push(`/(tabs)/details/album/${album.Id}`)}
+                      onPress={() => router.push(`/details/album/${album.Id}`)}
                     >
                       <View className="w-14 h-14 rounded-lg overflow-hidden bg-surface mr-3">
                         <CachedImage
@@ -1167,7 +1169,7 @@ export default function DetailScreen() {
                   );
                 })
               ) : (
-                <Text className="text-text-tertiary text-center py-4">No albums found</Text>
+                <Text className="text-text-tertiary text-center py-4">{t('details.noAlbumsFound')}</Text>
               )}
             </View>
           )}
@@ -1175,7 +1177,7 @@ export default function DetailScreen() {
           {type === 'boxset' && (
             <View className="mt-6">
               <Text className="text-white text-lg font-semibold mb-3">
-                {collectionItems ? `${collectionItems.TotalRecordCount} ${collectionItems.TotalRecordCount === 1 ? 'Item' : 'Items'}` : 'Items'}
+                {collectionItems ? t('details.itemsCount', { count: collectionItems.TotalRecordCount }) : t('details.items')}
               </Text>
               {isLoadingCollectionItems ? (
                 <>
@@ -1205,7 +1207,7 @@ export default function DetailScreen() {
                     <Pressable
                       key={collectionItem.Id}
                       className="bg-surface rounded-xl mb-3 flex-row items-center overflow-hidden"
-                      onPress={() => router.push(`/(tabs)/details/${itemType}/${collectionItem.Id}`)}
+                      onPress={() => router.push(`/details/${itemType}/${collectionItem.Id}`)}
                     >
                       <View className="w-16 h-24 bg-surface-elevated">
                         {itemImageUrl ? (
@@ -1254,14 +1256,14 @@ export default function DetailScreen() {
                   );
                 })
               ) : (
-                <Text className="text-text-tertiary text-center py-4">No items in this collection</Text>
+                <Text className="text-text-tertiary text-center py-4">{t('details.noItemsFound')}</Text>
               )}
             </View>
           )}
 
           {item?.People && item.People.length > 0 && (
             <View className="mt-6">
-              <Text className="text-white text-lg font-semibold mb-3">Cast</Text>
+              <Text className="text-white text-lg font-semibold mb-3">{t('details.cast')}</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                 {item.People.slice(0, 15).map((person, index) => {
                   const rawPersonImageUrl = person.PrimaryImageTag
@@ -1322,7 +1324,7 @@ export default function DetailScreen() {
         {similar && similar.Items.length > 0 && (
           <View className="mt-6">
             <MediaRow
-              title="Similar"
+              title={t('details.similar')}
               items={similar.Items}
               onItemPress={handleItemPress}
             />

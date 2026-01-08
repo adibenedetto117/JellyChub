@@ -9,6 +9,7 @@ import Animated, {
   useAnimatedStyle,
   withSpring,
 } from 'react-native-reanimated';
+import { useTranslation } from 'react-i18next';
 import { useAuthStore, useSettingsStore, DEFAULT_BOTTOM_BAR_CONFIG } from '@/stores';
 import {
   authenticateByName,
@@ -75,6 +76,7 @@ function UserAvatar({
 }
 
 export default function LoginScreen() {
+  const { t } = useTranslation();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -108,7 +110,7 @@ export default function LoginScreen() {
   }, []);
 
   useEffect(() => {
-    let interval: NodeJS.Timeout;
+    let interval: ReturnType<typeof setInterval>;
 
     if (quickConnectSecret) {
       interval = setInterval(async () => {
@@ -159,7 +161,7 @@ export default function LoginScreen() {
 
   const handleLogin = async () => {
     if (!username.trim()) {
-      setError('Please enter a username');
+      setError(t('auth.pleaseEnterUsername'));
       return;
     }
 
@@ -171,7 +173,7 @@ export default function LoginScreen() {
       setUser(auth.User, auth.AccessToken);
       router.replace(getLandingPageRoute() as any);
     } catch {
-      setError('Invalid username or password');
+      setError(t('auth.invalidCredentials'));
     } finally {
       setIsLoading(false);
     }
@@ -184,7 +186,7 @@ export default function LoginScreen() {
       setQuickConnect(result.Secret, result.Code);
       setQuickConnectCode(result.Code);
     } catch {
-      setError('Quick Connect is not available on this server');
+      setError(t('auth.quickConnectUnavailable'));
       setShowQuickConnect(false);
     }
   };
@@ -210,9 +212,9 @@ export default function LoginScreen() {
             <Text className="text-3xl text-accent">Q</Text>
           </View>
 
-          <Text className="text-white text-2xl font-bold mb-2">Quick Connect</Text>
+          <Text className="text-white text-2xl font-bold mb-2">{t('auth.quickConnect')}</Text>
           <Text className="text-text-secondary text-center mb-8 px-8">
-            Enter this code in your Jellyfin dashboard under Quick Connect
+            {t('auth.quickConnectInstructions')}
           </Text>
 
           <View className="bg-surface px-10 py-6 rounded-2xl mb-8 border border-white/5">
@@ -223,7 +225,7 @@ export default function LoginScreen() {
 
           <View className="flex-row items-center mb-2">
             <ActivityIndicator color={accentColor} size="small" />
-            <Text className="text-text-tertiary ml-3">Waiting for authorization...</Text>
+            <Text className="text-text-tertiary ml-3">{t('auth.waitingForAuth')}</Text>
           </View>
 
           <Pressable
@@ -234,7 +236,7 @@ export default function LoginScreen() {
               setQuickConnectCode(null);
             }}
           >
-            <Text className="text-text-secondary">Cancel</Text>
+            <Text className="text-text-secondary">{t('common.cancel')}</Text>
           </Pressable>
         </Animated.View>
       </SafeAreaView>
@@ -260,7 +262,7 @@ export default function LoginScreen() {
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
             <Text className="text-accent mr-1">{'<'}</Text>
-            <Text className="text-accent">Servers</Text>
+            <Text className="text-accent">{t('auth.servers')}</Text>
           </Pressable>
         </Animated.View>
 
@@ -294,7 +296,7 @@ export default function LoginScreen() {
         {publicUsers.length > 0 && (
           <Animated.View entering={FadeInDown.delay(200).duration(400)} className="mb-6">
             <Text className="text-text-secondary text-sm font-medium uppercase tracking-wider mb-3">
-              Select User
+              {t('auth.selectUser')}
             </Text>
             <ScrollView
               horizontal
@@ -321,11 +323,11 @@ export default function LoginScreen() {
         >
           <View className="mb-4">
             <Text className="text-text-tertiary text-xs uppercase tracking-wider mb-2">
-              Username
+              {t('auth.username')}
             </Text>
             <TextInput
               className="bg-background-secondary text-white px-4 py-3.5 rounded-xl text-base"
-              placeholder="Enter username"
+              placeholder={t('auth.enterUsername')}
               placeholderTextColor="rgba(255,255,255,0.25)"
               value={username}
               onChangeText={(text) => {
@@ -339,12 +341,12 @@ export default function LoginScreen() {
 
           <View className="mb-4">
             <Text className="text-text-tertiary text-xs uppercase tracking-wider mb-2">
-              Password
+              {t('auth.password')}
             </Text>
             <View className="flex-row items-center bg-background-secondary rounded-xl">
               <TextInput
                 className="flex-1 text-white px-4 py-3.5 text-base"
-                placeholder="Enter password"
+                placeholder={t('auth.enterPassword')}
                 placeholderTextColor="rgba(255,255,255,0.25)"
                 value={password}
                 onChangeText={(text) => {
@@ -359,7 +361,7 @@ export default function LoginScreen() {
                 hitSlop={{ top: 10, bottom: 10, left: 5, right: 10 }}
               >
                 <Text className="text-text-tertiary text-sm">
-                  {showPassword ? 'Hide' : 'Show'}
+                  {showPassword ? t('auth.hide') : t('auth.show')}
                 </Text>
               </Pressable>
             </View>
@@ -381,10 +383,10 @@ export default function LoginScreen() {
             {isLoading ? (
               <View className="flex-row items-center">
                 <ActivityIndicator color="white" size="small" />
-                <Text className="text-white font-semibold ml-2">Signing in...</Text>
+                <Text className="text-white font-semibold ml-2">{t('auth.signingIn')}</Text>
               </View>
             ) : (
-              <Text className="text-white font-semibold text-base">Sign In</Text>
+              <Text className="text-white font-semibold text-base">{t('auth.signIn')}</Text>
             )}
           </Pressable>
         </Animated.View>
@@ -393,7 +395,7 @@ export default function LoginScreen() {
         <Animated.View entering={FadeInDown.delay(400).duration(400)} className="mt-6">
           <View className="flex-row items-center justify-center mb-4">
             <View className="flex-1 h-px bg-white/10" />
-            <Text className="text-text-muted text-xs mx-4">OR</Text>
+            <Text className="text-text-muted text-xs mx-4">{t('auth.or')}</Text>
             <View className="flex-1 h-px bg-white/10" />
           </View>
 
@@ -401,11 +403,11 @@ export default function LoginScreen() {
             className="py-3.5 rounded-xl items-center border border-white/10"
             onPress={handleQuickConnect}
           >
-            <Text className="text-text-secondary font-medium">Use Quick Connect</Text>
+            <Text className="text-text-secondary font-medium">{t('auth.useQuickConnect')}</Text>
           </Pressable>
 
           <Text className="text-text-muted text-xs text-center mt-3">
-            Sign in using your Jellyfin dashboard
+            {t('auth.quickConnectDesc')}
           </Text>
         </Animated.View>
       </ScrollView>

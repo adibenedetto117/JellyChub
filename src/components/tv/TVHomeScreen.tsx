@@ -124,11 +124,11 @@ export function TVHomeScreen() {
   const handleItemPress = useCallback((item: BaseItem) => {
     const type = item.Type?.toLowerCase();
     if (type === 'movie') {
-      router.push(`/(tabs)/details/movie/${item.Id}`);
+      router.push(`/details/movie/${item.Id}`);
     } else if (type === 'series') {
-      router.push(`/(tabs)/details/series/${item.Id}`);
+      router.push(`/details/series/${item.Id}`);
     } else if (type === 'musicalbum') {
-      router.push(`/(tabs)/details/album/${item.Id}`);
+      router.push(`/details/album/${item.Id}`);
     } else if (type === 'audiobook') {
       router.push(`/player/audiobook?itemId=${item.Id}`);
     } else if (type === 'book') {
@@ -137,13 +137,13 @@ export function TVHomeScreen() {
       const isPdf = container === 'pdf' || path.endsWith('.pdf');
       router.push(isPdf ? `/reader/pdf?itemId=${item.Id}` : `/reader/epub?itemId=${item.Id}`);
     } else {
-      router.push(`/(tabs)/details/${type}/${item.Id}`);
+      router.push(`/details/${type}/${item.Id}`);
     }
   }, []);
 
   const handleEpisodePress = useCallback((item: Episode) => {
     if (item.SeriesId) {
-      router.push(`/(tabs)/details/series/${item.SeriesId}`);
+      router.push(`/details/series/${item.SeriesId}`);
     }
   }, []);
 

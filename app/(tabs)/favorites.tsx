@@ -6,6 +6,7 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
+import { useTranslation } from 'react-i18next';
 import { useAuthStore, useSettingsStore, usePlayerStore } from '@/stores';
 import { useResponsive } from '@/hooks';
 import { getFavorites, getFavoriteSongs, getImageUrl } from '@/api';
@@ -20,6 +21,7 @@ type FilterType = 'all' | 'movies' | 'shows' | 'music';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export default function FavoritesScreen() {
+  const { t } = useTranslation();
   const currentUser = useAuthStore((state) => state.currentUser);
   const accentColor = useSettingsStore((s) => s.accentColor);
   const hideMedia = useSettingsStore((s) => s.hideMedia);
@@ -87,9 +89,9 @@ export default function FavoritesScreen() {
   const handleItemPress = useCallback((item: BaseItem) => {
     const type = item.Type?.toLowerCase();
     if (type === 'movie') {
-      router.push(`/(tabs)/details/movie/${item.Id}`);
+      router.push(`/details/movie/${item.Id}`);
     } else if (type === 'series') {
-      router.push(`/(tabs)/details/series/${item.Id}`);
+      router.push(`/details/series/${item.Id}`);
     } else if (type === 'audio') {
       const queueItems = tracks.map((t, i) => ({ id: t.Id, item: t, index: i }));
       setQueue(queueItems);
@@ -163,7 +165,7 @@ export default function FavoritesScreen() {
           </View>
           <View style={styles.trackInfo}>
             <Text style={[styles.trackName, { fontSize: fontSize.base }]} numberOfLines={1}>{displayName}</Text>
-            <Text style={[styles.trackArtist, { fontSize: fontSize.sm }]} numberOfLines={1}>{displayArtists[0] || 'Unknown Artist'}</Text>
+            <Text style={[styles.trackArtist, { fontSize: fontSize.sm }]} numberOfLines={1}>{displayArtists[0] || t('favorites.unknownArtist')}</Text>
           </View>
           <Text style={[styles.trackDuration, { fontSize: fontSize.sm }]}>
             {formatDuration(ticksToMs(item.RunTimeTicks ?? 0))}
@@ -174,10 +176,10 @@ export default function FavoritesScreen() {
   };
 
   const filters: { key: FilterType; label: string; icon: keyof typeof Ionicons.glyphMap; count: number }[] = [
-    { key: 'all', label: 'All', icon: 'heart', count: totalCount },
-    { key: 'movies', label: 'Movies', icon: 'film-outline', count: movies.length },
-    { key: 'shows', label: 'Shows', icon: 'tv-outline', count: shows.length },
-    { key: 'music', label: 'Music', icon: 'musical-notes-outline', count: tracks.length },
+    { key: 'all', label: t('favorites.all'), icon: 'heart', count: totalCount },
+    { key: 'movies', label: t('nav.movies'), icon: 'film-outline', count: movies.length },
+    { key: 'shows', label: t('nav.shows'), icon: 'tv-outline', count: shows.length },
+    { key: 'music', label: t('nav.music'), icon: 'musical-notes-outline', count: tracks.length },
   ];
 
   const visibleFilters = filters.filter(f => f.key === 'all' || f.count > 0);
@@ -192,9 +194,9 @@ export default function FavoritesScreen() {
           <Ionicons name="chevron-back" size={28} color="#fff" />
         </Pressable>
         <View style={styles.headerCenter}>
-          <Text style={[styles.headerTitle, { fontSize: fontSize['2xl'] }]}>Favorites</Text>
+          <Text style={[styles.headerTitle, { fontSize: fontSize['2xl'] }]}>{t('favorites.title')}</Text>
           <Text style={[styles.headerSubtitle, { fontSize: fontSize.sm }]}>
-            {totalCount} {totalCount === 1 ? 'item' : 'items'} saved
+            {t('favorites.itemsSaved', { count: totalCount })}
           </Text>
         </View>
         <View style={styles.headerSpacer} />
@@ -255,15 +257,15 @@ export default function FavoritesScreen() {
           <View style={[styles.emptyIconContainer, { backgroundColor: accentColor + '20' }]}>
             <Ionicons name="heart-outline" size={48} color={accentColor} />
           </View>
-          <Text style={[styles.emptyTitle, { fontSize: fontSize.xl }]}>No Favorites Yet</Text>
+          <Text style={[styles.emptyTitle, { fontSize: fontSize.xl }]}>{t('favorites.noFavorites')}</Text>
           <Text style={[styles.emptySubtitle, { fontSize: fontSize.sm }]}>
-            Tap the heart icon on movies, shows, or songs to add them here
+            {t('favorites.noFavoritesDesc')}
           </Text>
           <Pressable
             style={[styles.emptyButton, { backgroundColor: accentColor }]}
             onPress={() => router.push('/(tabs)/home')}
           >
-            <Text style={styles.emptyButtonText}>Browse Content</Text>
+            <Text style={styles.emptyButtonText}>{t('favorites.browseContent')}</Text>
           </Pressable>
         </Animated.View>
       ) : activeFilter === 'music' ? (
@@ -274,15 +276,15 @@ export default function FavoritesScreen() {
             style={[styles.musicHeader, { paddingHorizontal: horizontalPadding }]}
           >
             <View>
-              <Text style={[styles.musicHeaderTitle, { fontSize: fontSize.lg }]}>Favorite Tracks</Text>
-              <Text style={[styles.musicHeaderSubtitle, { fontSize: fontSize.sm }]}>{tracks.length} songs</Text>
+              <Text style={[styles.musicHeaderTitle, { fontSize: fontSize.lg }]}>{t('favorites.favoriteTracks')}</Text>
+              <Text style={[styles.musicHeaderSubtitle, { fontSize: fontSize.sm }]}>{t('favorites.songsCount', { count: tracks.length })}</Text>
             </View>
             <Pressable
               style={[styles.playAllButton, { backgroundColor: accentColor }]}
               onPress={handlePlayAllMusic}
             >
               <Ionicons name="play" size={18} color="#fff" />
-              <Text style={styles.playAllText}>Play All</Text>
+              <Text style={styles.playAllText}>{t('favorites.playAll')}</Text>
             </Pressable>
           </Animated.View>
           <FlatList
@@ -309,7 +311,7 @@ export default function FavoritesScreen() {
           {filteredItems.length > 0 && (
             <Animated.View entering={FadeIn.duration(300)}>
               <Text style={[styles.sectionLabel, { fontSize: fontSize.sm, paddingHorizontal: horizontalPadding }]}>
-                Movies & Shows
+                {t('favorites.moviesAndShows')}
               </Text>
               <View style={[styles.gridContainer, { paddingHorizontal: horizontalPadding }]}>
                 {filteredItems.map((item, index) => (
@@ -324,15 +326,15 @@ export default function FavoritesScreen() {
             <Animated.View entering={FadeIn.delay(100).duration(300)} style={{ marginTop: 24 }}>
               <View style={[styles.musicHeader, { paddingHorizontal: horizontalPadding }]}>
                 <View>
-                  <Text style={[styles.musicHeaderTitle, { fontSize: fontSize.lg }]}>Favorite Tracks</Text>
-                  <Text style={[styles.musicHeaderSubtitle, { fontSize: fontSize.sm }]}>{tracks.length} songs</Text>
+                  <Text style={[styles.musicHeaderTitle, { fontSize: fontSize.lg }]}>{t('favorites.favoriteTracks')}</Text>
+                  <Text style={[styles.musicHeaderSubtitle, { fontSize: fontSize.sm }]}>{t('favorites.songsCount', { count: tracks.length })}</Text>
                 </View>
                 <Pressable
                   style={[styles.playAllButton, { backgroundColor: accentColor }]}
                   onPress={handlePlayAllMusic}
                 >
                   <Ionicons name="play" size={18} color="#fff" />
-                  <Text style={styles.playAllText}>Play All</Text>
+                  <Text style={styles.playAllText}>{t('favorites.playAll')}</Text>
                 </Pressable>
               </View>
               {tracks.map((item, index) => (

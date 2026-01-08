@@ -1,8 +1,12 @@
-import { View, Text, Pressable, StyleSheet, Dimensions } from 'react-native';
-import { memo, useState, useRef, useCallback, useEffect } from 'react';
+import { View, Text, Pressable, StyleSheet, Dimensions, PanResponder } from 'react-native';
+import { memo, useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import Animated, {
   FadeIn,
   FadeOut,
+  SlideInRight,
+  SlideInLeft,
+  SlideOutRight,
+  SlideOutLeft,
   useSharedValue,
   useAnimatedStyle,
   withTiming,
@@ -32,6 +36,7 @@ export const HeroSpotlight = memo(function HeroSpotlight({ items, onItemPress, o
   const accentColor = useSettingsStore((s) => s.accentColor);
   const hideMedia = useSettingsStore((s) => s.hideMedia);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [slideDirection, setSlideDirection] = useState<'left' | 'right'>('right');
   const autoScrollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const heroHeight = isTV ? 500 : isTablet ? 420 : 340;
@@ -44,6 +49,7 @@ export const HeroSpotlight = memo(function HeroSpotlight({ items, onItemPress, o
       clearInterval(autoScrollTimer.current);
     }
     autoScrollTimer.current = setInterval(() => {
+      setSlideDirection('right');
       setActiveIndex((prev) => (prev + 1) % displayItems.length);
     }, AUTO_SCROLL_INTERVAL);
   }, [displayItems.length]);
@@ -59,10 +65,37 @@ export const HeroSpotlight = memo(function HeroSpotlight({ items, onItemPress, o
     };
   }, [displayItems.length, startAutoScroll]);
 
+  const handleSwipe = useCallback((direction: 'left' | 'right') => {
+    setSlideDirection(direction);
+    if (direction === 'left') {
+      setActiveIndex((prev) => (prev + 1) % displayItems.length);
+    } else {
+      setActiveIndex((prev) => (prev - 1 + displayItems.length) % displayItems.length);
+    }
+    startAutoScroll();
+  }, [displayItems.length, startAutoScroll]);
+
+  const panResponder = useMemo(() => PanResponder.create({
+    onStartShouldSetPanResponder: () => false,
+    onMoveShouldSetPanResponder: (_, gestureState) => {
+      // Only respond to horizontal swipes
+      return Math.abs(gestureState.dx) > Math.abs(gestureState.dy) && Math.abs(gestureState.dx) > 10;
+    },
+    onPanResponderRelease: (_, gestureState) => {
+      const SWIPE_THRESHOLD = 50;
+      if (gestureState.dx < -SWIPE_THRESHOLD) {
+        handleSwipe('left');
+      } else if (gestureState.dx > SWIPE_THRESHOLD) {
+        handleSwipe('right');
+      }
+    },
+  }), [handleSwipe]);
+
   const handleDotPress = useCallback((index: number) => {
+    setSlideDirection(index > activeIndex ? 'right' : 'left');
     setActiveIndex(index);
     startAutoScroll();
-  }, [startAutoScroll]);
+  }, [startAutoScroll, activeIndex]);
 
   if (!displayItems.length) return null;
 
@@ -85,12 +118,16 @@ export const HeroSpotlight = memo(function HeroSpotlight({ items, onItemPress, o
   const genres = currentItem.Genres?.slice(0, 3).join(' • ');
   const overview = currentItem.Overview?.slice(0, 150);
 
+  // Simple fade animation - no bouncing
+  const enteringAnimation = FadeIn.duration(400);
+  const exitingAnimation = FadeOut.duration(300);
+
   return (
-    <View style={[styles.container, { height: heroHeight }]}>
+    <View style={[styles.container, { height: heroHeight }]} {...panResponder.panHandlers}>
       <Animated.View
         key={currentItem.Id}
-        entering={FadeIn.duration(500)}
-        exiting={FadeOut.duration(300)}
+        entering={enteringAnimation}
+        exiting={exitingAnimation}
         style={StyleSheet.absoluteFill}
       >
         <CachedImage

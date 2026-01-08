@@ -1,26 +1,42 @@
 import { router } from 'expo-router';
 
 /**
- * Navigate back to the previous screen.
- *
- * In expo-router with tabs, the back() function is unreliable because
- * detail screens are siblings in the Tabs navigator, not in a Stack.
- *
- * This function navigates directly to the fallback route to ensure
- * consistent back navigation behavior.
- *
- * @param fallback - Route to navigate to (required for reliable behavior)
+ * Navigate back to the specified source or fallback.
+ * The source should be read from the URL param 'from'.
  */
-export function goBack(fallback: string) {
-  // Navigate directly to the fallback route
-  // Using replace() removes the current screen from history
-  router.replace(fallback as any);
+export function goBack(source: string | undefined, fallback: string = '/(tabs)/home') {
+  const destination = source || fallback;
+  router.replace(destination as any);
 }
 
-export function dismissModal() {
+/**
+ * Navigate to a details screen with source tracking via URL param.
+ */
+export function navigateToDetails(type: string, id: string, sourceTab: string) {
+  router.push(`/details/${type}/${id}?from=${encodeURIComponent(sourceTab)}`);
+}
+
+/**
+ * Navigate to a library collection screen with source tracking via URL param.
+ */
+export function navigateToLibrary(libraryId: string, sourceTab: string) {
+  router.push(`/library/${libraryId}?from=${encodeURIComponent(sourceTab)}`);
+}
+
+/**
+ * Set the navigation source - now a no-op for backwards compatibility.
+ * @deprecated Use navigateToDetails or navigateToLibrary instead
+ */
+export function setNavigationSource(_source: string) {
+  // No-op - source is now passed via URL params
+}
+
+export function dismissModal(fallback?: string) {
   if (router.canDismiss()) {
     router.dismiss();
   } else if (router.canGoBack()) {
     router.back();
+  } else if (fallback) {
+    router.replace(fallback as any);
   }
 }

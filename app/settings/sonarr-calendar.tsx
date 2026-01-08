@@ -671,7 +671,7 @@ export default function SonarrCalendarScreen() {
 
         <View style={styles.headerContent}>
           <Pressable onPress={() => router.back()} style={styles.backButton}>
-            <Ionicons name="arrow-back" size={24} color="#fff" />
+            <Ionicons name="arrow-back" size={24} color="#000" />
           </Pressable>
 
           <View style={styles.headerTitle}>
@@ -726,13 +726,13 @@ export default function SonarrCalendarScreen() {
 
         <View style={styles.navigation}>
           <Pressable onPress={handlePrevious} style={styles.navButton}>
-            <Ionicons name="chevron-back" size={24} color="#fff" />
+            <Ionicons name="chevron-back" size={24} color="#000" />
           </Pressable>
           <Text style={styles.navTitle}>
             {viewMode === 'week' ? weekRange : getMonthName(currentDate)}
           </Text>
           <Pressable onPress={handleNext} style={styles.navButton}>
-            <Ionicons name="chevron-forward" size={24} color="#fff" />
+            <Ionicons name="chevron-forward" size={24} color="#000" />
           </Pressable>
         </View>
       </View>
@@ -884,21 +884,21 @@ const styles = StyleSheet.create({
   brandTitle: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#fff',
+    color: '#000',
   },
   brandSubtitle: {
     fontSize: 12,
-    color: 'rgba(255,255,255,0.7)',
+    color: 'rgba(0,0,0,0.7)',
     marginTop: 1,
   },
   todayButton: {
-    backgroundColor: 'rgba(255,255,255,0.15)',
+    backgroundColor: 'rgba(0,0,0,0.15)',
     paddingHorizontal: spacing[4],
     paddingVertical: spacing[2],
     borderRadius: borderRadius.lg,
   },
   todayButtonText: {
-    color: '#fff',
+    color: '#000',
     fontSize: 14,
     fontWeight: '600',
   },
@@ -931,7 +931,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing[3],
   },
   viewModeTextActive: {
-    color: '#fff',
+    color: '#000',
     fontSize: 14,
     fontWeight: '600',
   },
@@ -944,11 +944,11 @@ const styles = StyleSheet.create({
   },
   navButton: {
     padding: spacing[2],
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: 'rgba(0,0,0,0.1)',
     borderRadius: borderRadius.lg,
   },
   navTitle: {
-    color: '#fff',
+    color: '#000',
     fontSize: 18,
     fontWeight: '700',
   },

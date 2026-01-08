@@ -68,6 +68,11 @@ export const COLLECTION_TYPE_CONFIG: Record<string, LibraryConfig> = {
     icon: 'list',
     itemTypes: ['Playlist'],
   },
+  livetv: {
+    label: 'Live TV',
+    icon: 'radio',
+    itemTypes: ['TvChannel', 'Program'],
+  },
 };
 
 // Default config for mixed/unknown library types

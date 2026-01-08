@@ -1,4 +1,13 @@
 import { useSettingsStore } from '@/stores';
+import { apiCache } from '@/utils';
+
+// Cache TTLs
+const CACHE_TTL = {
+  series: 2 * 60 * 1000,      // 2 minutes for series list
+  queue: 30 * 1000,           // 30 seconds for queue
+  episodes: 5 * 60 * 1000,    // 5 minutes for episodes
+  config: 10 * 60 * 1000,     // 10 minutes for root folders/quality profiles
+};
 
 export interface SonarrSeries {
   id: number;
@@ -277,8 +286,19 @@ class SonarrService {
     }
   }
 
-  async getSeries(): Promise<SonarrSeries[]> {
-    return this.request<SonarrSeries[]>('/series');
+  async getSeries(skipCache = false): Promise<SonarrSeries[]> {
+    const cacheKey = 'sonarr:series';
+    if (!skipCache) {
+      const cached = apiCache.get<SonarrSeries[]>(cacheKey);
+      if (cached) return cached;
+    }
+    const data = await this.request<SonarrSeries[]>('/series');
+    apiCache.set(cacheKey, data, CACHE_TTL.series);
+    return data;
+  }
+
+  invalidateSeriesCache(): void {
+    apiCache.invalidatePattern('^sonarr:');
   }
 
   async getSeriesByTvdbId(tvdbId: number): Promise<SonarrSeries | null> {
@@ -295,12 +315,26 @@ class SonarrService {
     return results.length > 0 ? results[0] : null;
   }
 
-  async getRootFolders(): Promise<SonarrRootFolder[]> {
-    return this.request<SonarrRootFolder[]>('/rootfolder');
+  async getRootFolders(skipCache = false): Promise<SonarrRootFolder[]> {
+    const cacheKey = 'sonarr:rootfolders';
+    if (!skipCache) {
+      const cached = apiCache.get<SonarrRootFolder[]>(cacheKey);
+      if (cached) return cached;
+    }
+    const data = await this.request<SonarrRootFolder[]>('/rootfolder');
+    apiCache.set(cacheKey, data, CACHE_TTL.config);
+    return data;
   }
 
-  async getQualityProfiles(): Promise<SonarrQualityProfile[]> {
-    return this.request<SonarrQualityProfile[]>('/qualityprofile');
+  async getQualityProfiles(skipCache = false): Promise<SonarrQualityProfile[]> {
+    const cacheKey = 'sonarr:qualityprofiles';
+    if (!skipCache) {
+      const cached = apiCache.get<SonarrQualityProfile[]>(cacheKey);
+      if (cached) return cached;
+    }
+    const data = await this.request<SonarrQualityProfile[]>('/qualityprofile');
+    apiCache.set(cacheKey, data, CACHE_TTL.config);
+    return data;
   }
 
   async addSeries(options: SonarrAddSeriesOptions): Promise<SonarrSeries> {
@@ -334,10 +368,17 @@ class SonarrService {
     });
   }
 
-  async getQueue(page = 1, pageSize = 20): Promise<SonarrQueueResponse> {
-    return this.request<SonarrQueueResponse>(
+  async getQueue(page = 1, pageSize = 20, skipCache = false): Promise<SonarrQueueResponse> {
+    const cacheKey = `sonarr:queue:${page}:${pageSize}`;
+    if (!skipCache) {
+      const cached = apiCache.get<SonarrQueueResponse>(cacheKey);
+      if (cached) return cached;
+    }
+    const data = await this.request<SonarrQueueResponse>(
       `/queue?page=${page}&pageSize=${pageSize}&includeSeries=true&includeEpisode=true`
     );
+    apiCache.set(cacheKey, data, CACHE_TTL.queue);
+    return data;
   }
 
   async removeFromQueue(id: number, removeFromClient = true, blocklist = false): Promise<void> {
@@ -395,14 +436,28 @@ class SonarrService {
     });
   }
 
-  async getEpisodes(seriesId: number): Promise<SonarrEpisode[]> {
-    return this.request<SonarrEpisode[]>(`/episode?seriesId=${seriesId}`);
+  async getEpisodes(seriesId: number, skipCache = false): Promise<SonarrEpisode[]> {
+    const cacheKey = `sonarr:episodes:${seriesId}`;
+    if (!skipCache) {
+      const cached = apiCache.get<SonarrEpisode[]>(cacheKey);
+      if (cached) return cached;
+    }
+    const data = await this.request<SonarrEpisode[]>(`/episode?seriesId=${seriesId}`);
+    apiCache.set(cacheKey, data, CACHE_TTL.episodes);
+    return data;
   }
 
-  async getCalendar(startDate: string, endDate: string): Promise<SonarrCalendarEpisode[]> {
-    return this.request<SonarrCalendarEpisode[]>(
+  async getCalendar(startDate: string, endDate: string, skipCache = false): Promise<SonarrCalendarEpisode[]> {
+    const cacheKey = `sonarr:calendar:${startDate}:${endDate}`;
+    if (!skipCache) {
+      const cached = apiCache.get<SonarrCalendarEpisode[]>(cacheKey);
+      if (cached) return cached;
+    }
+    const data = await this.request<SonarrCalendarEpisode[]>(
       `/calendar?start=${startDate}&end=${endDate}&includeSeries=true&includeEpisodeFile=true`
     );
+    apiCache.set(cacheKey, data, CACHE_TTL.episodes);
+    return data;
   }
 
   async searchEpisode(episodeId: number): Promise<void> {

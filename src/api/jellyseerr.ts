@@ -10,6 +10,16 @@ import type {
   JellyseerrAuthResponse,
   JellyseerrRequestsResponse,
 } from '@/types/jellyseerr';
+import { apiCache } from '@/utils';
+
+// Cache TTLs
+const CACHE_TTL = {
+  discover: 5 * 60 * 1000,    // 5 minutes for discovery/trending
+  details: 10 * 60 * 1000,    // 10 minutes for movie/tv details
+  search: 2 * 60 * 1000,      // 2 minutes for search results
+  requests: 30 * 1000,        // 30 seconds for requests (changes frequently)
+  genres: 30 * 60 * 1000,     // 30 minutes for genres (rarely changes)
+};
 
 export type JellyseerrAuthMethod = 'apikey' | 'jellyfin' | 'local';
 
@@ -69,17 +79,18 @@ class JellyseerrClient {
   async initializeWithJellyfin(
     jellyseerrUrl: string,
     jellyfinServerUrl: string,
-    jellyfinUserId: string,
+    jellyfinUsername: string,
     jellyfinAuthToken: string
   ): Promise<JellyseerrAuthResponse> {
     const cleanUrl = jellyseerrUrl.replace(/\/$/, '');
+    const cleanJellyfinUrl = jellyfinServerUrl.replace(/\/$/, '');
 
     this.config = {
       serverUrl: cleanUrl,
       authMethod: 'jellyfin',
-      jellyfinUserId,
+      jellyfinUserId: jellyfinUsername,
       jellyfinAuthToken,
-      jellyfinServerUrl,
+      jellyfinServerUrl: cleanJellyfinUrl,
     };
 
     this.api = axios.create({
@@ -90,11 +101,11 @@ class JellyseerrClient {
       },
     });
 
-    // Authenticate with Jellyfin credentials
+    // Authenticate with Jellyfin credentials - Jellyseerr expects username, not user ID
     const response = await this.api.post<JellyseerrAuthResponse>('/auth/jellyfin', {
-      username: jellyfinUserId,
-      password: '', // Not needed for token auth
-      hostname: jellyfinServerUrl,
+      username: jellyfinUsername,
+      password: '',
+      hostname: cleanJellyfinUrl,
       authToken: jellyfinAuthToken,
     });
 
@@ -205,51 +216,87 @@ class JellyseerrClient {
 
   // ==================== Discovery ====================
 
-  async getDiscoverMovies(page = 1): Promise<JellyseerrDiscoverResult> {
+  async getDiscoverMovies(page = 1, skipCache = false): Promise<JellyseerrDiscoverResult> {
     if (!this.api) throw new Error('Jellyseerr client not initialized');
+    const cacheKey = `jellyseerr:discover:movies:${page}`;
+    if (!skipCache) {
+      const cached = apiCache.get<JellyseerrDiscoverResult>(cacheKey);
+      if (cached) return cached;
+    }
     const response = await this.api.get<JellyseerrDiscoverResult>('/discover/movies', {
       params: { page },
     });
+    apiCache.set(cacheKey, response.data, CACHE_TTL.discover);
     return response.data;
   }
 
-  async getDiscoverTv(page = 1): Promise<JellyseerrDiscoverResult> {
+  async getDiscoverTv(page = 1, skipCache = false): Promise<JellyseerrDiscoverResult> {
     if (!this.api) throw new Error('Jellyseerr client not initialized');
+    const cacheKey = `jellyseerr:discover:tv:${page}`;
+    if (!skipCache) {
+      const cached = apiCache.get<JellyseerrDiscoverResult>(cacheKey);
+      if (cached) return cached;
+    }
     const response = await this.api.get<JellyseerrDiscoverResult>('/discover/tv', {
       params: { page },
     });
+    apiCache.set(cacheKey, response.data, CACHE_TTL.discover);
     return response.data;
   }
 
-  async getTrending(page = 1): Promise<JellyseerrDiscoverResult> {
+  async getTrending(page = 1, skipCache = false): Promise<JellyseerrDiscoverResult> {
     if (!this.api) throw new Error('Jellyseerr client not initialized');
+    const cacheKey = `jellyseerr:trending:${page}`;
+    if (!skipCache) {
+      const cached = apiCache.get<JellyseerrDiscoverResult>(cacheKey);
+      if (cached) return cached;
+    }
     const response = await this.api.get<JellyseerrDiscoverResult>('/discover/trending', {
       params: { page },
     });
+    apiCache.set(cacheKey, response.data, CACHE_TTL.discover);
     return response.data;
   }
 
-  async getPopularMovies(page = 1): Promise<JellyseerrDiscoverResult> {
+  async getPopularMovies(page = 1, skipCache = false): Promise<JellyseerrDiscoverResult> {
     if (!this.api) throw new Error('Jellyseerr client not initialized');
+    const cacheKey = `jellyseerr:popular:movies:${page}`;
+    if (!skipCache) {
+      const cached = apiCache.get<JellyseerrDiscoverResult>(cacheKey);
+      if (cached) return cached;
+    }
     const response = await this.api.get<JellyseerrDiscoverResult>('/discover/movies', {
       params: { page, sortBy: 'popularity.desc' },
     });
+    apiCache.set(cacheKey, response.data, CACHE_TTL.discover);
     return response.data;
   }
 
-  async getPopularTv(page = 1): Promise<JellyseerrDiscoverResult> {
+  async getPopularTv(page = 1, skipCache = false): Promise<JellyseerrDiscoverResult> {
     if (!this.api) throw new Error('Jellyseerr client not initialized');
+    const cacheKey = `jellyseerr:popular:tv:${page}`;
+    if (!skipCache) {
+      const cached = apiCache.get<JellyseerrDiscoverResult>(cacheKey);
+      if (cached) return cached;
+    }
     const response = await this.api.get<JellyseerrDiscoverResult>('/discover/tv', {
       params: { page, sortBy: 'popularity.desc' },
     });
+    apiCache.set(cacheKey, response.data, CACHE_TTL.discover);
     return response.data;
   }
 
-  async getUpcomingMovies(page = 1): Promise<JellyseerrDiscoverResult> {
+  async getUpcomingMovies(page = 1, skipCache = false): Promise<JellyseerrDiscoverResult> {
     if (!this.api) throw new Error('Jellyseerr client not initialized');
+    const cacheKey = `jellyseerr:upcoming:movies:${page}`;
+    if (!skipCache) {
+      const cached = apiCache.get<JellyseerrDiscoverResult>(cacheKey);
+      if (cached) return cached;
+    }
     const response = await this.api.get<JellyseerrDiscoverResult>('/discover/movies/upcoming', {
       params: { page },
     });
+    apiCache.set(cacheKey, response.data, CACHE_TTL.discover);
     return response.data;
   }
 
@@ -281,15 +328,27 @@ class JellyseerrClient {
 
   // ==================== Details ====================
 
-  async getMovieDetails(tmdbId: number): Promise<JellyseerrMovieDetails> {
+  async getMovieDetails(tmdbId: number, skipCache = false): Promise<JellyseerrMovieDetails> {
     if (!this.api) throw new Error('Jellyseerr client not initialized');
+    const cacheKey = `jellyseerr:movie:${tmdbId}`;
+    if (!skipCache) {
+      const cached = apiCache.get<JellyseerrMovieDetails>(cacheKey);
+      if (cached) return cached;
+    }
     const response = await this.api.get<JellyseerrMovieDetails>(`/movie/${tmdbId}`);
+    apiCache.set(cacheKey, response.data, CACHE_TTL.details);
     return response.data;
   }
 
-  async getTvDetails(tmdbId: number): Promise<JellyseerrTvDetails> {
+  async getTvDetails(tmdbId: number, skipCache = false): Promise<JellyseerrTvDetails> {
     if (!this.api) throw new Error('Jellyseerr client not initialized');
+    const cacheKey = `jellyseerr:tv:${tmdbId}`;
+    if (!skipCache) {
+      const cached = apiCache.get<JellyseerrTvDetails>(cacheKey);
+      if (cached) return cached;
+    }
     const response = await this.api.get<JellyseerrTvDetails>(`/tv/${tmdbId}`);
+    apiCache.set(cacheKey, response.data, CACHE_TTL.details);
     return response.data;
   }
 
@@ -341,28 +400,51 @@ class JellyseerrClient {
 
   // ==================== Genres ====================
 
-  async getMovieGenres(): Promise<{ id: number; name: string }[]> {
+  async getMovieGenres(skipCache = false): Promise<{ id: number; name: string }[]> {
     if (!this.api) throw new Error('Jellyseerr client not initialized');
+    const cacheKey = 'jellyseerr:genres:movie';
+    if (!skipCache) {
+      const cached = apiCache.get<{ id: number; name: string }[]>(cacheKey);
+      if (cached) return cached;
+    }
     const response = await this.api.get<{ id: number; name: string }[]>('/discover/genreslider/movie');
+    apiCache.set(cacheKey, response.data, CACHE_TTL.genres);
     return response.data;
   }
 
-  async getTvGenres(): Promise<{ id: number; name: string }[]> {
+  async getTvGenres(skipCache = false): Promise<{ id: number; name: string }[]> {
     if (!this.api) throw new Error('Jellyseerr client not initialized');
+    const cacheKey = 'jellyseerr:genres:tv';
+    if (!skipCache) {
+      const cached = apiCache.get<{ id: number; name: string }[]>(cacheKey);
+      if (cached) return cached;
+    }
     const response = await this.api.get<{ id: number; name: string }[]>('/discover/genreslider/tv');
+    apiCache.set(cacheKey, response.data, CACHE_TTL.genres);
     return response.data;
   }
 
   async discoverByGenre(
     mediaType: 'movie' | 'tv',
     genreId: number,
-    page = 1
+    page = 1,
+    skipCache = false
   ): Promise<JellyseerrDiscoverResult> {
     if (!this.api) throw new Error('Jellyseerr client not initialized');
+    const cacheKey = `jellyseerr:genre:${mediaType}:${genreId}:${page}`;
+    if (!skipCache) {
+      const cached = apiCache.get<JellyseerrDiscoverResult>(cacheKey);
+      if (cached) return cached;
+    }
     const response = await this.api.get<JellyseerrDiscoverResult>(`/discover/${mediaType}/genre/${genreId}`, {
       params: { page },
     });
+    apiCache.set(cacheKey, response.data, CACHE_TTL.discover);
     return response.data;
+  }
+
+  invalidateCache(): void {
+    apiCache.invalidatePattern('^jellyseerr:');
   }
 }
 

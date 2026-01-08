@@ -1347,6 +1347,7 @@ const styles = StyleSheet.create({
   },
   searchContainer: {
     flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: spacing[4],
     paddingTop: spacing[4],
     gap: spacing[3],

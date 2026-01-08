@@ -15,6 +15,7 @@ import Animated, {
   interpolate,
 } from 'react-native-reanimated';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
+import { useTranslation } from 'react-i18next';
 import { useAuthStore, usePlayerStore, useSettingsStore, useDownloadStore } from '@/stores';
 import { audioService, downloadManager } from '@/services';
 import {
@@ -38,6 +39,7 @@ interface LyricLine {
 }
 
 export default function MusicPlayerScreen() {
+  const { t } = useTranslation();
   const { itemId } = useLocalSearchParams<{ itemId: string }>();
   const currentUser = useAuthStore((state) => state.currentUser);
   const activeServerId = useAuthStore((state) => state.activeServerId);
@@ -350,7 +352,7 @@ export default function MusicPlayerScreen() {
       setShowOptions(false);
       dismissModal('/(tabs)/home');
       setTimeout(() => {
-        router.push(`/(tabs)/details/album/${albumId}`);
+        router.push(`/details/album/${albumId}`);
       }, 100);
     }
   };
@@ -361,7 +363,7 @@ export default function MusicPlayerScreen() {
       setShowOptions(false);
       dismissModal('/(tabs)/home');
       setTimeout(() => {
-        router.push(`/(tabs)/details/artist/${artistId}`);
+        router.push(`/details/artist/${artistId}`);
       }, 100);
     }
   };
@@ -461,8 +463,8 @@ export default function MusicPlayerScreen() {
     return isSeeking ? seekPositionRef.current : localProgress.position;
   };
   const progressValue = localProgress.duration > 0 ? getDisplayPosition() / localProgress.duration : 0;
-  const rawArtist = (item as any)?.AlbumArtist ?? (item as any)?.Artists?.[0] ?? 'Unknown Artist';
-  const albumArtist = getDisplayArtist([rawArtist], hideMedia)[0] ?? 'Unknown Artist';
+  const rawArtist = (item as any)?.AlbumArtist ?? (item as any)?.Artists?.[0] ?? '';
+  const albumArtist = getDisplayArtist([rawArtist], hideMedia)[0] ?? t('player.unknownArtist');
   const rawAlbumName = (item as any)?.Album ?? '';
   const albumName = hideMedia ? 'Album Title' : rawAlbumName;
 
@@ -623,7 +625,7 @@ export default function MusicPlayerScreen() {
 
           <View style={{ flex: 1, alignItems: 'center' }}>
             <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 11, fontWeight: '500', textTransform: 'uppercase', letterSpacing: 1 }}>
-              Now Playing
+              {t('player.nowPlaying')}
             </Text>
             {albumName ? (
               <Text style={{ color: '#fff', fontSize: 13, fontWeight: '600', marginTop: 2 }} numberOfLines={1}>
@@ -678,7 +680,7 @@ export default function MusicPlayerScreen() {
               ) : (
                 <View style={{ alignItems: 'center', paddingVertical: 80 }}>
                   <Ionicons name="text" size={48} color="rgba(255,255,255,0.3)" />
-                  <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 18, marginTop: 16 }}>No lyrics available</Text>
+                  <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 18, marginTop: 16 }}>{t('player.noLyrics')}</Text>
                   <Text style={{ color: 'rgba(255,255,255,0.3)', fontSize: 14, marginTop: 8 }}>Lyrics will appear here when available</Text>
                 </View>
               )}
@@ -718,7 +720,7 @@ export default function MusicPlayerScreen() {
             <View style={{ width: '100%', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
               <View style={{ flex: 1, marginRight: 16 }}>
                 <Text style={{ color: '#fff', fontSize: 24, fontWeight: 'bold' }} numberOfLines={1}>
-                  {getDisplayName(item, hideMedia) ?? 'Unknown Track'}
+                  {getDisplayName(item, hideMedia) ?? t('player.unknownTrack')}
                 </Text>
                 <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 16, marginTop: 4 }} numberOfLines={1}>
                   {albumArtist}
@@ -973,7 +975,7 @@ export default function MusicPlayerScreen() {
                   >
                     <Ionicons name={isFavorite ? "heart" : "heart-outline"} size={24} color={isFavorite ? accentColor : "#fff"} />
                     <Text style={{ color: '#fff', fontSize: 16, marginLeft: 16 }}>
-                      {isFavorite ? 'Remove from Favorites' : 'Add to Favorites'}
+                      {isFavorite ? t('player.removeFromFavorites') : t('player.addToFavorites')}
                     </Text>
                   </Pressable>
 
@@ -982,7 +984,7 @@ export default function MusicPlayerScreen() {
                     onPress={handleAddToPlaylist}
                   >
                     <Ionicons name="add" size={24} color="#fff" />
-                    <Text style={{ color: '#fff', fontSize: 16, marginLeft: 16 }}>Add to Playlist</Text>
+                    <Text style={{ color: '#fff', fontSize: 16, marginLeft: 16 }}>{t('player.addToPlaylist')}</Text>
                   </Pressable>
 
                   <Pressable
@@ -1004,7 +1006,7 @@ export default function MusicPlayerScreen() {
                       <Ionicons name="sparkles" size={24} color={accentColor} />
                     )}
                     <Text style={{ color: accentColor, fontSize: 16, marginLeft: 16 }}>
-                      {instantMixMutation.isPending ? 'Creating Mix...' : 'Start Instant Mix'}
+                      {instantMixMutation.isPending ? t('player.creatingMix') : t('player.startInstantMix')}
                     </Text>
                   </Pressable>
 
@@ -1019,7 +1021,7 @@ export default function MusicPlayerScreen() {
                       color={isDownloaded ? "#4CAF50" : isDownloading ? accentColor : "#fff"}
                     />
                     <Text style={{ color: isDownloaded ? "#4CAF50" : '#fff', fontSize: 16, marginLeft: 16 }}>
-                      {isDownloaded ? 'Downloaded' : isDownloading ? `Downloading ${Math.round(downloadProgress)}%` : 'Download'}
+                      {isDownloaded ? t('player.downloaded') : isDownloading ? `${t('player.downloading')} ${Math.round(downloadProgress)}%` : t('player.download')}
                     </Text>
                   </Pressable>
 
@@ -1028,7 +1030,7 @@ export default function MusicPlayerScreen() {
                     onPress={handleGoToAlbum}
                   >
                     <Ionicons name="disc-outline" size={24} color="#fff" />
-                    <Text style={{ color: '#fff', fontSize: 16, marginLeft: 16 }}>Go to Album</Text>
+                    <Text style={{ color: '#fff', fontSize: 16, marginLeft: 16 }}>{t('player.goToAlbum')}</Text>
                   </Pressable>
 
                   <Pressable
@@ -1036,7 +1038,7 @@ export default function MusicPlayerScreen() {
                     onPress={handleGoToArtist}
                   >
                     <Ionicons name="person-outline" size={24} color="#fff" />
-                    <Text style={{ color: '#fff', fontSize: 16, marginLeft: 16 }}>Go to Artist</Text>
+                    <Text style={{ color: '#fff', fontSize: 16, marginLeft: 16 }}>{t('player.goToArtist')}</Text>
                   </Pressable>
 
                   <Pressable
@@ -1053,7 +1055,7 @@ export default function MusicPlayerScreen() {
                   <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 16 }}>
                     <Ionicons name="radio-outline" size={24} color="rgba(255,255,255,0.5)" />
                     <View style={{ marginLeft: 16 }}>
-                      <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 16 }}>Streaming Quality</Text>
+                      <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 16 }}>{t('player.streamingQuality')}</Text>
                       <Text style={{ color: 'rgba(255,255,255,0.3)', fontSize: 14 }}>{playMethod}</Text>
                     </View>
                   </View>

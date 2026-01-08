@@ -6,6 +6,7 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { FadeIn } from 'react-native-reanimated';
+import { useTranslation } from 'react-i18next';
 import { useAuthStore, useSettingsStore } from '@/stores';
 import { useResponsive } from '@/hooks';
 import {
@@ -14,7 +15,8 @@ import {
   getImageUrl,
   getLibraryIcon,
 } from '@/api';
-import { AnimatedGradient } from '@/components/ui';
+import { AnimatedGradient, SearchButton } from '@/components/ui';
+import { navigateToLibrary, navigateToDetails } from '@/utils';
 import { CachedImage } from '@/components/ui/CachedImage';
 import { SkeletonRow } from '@/components/ui/Skeleton';
 import { getDisplayName, getDisplayImageUrl } from '@/utils';
@@ -56,9 +58,9 @@ function getItemTypes(collectionType: CollectionType): string[] {
 
 function getDetailRoute(item: BaseItem): string {
   const type = item.Type?.toLowerCase();
-  if (type === 'movie') return `/(tabs)/details/movie/${item.Id}`;
-  if (type === 'series') return `/(tabs)/details/series/${item.Id}`;
-  if (type === 'musicalbum') return `/(tabs)/details/album/${item.Id}`;
+  if (type === 'movie') return `/details/movie/${item.Id}`;
+  if (type === 'series') return `/details/series/${item.Id}`;
+  if (type === 'musicalbum') return `/details/album/${item.Id}`;
   if (type === 'audiobook') return `/player/audiobook?itemId=${item.Id}`;
   if (type === 'book') {
     const container = (item as any).Container?.toLowerCase() || '';
@@ -66,7 +68,7 @@ function getDetailRoute(item: BaseItem): string {
     const isPdf = container === 'pdf' || path.endsWith('.pdf');
     return isPdf ? `/reader/pdf?itemId=${item.Id}` : `/reader/epub?itemId=${item.Id}`;
   }
-  return `/(tabs)/details/${type}/${item.Id}`;
+  return `/details/${type}/${item.Id}`;
 }
 
 const filterOptions = [
@@ -124,12 +126,25 @@ const LibraryContentRow = memo(function LibraryContentRow({
     } else if (library.CollectionType === 'books' || library.CollectionType === 'audiobooks') {
       router.push('/(tabs)/books');
     } else {
-      router.push(`/(tabs)/library/${library.Id}`);
+      navigateToLibrary(library.Id, '/(tabs)/library');
     }
   }, [library.CollectionType, library.Id]);
 
   const handleItemPress = useCallback((item: BaseItem) => {
-    router.push(getDetailRoute(item) as never);
+    const type = item.Type?.toLowerCase();
+    // For player/reader routes, use direct navigation (no back tracking needed)
+    if (type === 'audiobook') {
+      router.push(`/player/audiobook?itemId=${item.Id}`);
+    } else if (type === 'book') {
+      const container = (item as any).Container?.toLowerCase() || '';
+      const path = (item as any).Path?.toLowerCase() || '';
+      const isPdf = container === 'pdf' || path.endsWith('.pdf');
+      router.push(isPdf ? `/reader/pdf?itemId=${item.Id}` : `/reader/epub?itemId=${item.Id}`);
+    } else {
+      // For detail routes, use navigateToDetails with source tracking
+      const detailType = type === 'musicalbum' ? 'album' : type;
+      navigateToDetails(detailType || 'item', item.Id, '/(tabs)/library');
+    }
   }, []);
 
   const items = data?.Items ?? [];
@@ -222,6 +237,7 @@ const LibraryContentRow = memo(function LibraryContentRow({
 });
 
 export default function LibraryScreen() {
+  const { t } = useTranslation();
   const [refreshing, setRefreshing] = useState(false);
   const [activeFilter, setActiveFilter] = useState('all');
   const { isTablet, isTV, fontSize } = useResponsive();
@@ -272,13 +288,14 @@ export default function LibraryScreen() {
       <AnimatedGradient intensity="subtle" />
 
       {/* Header */}
-      <View style={[styles.header, { paddingHorizontal: horizontalPadding }]}>
+      <View style={[styles.header, { paddingHorizontal: horizontalPadding, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}>
         <Animated.View entering={FadeIn.duration(400)}>
-          <Text style={[styles.headerTitle, { fontSize: fontSize['3xl'] }]}>Library</Text>
+          <Text style={[styles.headerTitle, { fontSize: fontSize['3xl'] }]}>{t('nav.library')}</Text>
           <Text style={[styles.headerSubtitle, { fontSize: fontSize.sm }]}>
             {browsableLibraries.length} {browsableLibraries.length === 1 ? 'collection' : 'collections'}
           </Text>
         </Animated.View>
+        <SearchButton />
       </View>
 
       {/* Filter chips with scroll indicator */}

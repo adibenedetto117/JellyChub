@@ -44,6 +44,7 @@ import { formatPlayerTime, ticksToMs, msToTicks, getSubtitleStreams, getAudioStr
 import { isTV, tvConstants } from '@/utils/platform';
 import { useTVRemoteHandler, useBackHandler } from '@/hooks';
 import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { AudioTrackSelector } from '@/components/player/AudioTrackSelector';
 import { SubtitleSelector } from '@/components/player/SubtitleSelector';
 import { SubtitleDisplay } from '@/components/player/SubtitleDisplay';
@@ -139,6 +140,7 @@ function SkipIcon({ size = 24, seconds = 10, direction = 'forward', color = '#ff
 }
 
 export default function VideoPlayerScreen() {
+  const { t } = useTranslation();
   const { itemId, resume } = useLocalSearchParams<{ itemId: string; resume?: string }>();
   const shouldAutoResume = resume === 'true';
   const currentUser = useAuthStore((state) => state.currentUser);
@@ -235,6 +237,8 @@ export default function VideoPlayerScreen() {
   const [showChapterList, setShowChapterList] = useState(false);
   const [showOpenSubtitlesSearch, setShowOpenSubtitlesSearch] = useState(false);
   const [showMoreOptions, setShowMoreOptions] = useState(false);
+  const [showQualitySelector, setShowQualitySelector] = useState(false);
+  const [streamingQuality, setStreamingQuality] = useState<'auto' | 'original' | '1080p' | '720p' | '480p'>('auto');
 
   const [abLoop, setAbLoop] = useState<{ a: number | null; b: number | null }>({ a: null, b: null });
   const [controlsLocked, setControlsLocked] = useState(false);
@@ -267,6 +271,7 @@ export default function VideoPlayerScreen() {
   const videoViewRef = useRef<VideoView>(null);
   const hasResumedPosition = useRef(false);
   const resumePositionMs = useRef(0);
+  const isFrameStepping = useRef(false);
   const [seekBarLayoutWidth, setSeekBarLayoutWidth] = useState(500);
 
   const controlsOpacity = useSharedValue(1);
@@ -959,6 +964,8 @@ export default function VideoPlayerScreen() {
 
     const playingSub = player.addListener('playingChange', (payload) => {
       if (currentKey !== playerKey.current || !isPlayerValid.current) return;
+      // Ignore state changes during frame stepping to prevent control confusion
+      if (isFrameStepping.current) return;
       if (payload.isPlaying) {
         setIsBuffering(false);
         setPlayerState('playing');
@@ -1380,9 +1387,15 @@ export default function VideoPlayerScreen() {
 
   const handleFrameStep = useCallback((direction: 'prev' | 'next') => {
     if (!player) return;
+    isFrameStepping.current = true;
     const frameTime = 1 / 24;
     const step = direction === 'next' ? frameTime : -frameTime;
     player.currentTime = Math.max(0, player.currentTime + step);
+    // Ensure player stays paused and state is correct after frame step
+    setTimeout(() => {
+      isFrameStepping.current = false;
+      setPlayerState('paused');
+    }, 50);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   }, [player]);
 
@@ -1905,7 +1918,7 @@ export default function VideoPlayerScreen() {
               }}
             >
               <Text style={{ color: '#000', fontSize: 15, fontWeight: '600' }}>
-                {isIntroPreview ? 'Skip Intro' : 'Skip Intro'}
+                {t('player.skipIntro')}
               </Text>
               <Text style={{ color: '#666', fontSize: 13, marginLeft: 8 }}>
                 {isIntroPreview ? '\u2192' : '\u25B6\u25B6'}
@@ -1951,7 +1964,7 @@ export default function VideoPlayerScreen() {
               }}
             >
               <Text style={{ color: '#000', fontSize: 14, fontWeight: '600' }}>
-                {showSkipCredits ? 'Next Episode' : 'Next'}: E{nextEpisode.IndexNumber}
+                {showSkipCredits ? t('player.nextEpisode') : t('player.nextEpisode')}: E{nextEpisode.IndexNumber}
               </Text>
               <Text style={{ color: '#666', fontSize: 14, marginLeft: 8 }}>{'\u25B6'}</Text>
             </Pressable>
@@ -2442,6 +2455,14 @@ export default function VideoPlayerScreen() {
               </>
             )}
             <Pressable
+              onPress={() => { setShowMoreOptions(false); setShowQualitySelector(true); }}
+              className="flex-row items-center py-3 border-b border-white/10"
+            >
+              <Ionicons name="settings-outline" size={20} color={streamingQuality !== 'auto' ? accentColor : '#fff'} />
+              <Text className="text-white ml-3 flex-1">Quality</Text>
+              <Text className="text-white/60 text-sm">{streamingQuality === 'auto' ? 'Auto' : streamingQuality === 'original' ? 'Original' : streamingQuality}</Text>
+            </Pressable>
+            <Pressable
               onPress={() => { setShowMoreOptions(false); toggleControlsLock(); }}
               className="flex-row items-center py-3 border-b border-white/10"
             >
@@ -2475,6 +2496,51 @@ export default function VideoPlayerScreen() {
             )}
             <Pressable
               onPress={() => setShowMoreOptions(false)}
+              className="mt-4 py-3 rounded-lg bg-white/10 items-center"
+            >
+              <Text className="text-white font-medium">Close</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      )}
+
+      {showQualitySelector && (
+        <Pressable
+          onPress={() => setShowQualitySelector(false)}
+          className="absolute inset-0 bg-black/80 items-center justify-center z-50"
+        >
+          <View className="bg-zinc-900 rounded-2xl p-6 w-80">
+            <Text className="text-white text-lg font-bold mb-4 text-center">Streaming Quality</Text>
+            <Text className="text-white/50 text-xs mb-4 text-center">
+              Higher quality uses more data and may buffer on slow connections
+            </Text>
+            {[
+              { value: 'auto', label: 'Auto', desc: 'Adapts to connection' },
+              { value: 'original', label: 'Original', desc: 'Direct stream • No transcoding' },
+              { value: '1080p', label: '1080p', desc: '~8 Mbps • High quality' },
+              { value: '720p', label: '720p', desc: '~4 Mbps • Good quality' },
+              { value: '480p', label: '480p', desc: '~2 Mbps • Data saver' },
+            ].map((option) => (
+              <Pressable
+                key={option.value}
+                onPress={() => {
+                  setStreamingQuality(option.value as typeof streamingQuality);
+                  setShowQualitySelector(false);
+                }}
+                className="flex-row items-center py-3 border-b border-white/10"
+                style={{ backgroundColor: streamingQuality === option.value ? accentColor + '20' : 'transparent' }}
+              >
+                <View className="flex-1">
+                  <Text className="text-white">{option.label}</Text>
+                  <Text className="text-white/50 text-xs">{option.desc}</Text>
+                </View>
+                {streamingQuality === option.value && (
+                  <Ionicons name="checkmark" size={20} color={accentColor} />
+                )}
+              </Pressable>
+            ))}
+            <Pressable
+              onPress={() => setShowQualitySelector(false)}
               className="mt-4 py-3 rounded-lg bg-white/10 items-center"
             >
               <Text className="text-white font-medium">Close</Text>

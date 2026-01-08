@@ -18,7 +18,11 @@ import { SecurityLockScreen } from '@/components/security';
 import { TVFocusProvider } from '@/contexts';
 import { isTV } from '@/utils/platform';
 import { colors } from '@/theme';
+import initI18n from '@/i18n';
 import '../global.css';
+
+// Initialize i18n before app renders
+initI18n();
 
 // Optimized animation duration constants - faster for snappier feel
 const ANIMATION_DURATION = {
@@ -50,7 +54,8 @@ const TABS_SCREEN_OPTIONS = {
   animation: 'fade' as const,
   animationDuration: ANIMATION_DURATION.fast,
   gestureEnabled: false,
-  freezeOnBlur: true,
+  // freezeOnBlur disabled - it interferes with back navigation
+  freezeOnBlur: false,
 };
 
 const VIDEO_PLAYER_OPTIONS = {
@@ -172,6 +177,12 @@ function AppContent() {
 
         {/* Main tabs - fade transition for tab switches */}
         <Stack.Screen name="(tabs)" options={TABS_SCREEN_OPTIONS} />
+
+        {/* Details screen - root level for proper back navigation */}
+        <Stack.Screen name="details/[type]/[id]" options={SETTINGS_SCREEN_OPTIONS} />
+
+        {/* Library collection screen - root level for proper back navigation */}
+        <Stack.Screen name="library/[id]" options={SETTINGS_SCREEN_OPTIONS} />
 
         {/* Video player - fade in for immersive experience */}
         <Stack.Screen name="player/video" options={VIDEO_PLAYER_OPTIONS} />

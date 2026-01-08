@@ -38,6 +38,7 @@ export interface DownloadItem {
   error?: string;
   createdAt: string;
   completedAt?: string;
+  quality?: 'original' | 'high' | 'medium' | 'low';
 }
 
 export interface CachedImage {

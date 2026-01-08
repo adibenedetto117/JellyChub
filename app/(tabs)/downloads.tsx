@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import Animated, { FadeIn, FadeOut, Layout, useSharedValue, useAnimatedStyle, withSpring } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { useDownloadStore, useSettingsStore } from '@/stores';
 import { downloadManager } from '@/services';
 import { formatBytes, ticksToMs, formatDuration, getDisplayName, getDisplayImageUrl } from '@/utils';
@@ -680,6 +681,7 @@ const BooksSection = memo(function BooksSection({
 });
 
 export default function DownloadsScreen() {
+  const { t } = useTranslation();
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<ContentTab>('movies');
   const [isPaused, setIsPaused] = useState(downloadManager.getIsPaused());
@@ -912,12 +914,12 @@ export default function DownloadsScreen() {
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <Text style={styles.headerTitle}>Downloads</Text>
+          <Text style={styles.headerTitle}>{t('downloads.title')}</Text>
         </View>
         <View style={styles.headerRight}>
           {downloads.length > 0 && (
             <Pressable onPress={handleClearAll} style={styles.clearButton}>
-              <Text style={styles.clearText}>Clear All</Text>
+              <Text style={styles.clearText}>{t('downloads.clearAll')}</Text>
             </Pressable>
           )}
           <SearchButton />
@@ -931,7 +933,7 @@ export default function DownloadsScreen() {
             <Ionicons name="cloud-download-outline" size={18} color={accentColor} />
           </View>
           <View style={styles.storageInfo}>
-            <Text style={styles.storageTitle}>Storage</Text>
+            <Text style={styles.storageTitle}>{t('downloads.storage')}</Text>
             <Text style={styles.storageSubtitle}>
               {formatBytes(usedStorage)} of {formatBytes(maxStorage)} used
             </Text>
@@ -956,9 +958,9 @@ export default function DownloadsScreen() {
           <View style={[styles.emptyIcon, { backgroundColor: accentColor + '20' }]}>
             <Ionicons name="cloud-download-outline" size={40} color={accentColor} />
           </View>
-          <Text style={styles.emptyTitle}>No Downloads</Text>
+          <Text style={styles.emptyTitle}>{t('downloads.noDownloads')}</Text>
           <Text style={styles.emptySubtitle}>
-            Download movies, shows, and music to watch offline
+            {t('downloads.noDownloadsDesc')}
           </Text>
         </View>
       ) : (
@@ -992,7 +994,7 @@ export default function DownloadsScreen() {
                 contentContainerStyle={styles.tabsContainer}
               >
                 <TabButton
-                  label="Movies"
+                  label={t('nav.movies')}
                   icon="film-outline"
                   active={activeTab === 'movies'}
                   count={tabCounts.movies}
@@ -1000,7 +1002,7 @@ export default function DownloadsScreen() {
                   accentColor={accentColor}
                 />
                 <TabButton
-                  label="TV Shows"
+                  label={t('nav.shows')}
                   icon="tv-outline"
                   active={activeTab === 'tvshows'}
                   count={tabCounts.tvshows}
@@ -1008,7 +1010,7 @@ export default function DownloadsScreen() {
                   accentColor={accentColor}
                 />
                 <TabButton
-                  label="Music"
+                  label={t('nav.music')}
                   icon="musical-notes-outline"
                   active={activeTab === 'music'}
                   count={tabCounts.music}
@@ -1016,7 +1018,7 @@ export default function DownloadsScreen() {
                   accentColor={accentColor}
                 />
                 <TabButton
-                  label="Books"
+                  label={t('mediaTypes.book')}
                   icon="book-outline"
                   active={activeTab === 'books'}
                   count={tabCounts.books}

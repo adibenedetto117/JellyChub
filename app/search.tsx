@@ -6,7 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuthStore, useSettingsStore } from '@/stores';
 import { jellyfinClient, getImageUrl } from '@/api/client';
 import { CachedImage } from '@/components/ui/CachedImage';
-import { goBack } from '@/utils';
+import { dismissModal } from '@/utils';
 
 interface SearchItem {
   Id: string;
@@ -62,15 +62,15 @@ export default function SearchScreen() {
     if (t === 'audio') {
       router.push(`/player/music?itemId=${item.Id}`);
     } else if (t === 'musicartist') {
-      router.push(`/(tabs)/details/artist/${item.Id}`);
+      router.push(`/details/artist/${item.Id}`);
     } else if (t === 'musicalbum') {
-      router.push(`/(tabs)/details/album/${item.Id}`);
+      router.push(`/details/album/${item.Id}`);
     } else if (t === 'movie') {
-      router.push(`/(tabs)/details/movie/${item.Id}`);
+      router.push(`/details/movie/${item.Id}`);
     } else if (t === 'series') {
-      router.push(`/(tabs)/details/series/${item.Id}`);
+      router.push(`/details/series/${item.Id}`);
     } else if (t === 'episode') {
-      router.push(`/(tabs)/details/episode/${item.Id}`);
+      router.push(`/details/episode/${item.Id}`);
     } else if (t === 'audiobook') {
       router.push(`/player/audiobook?itemId=${item.Id}`);
     } else if (t === 'book') {
@@ -79,9 +79,9 @@ export default function SearchScreen() {
       const isPdf = container === 'pdf' || path.endsWith('.pdf');
       router.push(isPdf ? `/reader/pdf?itemId=${item.Id}` : `/reader/epub?itemId=${item.Id}`);
     } else if (t === 'playlist') {
-      router.push(`/(tabs)/details/playlist/${item.Id}`);
+      router.push(`/details/playlist/${item.Id}`);
     } else {
-      router.push(`/(tabs)/details/${t}/${item.Id}`);
+      router.push(`/details/${t}/${item.Id}`);
     }
   };
 
@@ -137,7 +137,7 @@ export default function SearchScreen() {
             </Pressable>
           )}
         </View>
-        <Pressable onPress={() => { Keyboard.dismiss(); goBack('/(tabs)/home'); }} style={{ paddingLeft: 12 }}>
+        <Pressable onPress={() => { Keyboard.dismiss(); dismissModal(); }} style={{ paddingLeft: 12 }}>
           <Text style={{ color: accent, fontSize: 16 }}>Cancel</Text>
         </Pressable>
       </View>

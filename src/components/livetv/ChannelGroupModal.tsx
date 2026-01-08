@@ -1,4 +1,4 @@
-import { memo, useState, useCallback } from 'react';
+import { memo, useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -32,10 +32,18 @@ export const ChannelGroupModal = memo(function ChannelGroupModal({
   const [newGroupName, setNewGroupName] = useState('');
   const [isCreating, setIsCreating] = useState(false);
 
-  const groupNames = useLiveTvStore((s) => s.getGroupNames());
+  const channelGroups = useLiveTvStore((s) => s.channelGroups);
   const createGroup = useLiveTvStore((s) => s.createGroup);
   const deleteGroup = useLiveTvStore((s) => s.deleteGroup);
-  const getChannelsInGroup = useLiveTvStore((s) => s.getChannelsInGroup);
+
+  // Derive groupNames with useMemo to avoid creating new array references
+  const groupNames = useMemo(() => Object.keys(channelGroups), [channelGroups]);
+
+  // Helper to get channels in a group
+  const getChannelsInGroup = useCallback(
+    (groupName: string) => channelGroups[groupName] ?? [],
+    [channelGroups]
+  );
 
   const handleCreateGroup = useCallback(() => {
     const trimmedName = newGroupName.trim();

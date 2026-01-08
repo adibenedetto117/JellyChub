@@ -1,6 +1,7 @@
 import { View, Text, FlatList, Pressable, StyleSheet } from 'react-native';
 import { memo, useCallback, useRef } from 'react';
 import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { PosterCard } from './PosterCard';
 import { useResponsive } from '@/hooks';
 import { useSettingsStore } from '@/stores';
@@ -54,6 +55,7 @@ export const MediaRow = memo(function MediaRow({
   autoFocusIndex,
   onItemFocus,
 }: Props) {
+  const { t } = useTranslation();
   const { isTablet, isTV: isResponsiveTV, fontSize } = useResponsive();
   const accentColor = useSettingsStore((s) => s.accentColor);
   const flatListRef = useRef<FlatList<BaseItem>>(null);
@@ -115,7 +117,7 @@ export const MediaRow = memo(function MediaRow({
         </View>
         {onSeeAllPress && (
           <Pressable onPress={onSeeAllPress} style={styles.seeAllButton}>
-            <Text style={[styles.seeAll, { fontSize: fontSize.sm }]}>See All</Text>
+            <Text style={[styles.seeAll, { fontSize: fontSize.sm }]}>{t('common.seeAll')}</Text>
             <Ionicons name="chevron-forward" size={16} color="rgba(255,255,255,0.6)" />
           </Pressable>
         )}

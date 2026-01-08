@@ -117,4 +117,13 @@ export {
   getProgramImageUrl,
   getLiveStreamUrl,
   getLiveHlsStreamUrl,
+  getLiveDirectStreamUrl,
+  getLiveTvPlaybackInfo,
+  getRecordingFolders,
+  getSeriesTimers,
+  createSeriesTimer,
+  cancelSeriesTimer,
+  deleteRecording,
 } from './livetv';
+
+export type { SeriesTimerInfo } from './livetv';

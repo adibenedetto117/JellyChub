@@ -19,6 +19,8 @@ export default function JellyseerrSettingsScreen() {
     accentColor,
     setJellyseerrCredentials,
     clearJellyseerrCredentials,
+    bottomBarConfig,
+    setBottomBarConfig,
   } = useSettingsStore();
 
   const activeServer = useAuthStore((s) => s.getActiveServer());
@@ -103,7 +105,7 @@ export default function JellyseerrSettingsScreen() {
         const user = await jellyseerrClient.getCurrentUser();
         setJellyseerrCredentials(cleanUrl, apiKey.trim(), getUserDisplayName(user));
       } else if (authMethod === 'jellyfin') {
-        if (!activeServer?.url || !currentUser?.Id || !activeServer?.accessToken) {
+        if (!activeServer?.url || !currentUser?.Name || !activeServer?.accessToken) {
           Alert.alert('Error', 'You must be logged into Jellyfin first');
           setIsLoading(false);
           return;
@@ -111,10 +113,15 @@ export default function JellyseerrSettingsScreen() {
         const user = await jellyseerrClient.initializeWithJellyfin(
           cleanUrl,
           activeServer.url,
-          currentUser.Id,
+          currentUser.Name,
           activeServer.accessToken
         );
-        setJellyseerrCredentials(cleanUrl, 'jellyfin-auth', getUserDisplayName(user));
+        // Store Jellyfin credentials for re-authentication on app restart
+        setJellyseerrCredentials(cleanUrl, 'jellyfin-auth', getUserDisplayName(user), {
+          serverUrl: activeServer.url,
+          userId: currentUser.Name, // Store username, not ID
+          token: activeServer.accessToken,
+        });
       } else {
         if (!username.trim() || !password.trim()) {
           Alert.alert('Error', 'Please enter your username and password');
@@ -126,8 +133,12 @@ export default function JellyseerrSettingsScreen() {
         setJellyseerrCredentials(cleanUrl, 'local-auth', getUserDisplayName(user));
       }
 
-      Alert.alert('Success', 'Connected to Jellyseerr', [
-        { text: 'OK', onPress: () => goBack('/(tabs)/settings') },
+      // Auto-enable Jellyseerr tab in bottom bar if not already enabled
+      if (!bottomBarConfig.showJellyseerr) {
+        setBottomBarConfig({ ...bottomBarConfig, showJellyseerr: true });
+      }
+      Alert.alert('Success', 'Connected to Jellyseerr! Check the Requests tab.', [
+        { text: 'OK', onPress: () => router.replace('/(tabs)/requests') },
       ]);
     } catch (error: any) {
       const message = error?.response?.data?.message || error?.message || 'Connection failed';

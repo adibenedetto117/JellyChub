@@ -78,7 +78,8 @@ const SCREEN_OPTIONS = {
   tabBarStyle: { display: 'none' } as const,
   animation: 'fade' as const,
   animationDuration: 150,
-  freezeOnBlur: true,
+  // freezeOnBlur disabled - it interferes with back navigation in Tab navigators
+  freezeOnBlur: false,
 } as const;
 
 const TV_SCREEN_OPTIONS = {

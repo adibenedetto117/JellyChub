@@ -8,22 +8,31 @@ import {
   ActivityIndicator,
   StyleSheet,
   Dimensions,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
+import { useTranslation } from 'react-i18next';
 import { useAuthStore, useSettingsStore, useLiveTvStore } from '@/stores';
 import {
   getChannels,
   getPrograms,
   getLiveTvInfo,
   setChannelFavorite,
+  getRecordings,
+  getTimers,
+  deleteTimer,
+  deleteRecording,
+  createTimer,
+  getImageUrl,
 } from '@/api';
 import { ChannelCard, EPGGrid, ProgramModal, ChannelGroupModal } from '@/components/livetv';
 import { SearchButton, AnimatedGradient } from '@/components/ui';
 import { colors } from '@/theme';
-import type { LiveTvChannel, LiveTvProgram } from '@/types/livetv';
+import type { LiveTvChannel, LiveTvProgram, RecordingInfo, TimerInfo } from '@/types/livetv';
 import type { ChannelSortOption, ChannelFilterOption } from '@/stores/liveTvStore';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -41,7 +50,139 @@ const FILTER_OPTIONS: { value: ChannelFilterOption; label: string; icon: string 
   { value: 'radio', label: 'Radio', icon: 'radio-outline' },
 ];
 
+type MainTab = 'channels' | 'recordings' | 'scheduled';
 type ViewMode = 'channels' | 'guide';
+
+// Tab button component
+const TabButton = memo(function TabButton({
+  label,
+  isActive,
+  onPress,
+  accentColor,
+}: {
+  label: string;
+  isActive: boolean;
+  onPress: () => void;
+  accentColor: string;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={[
+        styles.tabButton,
+        isActive && { borderBottomColor: accentColor, borderBottomWidth: 2 },
+      ]}
+    >
+      <Text
+        style={[
+          styles.tabButtonText,
+          isActive && { color: accentColor },
+        ]}
+      >
+        {label}
+      </Text>
+    </Pressable>
+  );
+});
+
+// Recording card component
+const RecordingCard = memo(function RecordingCard({
+  recording,
+  onPress,
+  onDelete,
+  accentColor,
+}: {
+  recording: RecordingInfo;
+  onPress: () => void;
+  onDelete: () => void;
+  accentColor: string;
+}) {
+  const imageUrl = recording.ImageTags?.Primary
+    ? getImageUrl(recording.Id, 'Primary', { maxWidth: 200 })
+    : null;
+
+  const startTime = recording.StartDate
+    ? new Date(recording.StartDate).toLocaleString()
+    : '';
+  const status = recording.Status || 'Completed';
+  const isInProgress = status === 'InProgress';
+
+  return (
+    <Pressable onPress={onPress} style={styles.recordingCard}>
+      {imageUrl ? (
+        <Image
+          source={{ uri: imageUrl }}
+          style={styles.recordingImage}
+          contentFit="cover"
+        />
+      ) : (
+        <View style={[styles.recordingImage, styles.recordingImagePlaceholder]}>
+          <Ionicons name="videocam" size={32} color={colors.text.tertiary} />
+        </View>
+      )}
+      <View style={styles.recordingInfo}>
+        <Text style={styles.recordingTitle} numberOfLines={2}>
+          {recording.Name}
+        </Text>
+        {recording.ChannelName && (
+          <Text style={styles.recordingChannel}>{recording.ChannelName}</Text>
+        )}
+        <Text style={styles.recordingTime}>{startTime}</Text>
+        <View style={styles.recordingStatus}>
+          <View
+            style={[
+              styles.statusDot,
+              { backgroundColor: isInProgress ? accentColor : colors.text.tertiary },
+            ]}
+          />
+          <Text style={styles.statusText}>
+            {isInProgress ? 'Recording' : status}
+          </Text>
+        </View>
+      </View>
+      <Pressable onPress={onDelete} style={styles.deleteButton}>
+        <Ionicons name="trash-outline" size={20} color={colors.status.error} />
+      </Pressable>
+    </Pressable>
+  );
+});
+
+// Timer card component
+const TimerCard = memo(function TimerCard({
+  timer,
+  onDelete,
+  accentColor,
+}: {
+  timer: TimerInfo;
+  onDelete: () => void;
+  accentColor: string;
+}) {
+  const startTime = timer.StartDate
+    ? new Date(timer.StartDate).toLocaleString()
+    : '';
+  const status = timer.Status || 'Scheduled';
+
+  return (
+    <View style={styles.timerCard}>
+      <View style={styles.timerIcon}>
+        <Ionicons name="timer-outline" size={28} color={accentColor} />
+      </View>
+      <View style={styles.timerInfo}>
+        <Text style={styles.timerTitle} numberOfLines={2}>
+          {timer.Name}
+        </Text>
+        {timer.ChannelName && (
+          <Text style={styles.timerChannel}>{timer.ChannelName}</Text>
+        )}
+        <Text style={styles.timerTime}>{startTime}</Text>
+        <Text style={styles.timerStatus}>{status}</Text>
+      </View>
+      <Pressable onPress={onDelete} style={styles.deleteButton}>
+        <Ionicons name="close-circle-outline" size={24} color={colors.status.error} />
+      </Pressable>
+    </View>
+  );
+});
 
 const FilterChip = memo(function FilterChip({
   label,
@@ -82,7 +223,10 @@ const FilterChip = memo(function FilterChip({
 });
 
 export default function LiveTvScreen() {
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
   const [refreshing, setRefreshing] = useState(false);
+  const [mainTab, setMainTab] = useState<MainTab>('channels');
   const [viewMode, setViewMode] = useState<ViewMode>('channels');
   const [selectedProgram, setSelectedProgram] = useState<LiveTvProgram | null>(null);
   const [showGroupModal, setShowGroupModal] = useState(false);
@@ -155,6 +299,91 @@ export default function LiveTvScreen() {
 
   const programs = programsData?.Items ?? [];
 
+  // Recordings query
+  const {
+    data: recordingsData,
+    isLoading: recordingsLoading,
+    refetch: refetchRecordings,
+  } = useQuery({
+    queryKey: ['liveTvRecordings', userId],
+    queryFn: () => getRecordings(userId),
+    enabled: !!userId && isLiveTvEnabled && mainTab === 'recordings',
+    staleTime: 1000 * 60 * 2,
+  });
+
+  const recordings = recordingsData?.Items ?? [];
+
+  // Timers query
+  const {
+    data: timersData,
+    isLoading: timersLoading,
+    refetch: refetchTimers,
+  } = useQuery({
+    queryKey: ['liveTvTimers'],
+    queryFn: () => getTimers(),
+    enabled: !!userId && isLiveTvEnabled && mainTab === 'scheduled',
+    staleTime: 1000 * 60 * 2,
+  });
+
+  const timers = timersData?.Items ?? [];
+
+  // Delete recording handler
+  const handleDeleteRecording = useCallback(
+    (recording: RecordingInfo) => {
+      Alert.alert(
+        t('liveTV.deleteRecording'),
+        t('liveTV.deleteRecordingConfirm', { name: recording.Name }),
+        [
+          { text: t('common.cancel'), style: 'cancel' },
+          {
+            text: t('common.delete'),
+            style: 'destructive',
+            onPress: async () => {
+              try {
+                await deleteRecording(recording.Id);
+                queryClient.invalidateQueries({ queryKey: ['liveTvRecordings'] });
+              } catch (error) {
+                Alert.alert(t('common.error'), t('liveTV.deleteRecordingError'));
+              }
+            },
+          },
+        ]
+      );
+    },
+    [t, queryClient]
+  );
+
+  // Delete timer handler
+  const handleDeleteTimer = useCallback(
+    (timer: TimerInfo) => {
+      Alert.alert(
+        t('liveTV.cancelTimer'),
+        t('liveTV.cancelTimerConfirm', { name: timer.Name }),
+        [
+          { text: t('common.cancel'), style: 'cancel' },
+          {
+            text: t('liveTV.cancelRecording'),
+            style: 'destructive',
+            onPress: async () => {
+              try {
+                await deleteTimer(timer.Id);
+                queryClient.invalidateQueries({ queryKey: ['liveTvTimers'] });
+              } catch (error) {
+                Alert.alert(t('common.error'), t('liveTV.cancelTimerError'));
+              }
+            },
+          },
+        ]
+      );
+    },
+    [t, queryClient]
+  );
+
+  // Play recording handler
+  const handlePlayRecording = useCallback((recording: RecordingInfo) => {
+    router.push(`/player/video?itemId=${recording.Id}`);
+  }, []);
+
   const filteredChannels = useMemo(() => {
     let result = [...channels];
 
@@ -192,9 +421,15 @@ export default function LiveTvScreen() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refetchChannels();
+    if (mainTab === 'channels') {
+      await refetchChannels();
+    } else if (mainTab === 'recordings') {
+      await refetchRecordings();
+    } else if (mainTab === 'scheduled') {
+      await refetchTimers();
+    }
     setRefreshing(false);
-  }, [refetchChannels]);
+  }, [mainTab, refetchChannels, refetchRecordings, refetchTimers]);
 
   const handleChannelPress = useCallback(
     (channel: LiveTvChannel) => {
@@ -271,13 +506,13 @@ export default function LiveTvScreen() {
       <SafeAreaView style={styles.container} edges={['top']}>
         <AnimatedGradient intensity="subtle" />
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>Live TV</Text>
+          <Text style={styles.headerTitle}>{t('liveTV.title')}</Text>
         </View>
         <View style={styles.emptyState}>
           <Ionicons name="tv-outline" size={64} color={colors.text.tertiary} />
-          <Text style={styles.emptyTitle}>Live TV Not Available</Text>
+          <Text style={styles.emptyTitle}>{t('liveTV.noChannels')}</Text>
           <Text style={styles.emptySubtext}>
-            Live TV is not enabled on this server or no tuners are configured.
+            {t('liveTV.noChannelsDesc')}
           </Text>
         </View>
       </SafeAreaView>
@@ -289,111 +524,217 @@ export default function LiveTvScreen() {
       <AnimatedGradient intensity="subtle" />
 
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Live TV</Text>
+        <Text style={styles.headerTitle}>{t('liveTV.title')}</Text>
         <View style={styles.headerRight}>
-          <Pressable
-            onPress={() => setViewMode(viewMode === 'channels' ? 'guide' : 'channels')}
-            style={styles.viewModeButton}
-          >
-            <Ionicons
-              name={viewMode === 'channels' ? 'calendar-outline' : 'list-outline'}
-              size={22}
-              color="#fff"
-            />
-          </Pressable>
+          {mainTab === 'channels' && (
+            <Pressable
+              onPress={() => setViewMode(viewMode === 'channels' ? 'guide' : 'channels')}
+              style={styles.viewModeButton}
+            >
+              <Ionicons
+                name={viewMode === 'channels' ? 'calendar-outline' : 'list-outline'}
+                size={22}
+                color="#fff"
+              />
+            </Pressable>
+          )}
           <SearchButton />
         </View>
       </View>
 
-      <View style={styles.filterRow}>
-        {FILTER_OPTIONS.map((option) => (
-          <FilterChip
-            key={option.value}
-            label={option.label}
-            icon={option.icon}
-            isActive={channelFilter === option.value}
-            onPress={() => setChannelFilter(option.value)}
-            accentColor={accentColor}
-          />
-        ))}
-      </View>
-
-      <View style={styles.sortRow}>
-        <Text style={styles.sortLabel}>Sort by:</Text>
-        {SORT_OPTIONS.map((option) => (
-          <Pressable
-            key={option.value}
-            onPress={() => setChannelSort(option.value)}
-            style={[
-              styles.sortOption,
-              channelSort === option.value && { backgroundColor: accentColor + '20' },
-            ]}
-          >
-            <Text
-              style={[
-                styles.sortOptionText,
-                channelSort === option.value && { color: accentColor },
-              ]}
-            >
-              {option.label}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
-
-      {channelsLoading ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator color={accentColor} size="large" />
-          <Text style={styles.loadingText}>Loading channels...</Text>
-        </View>
-      ) : viewMode === 'channels' ? (
-        <FlatList
-          data={filteredChannels}
-          renderItem={renderChannel}
-          keyExtractor={(item) => item.Id}
-          contentContainerStyle={styles.listContent}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              tintColor={accentColor}
-            />
-          }
-          ListEmptyComponent={
-            <View style={styles.emptyState}>
-              <Ionicons name="tv-outline" size={48} color={colors.text.tertiary} />
-              <Text style={styles.emptyTitle}>No Channels Found</Text>
-              <Text style={styles.emptySubtext}>
-                {channelFilter === 'favorites'
-                  ? 'You have no favorite channels yet'
-                  : 'No channels match the current filter'}
-              </Text>
-            </View>
-          }
-          initialNumToRender={15}
-          maxToRenderPerBatch={10}
-          windowSize={5}
+      {/* Main tab bar */}
+      <View style={styles.mainTabBar}>
+        <TabButton
+          label={t('liveTV.channels')}
+          isActive={mainTab === 'channels'}
+          onPress={() => setMainTab('channels')}
+          accentColor={accentColor}
         />
-      ) : (
-        <View style={styles.guideContainer}>
-          {programsLoading ? (
+        <TabButton
+          label={t('liveTV.recordings')}
+          isActive={mainTab === 'recordings'}
+          onPress={() => setMainTab('recordings')}
+          accentColor={accentColor}
+        />
+        <TabButton
+          label={t('liveTV.scheduled')}
+          isActive={mainTab === 'scheduled'}
+          onPress={() => setMainTab('scheduled')}
+          accentColor={accentColor}
+        />
+      </View>
+
+      {/* Channels tab content */}
+      {mainTab === 'channels' && (
+        <>
+          <View style={styles.filterRow}>
+            {FILTER_OPTIONS.map((option) => (
+              <FilterChip
+                key={option.value}
+                label={option.label}
+                icon={option.icon}
+                isActive={channelFilter === option.value}
+                onPress={() => setChannelFilter(option.value)}
+                accentColor={accentColor}
+              />
+            ))}
+          </View>
+
+          <View style={styles.sortRow}>
+            <Text style={styles.sortLabel}>Sort by:</Text>
+            {SORT_OPTIONS.map((option) => (
+              <Pressable
+                key={option.value}
+                onPress={() => setChannelSort(option.value)}
+                style={[
+                  styles.sortOption,
+                  channelSort === option.value && { backgroundColor: accentColor + '20' },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.sortOptionText,
+                    channelSort === option.value && { color: accentColor },
+                  ]}
+                >
+                  {option.label}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+
+          {channelsLoading ? (
             <View style={styles.loadingContainer}>
               <ActivityIndicator color={accentColor} size="large" />
-              <Text style={styles.loadingText}>Loading guide...</Text>
+              <Text style={styles.loadingText}>{t('common.loading')}</Text>
             </View>
-          ) : (
-            <EPGGrid
-              channels={filteredChannels}
-              programs={programs}
-              startTime={guideStartTime}
-              endTime={guideEndTime}
-              onChannelPress={handleChannelPress}
-              onProgramPress={handleProgramPress}
-              accentColor={accentColor}
-              favoriteChannelIds={favoriteChannelIds}
+          ) : viewMode === 'channels' ? (
+            <FlatList
+              data={filteredChannels}
+              renderItem={renderChannel}
+              keyExtractor={(item) => item.Id}
+              contentContainerStyle={styles.listContent}
+              refreshControl={
+                <RefreshControl
+                  refreshing={refreshing}
+                  onRefresh={onRefresh}
+                  tintColor={accentColor}
+                />
+              }
+              ListEmptyComponent={
+                <View style={styles.emptyState}>
+                  <Ionicons name="tv-outline" size={48} color={colors.text.tertiary} />
+                  <Text style={styles.emptyTitle}>{t('liveTV.noChannels')}</Text>
+                  <Text style={styles.emptySubtext}>
+                    {t('common.noResults')}
+                  </Text>
+                </View>
+              }
+              initialNumToRender={15}
+              maxToRenderPerBatch={10}
+              windowSize={5}
             />
+          ) : (
+            <View style={styles.guideContainer}>
+              {programsLoading ? (
+                <View style={styles.loadingContainer}>
+                  <ActivityIndicator color={accentColor} size="large" />
+                  <Text style={styles.loadingText}>{t('common.loading')}</Text>
+                </View>
+              ) : (
+                <EPGGrid
+                  channels={filteredChannels}
+                  programs={programs}
+                  startTime={guideStartTime}
+                  endTime={guideEndTime}
+                  onChannelPress={handleChannelPress}
+                  onProgramPress={handleProgramPress}
+                  accentColor={accentColor}
+                  favoriteChannelIds={favoriteChannelIds}
+                />
+              )}
+            </View>
           )}
-        </View>
+        </>
+      )}
+
+      {/* Recordings tab content */}
+      {mainTab === 'recordings' && (
+        recordingsLoading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator color={accentColor} size="large" />
+            <Text style={styles.loadingText}>{t('common.loading')}</Text>
+          </View>
+        ) : (
+          <FlatList
+            data={recordings}
+            renderItem={({ item }) => (
+              <RecordingCard
+                recording={item}
+                onPress={() => handlePlayRecording(item)}
+                onDelete={() => handleDeleteRecording(item)}
+                accentColor={accentColor}
+              />
+            )}
+            keyExtractor={(item) => item.Id}
+            contentContainerStyle={styles.listContent}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                tintColor={accentColor}
+              />
+            }
+            ListEmptyComponent={
+              <View style={styles.emptyState}>
+                <Ionicons name="videocam-outline" size={48} color={colors.text.tertiary} />
+                <Text style={styles.emptyTitle}>{t('liveTV.noRecordings')}</Text>
+                <Text style={styles.emptySubtext}>
+                  {t('liveTV.noRecordingsDesc')}
+                </Text>
+              </View>
+            }
+          />
+        )
+      )}
+
+      {/* Scheduled tab content */}
+      {mainTab === 'scheduled' && (
+        timersLoading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator color={accentColor} size="large" />
+            <Text style={styles.loadingText}>{t('common.loading')}</Text>
+          </View>
+        ) : (
+          <FlatList
+            data={timers}
+            renderItem={({ item }) => (
+              <TimerCard
+                timer={item}
+                onDelete={() => handleDeleteTimer(item)}
+                accentColor={accentColor}
+              />
+            )}
+            keyExtractor={(item) => item.Id}
+            contentContainerStyle={styles.listContent}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                tintColor={accentColor}
+              />
+            }
+            ListEmptyComponent={
+              <View style={styles.emptyState}>
+                <Ionicons name="timer-outline" size={48} color={colors.text.tertiary} />
+                <Text style={styles.emptyTitle}>{t('liveTV.noScheduled')}</Text>
+                <Text style={styles.emptySubtext}>
+                  {t('liveTV.noScheduledDesc')}
+                </Text>
+              </View>
+            }
+          />
+        )
       )}
 
       <ProgramModal
@@ -524,5 +865,123 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: 'center',
     marginTop: 8,
+  },
+  // Tab bar styles
+  mainTabBar: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border.subtle,
+    marginBottom: 8,
+  },
+  tabButton: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+  },
+  tabButtonText: {
+    color: colors.text.secondary,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  // Recording card styles
+  recordingCard: {
+    flexDirection: 'row',
+    backgroundColor: colors.surface.default,
+    marginHorizontal: 16,
+    marginVertical: 6,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  recordingImage: {
+    width: 100,
+    height: 75,
+  },
+  recordingImagePlaceholder: {
+    backgroundColor: colors.surface.elevated,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  recordingInfo: {
+    flex: 1,
+    padding: 12,
+  },
+  recordingTitle: {
+    color: colors.text.primary,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  recordingChannel: {
+    color: colors.text.secondary,
+    fontSize: 13,
+    marginTop: 2,
+  },
+  recordingTime: {
+    color: colors.text.tertiary,
+    fontSize: 12,
+    marginTop: 4,
+  },
+  recordingStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+    gap: 6,
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  statusText: {
+    color: colors.text.tertiary,
+    fontSize: 12,
+  },
+  deleteButton: {
+    padding: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // Timer card styles
+  timerCard: {
+    flexDirection: 'row',
+    backgroundColor: colors.surface.default,
+    marginHorizontal: 16,
+    marginVertical: 6,
+    borderRadius: 12,
+    padding: 12,
+    alignItems: 'center',
+  },
+  timerIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: colors.surface.elevated,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  timerInfo: {
+    flex: 1,
+  },
+  timerTitle: {
+    color: colors.text.primary,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  timerChannel: {
+    color: colors.text.secondary,
+    fontSize: 13,
+    marginTop: 2,
+  },
+  timerTime: {
+    color: colors.text.tertiary,
+    fontSize: 12,
+    marginTop: 4,
+  },
+  timerStatus: {
+    color: colors.text.tertiary,
+    fontSize: 12,
+    marginTop: 2,
   },
 });

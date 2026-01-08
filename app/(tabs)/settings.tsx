@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import Slider from '@react-native-community/slider';
 import * as LocalAuthentication from 'expo-local-authentication';
+import { useTranslation } from 'react-i18next';
 import { useAuthStore, useSettingsStore, useDownloadStore } from '@/stores';
 import { useSecurityStore, type AutoLockTimeout } from '@/stores/securityStore';
 import { ACCENT_COLOR_PRESETS } from '@/stores/settingsStore';
@@ -12,6 +13,7 @@ import { UserSwitcher } from '@/components/settings/UserSwitcher';
 import { PinLock } from '@/components/security';
 import { downloadManager, notificationService } from '@/services';
 import { EQUALIZER_PRESETS, getPresetById } from '@/constants/equalizer';
+import { SUPPORTED_LANGUAGES, changeLanguage, i18n } from '@/i18n';
 import type { SubtitleFontColor, SubtitleBackgroundColor, SubtitleSize } from '@/types/player';
 
 const SUBTITLE_TEXT_COLORS: { name: string; color: SubtitleFontColor }[] = [
@@ -189,6 +191,7 @@ function getAutoLockLabel(value: AutoLockTimeout): string {
 }
 
 export default function SettingsScreen() {
+  const { t } = useTranslation();
   const [showUserSwitcher, setShowUserSwitcher] = useState(false);
   const [showSubtitleLanguagePicker, setShowSubtitleLanguagePicker] = useState(false);
   const [showAudioLanguagePicker, setShowAudioLanguagePicker] = useState(false);
@@ -204,12 +207,10 @@ export default function SettingsScreen() {
   const [setupPin, setSetupPin] = useState('');
   const [showAutoLockPicker, setShowAutoLockPicker] = useState(false);
   const [biometricAvailable, setBiometricAvailable] = useState(false);
+  const [showLanguagePicker, setShowLanguagePicker] = useState(false);
 
   const { currentUser, logout, servers, activeServerId } = useAuthStore();
   const {
-    downloadQuality,
-    downloadOverWifiOnly,
-    autoRemoveWatchedDownloads,
     player,
     accentColor,
     jellyseerrUrl,
@@ -220,9 +221,6 @@ export default function SettingsScreen() {
     reduceMotion,
     hapticsEnabled,
     equalizerPreset,
-    setDownloadQuality,
-    setDownloadOverWifiOnly,
-    setAutoRemoveWatchedDownloads,
     updatePlayerSettings,
     setAccentColor,
     setOfflineMode,
@@ -236,6 +234,8 @@ export default function SettingsScreen() {
     setNotificationSetting,
     radarrApiKey,
     sonarrApiKey,
+    language,
+    setLanguage,
   } = useSettingsStore();
 
   const { usedStorage, maxStorage } = useDownloadStore();
@@ -335,37 +335,35 @@ export default function SettingsScreen() {
     return 'Fingerprint';
   };
 
-  const qualityOptions = ['original', 'high', 'medium', 'low'] as const;
-
   return (
     <SafeAreaView className="flex-1 bg-background" edges={['top']}>
       <ScrollView className="flex-1">
         <View className="px-4 py-4">
-          <Text style={{ color: '#fff', fontSize: 28, fontWeight: '700' }}>Settings</Text>
+          <Text style={{ color: '#fff', fontSize: 28, fontWeight: '700' }}>{t('settings.title')}</Text>
         </View>
 
         {!offlineMode && (
-          <SettingsSection title="Account">
+          <SettingsSection title={t('settings.account')}>
             <SettingsRow
               title={getDisplayUsername(currentUser?.Name, hideMedia)}
               subtitle={getDisplayServerName(activeServer?.name, hideMedia)}
             />
             <SettingsRow
-              title="Switch User"
+              title={t('settings.switchUser')}
               onPress={() => setShowUserSwitcher(true)}
               rightElement={
                 <Text className="text-text-tertiary">{'>'}</Text>
               }
             />
             <SettingsRow
-              title="Change Server"
+              title={t('settings.changeServer')}
               onPress={handleChangeServer}
               rightElement={
                 <Text className="text-text-tertiary">{'>'}</Text>
               }
             />
             <SettingsRow
-              title="Sign Out"
+              title={t('settings.signOut')}
               onPress={handleLogout}
               rightElement={
                 <Text className="text-error">{'>'}</Text>
@@ -374,10 +372,71 @@ export default function SettingsScreen() {
           </SettingsSection>
         )}
 
-        <SettingsSection title="Offline Mode">
+        {!offlineMode && (
+          <SettingsSection title={t('settings.integrations')}>
+            <SettingsRow
+              title={t('settings.jellyseerr')}
+              subtitle={jellyseerrAuthToken ? `${t('settings.connected')} (${hideMedia ? 'User' : jellyseerrUsername})` : t('settings.notConfigured')}
+              onPress={() => router.push('/settings/jellyseerr')}
+              rightElement={
+                <Text style={{ color: jellyseerrAuthToken ? '#22c55e' : 'rgba(255,255,255,0.5)' }}>
+                  {jellyseerrAuthToken ? '●' : '○'}
+                </Text>
+              }
+            />
+            <SettingsRow
+              title={t('settings.radarr')}
+              subtitle={radarrApiKey ? t('settings.connected') : t('settings.notConfigured')}
+              onPress={() => router.push('/settings/radarr')}
+              rightElement={
+                <Text style={{ color: radarrApiKey ? '#ffc230' : 'rgba(255,255,255,0.5)' }}>
+                  {radarrApiKey ? '●' : '○'}
+                </Text>
+              }
+            />
+            <SettingsRow
+              title={t('settings.sonarr')}
+              subtitle={sonarrApiKey ? t('settings.connected') : t('settings.notConfigured')}
+              onPress={() => router.push('/settings/sonarr')}
+              rightElement={
+                <Text style={{ color: sonarrApiKey ? '#35c5f4' : 'rgba(255,255,255,0.5)' }}>
+                  {sonarrApiKey ? '●' : '○'}
+                </Text>
+              }
+            />
+            <SettingsRow
+              title={t('settings.opensubtitles')}
+              subtitle={openSubtitlesApiKey ? t('settings.connected') : t('settings.notConfigured')}
+              onPress={() => {
+                setTempApiKey(openSubtitlesApiKey || '');
+                setShowOpenSubtitlesInput(true);
+              }}
+              rightElement={
+                <Text style={{ color: openSubtitlesApiKey ? '#22c55e' : 'rgba(255,255,255,0.5)' }}>
+                  {openSubtitlesApiKey ? '●' : '○'}
+                </Text>
+              }
+            />
+          </SettingsSection>
+        )}
+
+        {!offlineMode && (
+          <SettingsSection title={t('settings.navigation')}>
+            <SettingsRow
+              title={t('settings.customizeBottomBar')}
+              subtitle={t('settings.chooseNavItems')}
+              onPress={() => router.push('/settings/bottom-bar')}
+              rightElement={
+                <Text className="text-text-tertiary">{'>'}</Text>
+              }
+            />
+          </SettingsSection>
+        )}
+
+        <SettingsSection title={t('settings.offlineMode')}>
           <SettingsRow
-            title="Offline Mode"
-            subtitle={offlineMode ? 'Only downloads and settings available' : 'Full app access with server connection'}
+            title={t('settings.offlineMode')}
+            subtitle={offlineMode ? t('settings.offlineModeDesc') : t('settings.offlineModeDesc')}
             rightElement={
               <Switch
                 value={offlineMode}
@@ -391,10 +450,10 @@ export default function SettingsScreen() {
           />
         </SettingsSection>
 
-        <SettingsSection title="Security">
+        <SettingsSection title={t('settings.security')}>
           <SettingsRow
-            title="App Lock"
-            subtitle={securitySettings.pinEnabled ? 'PIN enabled' : 'Not configured'}
+            title={t('settings.appLock')}
+            subtitle={securitySettings.pinEnabled ? t('settings.pinEnabled') : t('settings.notConfigured')}
             onPress={() => {
               if (securitySettings.pinEnabled) {
                 handleDisablePin();
@@ -433,8 +492,8 @@ export default function SettingsScreen() {
             />
           )}
           <SettingsRow
-            title="Hide in App Switcher"
-            subtitle="Blur content when switching apps"
+            title={t('settings.hideInAppSwitcher')}
+            subtitle={t('settings.hideInAppSwitcher')}
             rightElement={
               <Switch
                 value={securitySettings.hideInAppSwitcher}
@@ -448,9 +507,19 @@ export default function SettingsScreen() {
           />
         </SettingsSection>
 
-        <SettingsSection title="Appearance">
+        {/* Language Section */}
+        <SettingsSection title={t('settings.language')}>
+          <SettingsRow
+            title={t('settings.appLanguage')}
+            subtitle={SUPPORTED_LANGUAGES.find(l => l.code === (language || i18n.language))?.nativeName || 'English'}
+            onPress={() => setShowLanguagePicker(true)}
+            rightElement={<Text className="text-text-tertiary">{'>'}</Text>}
+          />
+        </SettingsSection>
+
+        <SettingsSection title={t('settings.appearance')}>
           <View className="py-4 border-b border-surface">
-            <Text className="text-white text-base mb-3" accessibilityRole="header">Accent Color</Text>
+            <Text className="text-white text-base mb-3" accessibilityRole="header">{t('settings.accentColor')}</Text>
             <View className="flex-row flex-wrap gap-3" accessibilityRole="radiogroup">
               {ACCENT_COLOR_PRESETS.map((preset) => (
                 <Pressable
@@ -488,8 +557,8 @@ export default function SettingsScreen() {
             </View>
           </View>
           <SettingsRow
-            title="Reduce Motion"
-            subtitle="Minimize animations for accessibility"
+            title={t('settings.reduceMotion')}
+            subtitle={t('settings.reduceMotionDesc')}
             rightElement={
               <Switch
                 value={reduceMotion}
@@ -504,8 +573,8 @@ export default function SettingsScreen() {
             }
           />
           <SettingsRow
-            title="Haptic Feedback"
-            subtitle="Vibration feedback for interactions"
+            title={t('settings.hapticFeedback')}
+            subtitle={t('settings.hapticFeedback')}
             rightElement={
               <Switch
                 value={hapticsEnabled}
@@ -536,10 +605,10 @@ export default function SettingsScreen() {
           )}
         </SettingsSection>
 
-        <SettingsSection title="Notifications">
+        <SettingsSection title={t('settings.notifications')}>
           <SettingsRow
-            title="Download Complete"
-            subtitle="Notify when downloads finish"
+            title={t('settings.downloadComplete')}
+            subtitle={t('settings.downloadComplete')}
             rightElement={
               <Switch
                 value={notifications.downloadComplete}
@@ -573,22 +642,9 @@ export default function SettingsScreen() {
           />
         </SettingsSection>
 
-        {!offlineMode && (
-          <SettingsSection title="Bottom Bar">
-            <SettingsRow
-              title="Customize Bottom Bar"
-              subtitle="Tabs, order, and landing page"
-              onPress={() => router.push('/settings/bottom-bar')}
-              rightElement={
-                <Text className="text-text-tertiary">{'>'}</Text>
-              }
-            />
-          </SettingsSection>
-        )}
-
-        <SettingsSection title="Playback">
+        <SettingsSection title={t('settings.playback')}>
           <SettingsRow
-            title="Auto Play Next"
+            title={t('settings.autoPlay')}
             rightElement={
               <Switch
                 value={player.autoPlay}
@@ -646,7 +702,7 @@ export default function SettingsScreen() {
           />
         </SettingsSection>
 
-        <SettingsSection title="Audio">
+        <SettingsSection title={t('settings.audio')}>
           <SettingsRow
             title="Equalizer"
             subtitle={getPresetById(equalizerPreset)?.name ?? 'Flat'}
@@ -657,53 +713,13 @@ export default function SettingsScreen() {
           />
         </SettingsSection>
 
-        <SettingsSection title="Downloads">
+        <SettingsSection title={t('settings.downloadsSection')}>
           <SettingsRow
-            title="Manage Downloads"
+            title={t('downloads.title')}
             subtitle={`${formatBytes(usedStorage)} used`}
             onPress={() => router.push('/(tabs)/downloads')}
             rightElement={
               <Text className="text-text-tertiary">{'>'}</Text>
-            }
-          />
-          <SettingsRow
-            title="Download Quality"
-            subtitle={downloadQuality.charAt(0).toUpperCase() + downloadQuality.slice(1)}
-            onPress={() => {
-              const currentIndex = qualityOptions.indexOf(downloadQuality);
-              const nextIndex = (currentIndex + 1) % qualityOptions.length;
-              setDownloadQuality(qualityOptions[nextIndex]);
-            }}
-            rightElement={
-              <Text className="text-text-tertiary">{'>'}</Text>
-            }
-          />
-          <SettingsRow
-            title="Wi-Fi Only"
-            subtitle="Only download when connected to Wi-Fi"
-            rightElement={
-              <Switch
-                value={downloadOverWifiOnly}
-                onValueChange={(value) => {
-                  haptics.medium();
-                  setDownloadOverWifiOnly(value);
-                }}
-                trackColor={{ false: '#3a3a3a', true: accentColor }}
-              />
-            }
-          />
-          <SettingsRow
-            title="Auto-Remove Watched"
-            subtitle="Automatically remove downloads after watching"
-            rightElement={
-              <Switch
-                value={autoRemoveWatchedDownloads}
-                onValueChange={(value) => {
-                  haptics.medium();
-                  setAutoRemoveWatchedDownloads(value);
-                }}
-                trackColor={{ false: '#3a3a3a', true: accentColor }}
-              />
             }
           />
           <SettingsRow
@@ -737,7 +753,7 @@ export default function SettingsScreen() {
           />
         </SettingsSection>
 
-        <SettingsSection title="Storage & Cache">
+        <SettingsSection title={t('settings.storageCache')}>
           <SettingsRow
             title="Downloads"
             subtitle={formatBytes(usedStorage)}
@@ -756,90 +772,8 @@ export default function SettingsScreen() {
           />
         </SettingsSection>
 
-        {!offlineMode && (
-          <SettingsSection title="Jellyseerr">
-            <SettingsRow
-              title="Jellyseerr"
-              subtitle={jellyseerrAuthToken ? `Connected as ${hideMedia ? 'User' : jellyseerrUsername}` : 'Not configured'}
-              onPress={() => router.push('/settings/jellyseerr')}
-              rightElement={
-                <Text className="text-text-tertiary">{'>'}</Text>
-              }
-            />
-          </SettingsSection>
-        )}
 
-        {!offlineMode && (
-          <SettingsSection title="Radarr / Sonarr">
-            <SettingsRow
-              title="Radarr Settings"
-              subtitle={radarrApiKey ? 'Connected' : 'Not configured'}
-              onPress={() => router.push('/settings/radarr')}
-              rightElement={
-                <Text className="text-text-tertiary">{'>'}</Text>
-              }
-            />
-            {radarrApiKey && (
-              <SettingsRow
-                title="Manage Radarr"
-                subtitle="Library, queue, and add movies"
-                onPress={() => router.push('/settings/radarr-manage')}
-                rightElement={
-                  <Text className="text-text-tertiary">{'>'}</Text>
-                }
-              />
-            )}
-            <SettingsRow
-              title="Sonarr Settings"
-              subtitle={sonarrApiKey ? 'Connected' : 'Not configured'}
-              onPress={() => router.push('/settings/sonarr')}
-              rightElement={
-                <Text className="text-text-tertiary">{'>'}</Text>
-              }
-            />
-            {sonarrApiKey && (
-              <SettingsRow
-                title="Manage Sonarr"
-                subtitle="Library, queue, and add series"
-                onPress={() => router.push('/settings/sonarr-manage')}
-                rightElement={
-                  <Text className="text-text-tertiary">{'>'}</Text>
-                }
-              />
-            )}
-            {(radarrApiKey || sonarrApiKey) && (
-              <SettingsRow
-                title="Download Queue"
-                subtitle="View Radarr/Sonarr downloads"
-                onPress={() => router.push('/settings/arr-queue')}
-                rightElement={
-                  <Text className="text-text-tertiary">{'>'}</Text>
-                }
-              />
-            )}
-          </SettingsSection>
-        )}
-
-        <SettingsSection title="OpenSubtitles">
-          <SettingsRow
-            title="API Key"
-            subtitle={openSubtitlesApiKey ? 'Configured' : 'Not configured'}
-            onPress={() => {
-              setTempApiKey(openSubtitlesApiKey || '');
-              setShowOpenSubtitlesInput(true);
-            }}
-            rightElement={
-              <Text className="text-text-tertiary">{'>'}</Text>
-            }
-          />
-          <View className="py-3 px-1">
-            <Text className="text-text-tertiary text-xs">
-              Get your free API key at opensubtitles.com to search and download subtitles
-            </Text>
-          </View>
-        </SettingsSection>
-
-        <SettingsSection title="Subtitles">
+        <SettingsSection title={t('settings.subtitles')}>
           <SettingsRow
             title="Force Subtitles"
             subtitle="Always enable subtitles when playing"
@@ -983,7 +917,7 @@ export default function SettingsScreen() {
           </View>
         </SettingsSection>
 
-        <SettingsSection title="About">
+        <SettingsSection title={t('settings.about')}>
           <SettingsRow
             title="Version"
             subtitle="1.0.0"
@@ -1185,6 +1119,54 @@ export default function SettingsScreen() {
                 >
                   <Text className="text-white">{option.label}</Text>
                   {securitySettings.autoLockTimeout === option.value && (
+                    <View
+                      className="w-5 h-5 rounded-full items-center justify-center"
+                      style={{ backgroundColor: accentColor }}
+                    >
+                      <Text className="text-white text-xs">✓</Text>
+                    </View>
+                  )}
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      )}
+
+      {/* Language Picker */}
+      {showLanguagePicker && (
+        <View className="absolute inset-0 bg-black/90 z-50 justify-center items-center">
+          <View className="bg-surface rounded-2xl w-[85%] max-h-[70%] overflow-hidden">
+            <View className="flex-row items-center justify-between p-4 border-b border-white/10">
+              <Text className="text-white text-lg font-bold">App Language</Text>
+              <Pressable
+                onPress={() => setShowLanguagePicker(false)}
+                className="w-8 h-8 items-center justify-center rounded-full bg-white/10"
+              >
+                <Text className="text-white font-bold">X</Text>
+              </Pressable>
+            </View>
+            <ScrollView className="max-h-[400px]">
+              {SUPPORTED_LANGUAGES.map((lang) => (
+                <Pressable
+                  key={lang.code}
+                  onPress={() => {
+                    changeLanguage(lang.code);
+                    setShowLanguagePicker(false);
+                  }}
+                  className="flex-row items-center justify-between px-4 py-3 border-b border-white/5"
+                  style={{
+                    backgroundColor:
+                      (language || i18n.language) === lang.code
+                        ? accentColor + '30'
+                        : 'transparent',
+                  }}
+                >
+                  <View>
+                    <Text className="text-white">{lang.nativeName}</Text>
+                    <Text className="text-text-tertiary text-sm">{lang.name}</Text>
+                  </View>
+                  {(language || i18n.language) === lang.code && (
                     <View
                       className="w-5 h-5 rounded-full items-center justify-center"
                       style={{ backgroundColor: accentColor }}

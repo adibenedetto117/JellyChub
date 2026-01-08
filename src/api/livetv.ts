@@ -328,16 +328,133 @@ export function getLiveHlsStreamUrl(channelId: string): string {
   const state = useAuthStore.getState();
   const server = state.getActiveServer();
   const userId = state.currentUser?.Id;
+  const deviceId = server?.deviceId || 'jellychub-mobile';
 
   const params = new URLSearchParams();
-  if (userId) params.set('userId', userId);
+  if (userId) params.set('UserId', userId);
   if (server?.accessToken) params.set('api_key', server.accessToken);
-  params.set('container', 'ts');
-  params.set('videoCodec', 'h264');
-  params.set('audioCodec', 'aac,mp3,ac3');
-  params.set('transcodingProtocol', 'hls');
-  params.set('segmentContainer', 'ts');
-  params.set('minSegments', '1');
+  params.set('DeviceId', deviceId);
+  params.set('PlaySessionId', `livetv-${channelId}-${Date.now()}`);
+  params.set('Container', 'ts');
+  params.set('VideoCodec', 'h264');
+  params.set('AudioCodec', 'aac,mp3,ac3');
+  params.set('TranscodingProtocol', 'hls');
+  params.set('TranscodingContainer', 'ts');
+  params.set('SegmentContainer', 'ts');
+  params.set('MinSegments', '1');
+  params.set('BreakOnNonKeyFrames', 'True');
+  params.set('MaxStreamingBitrate', '20000000');
 
   return `${jellyfinClient.url}/LiveTv/Channels/${channelId}/stream.m3u8?${params.toString()}`;
+}
+
+// Alternative direct stream URL for Live TV (MP4/TS container)
+export function getLiveDirectStreamUrl(channelId: string): string {
+  if (!jellyfinClient.isInitialized()) {
+    return '';
+  }
+
+  const { useAuthStore } = require('@/stores/authStore');
+  const state = useAuthStore.getState();
+  const server = state.getActiveServer();
+  const userId = state.currentUser?.Id;
+  const deviceId = server?.deviceId || 'jellychub-mobile';
+
+  const params = new URLSearchParams();
+  if (userId) params.set('UserId', userId);
+  if (server?.accessToken) params.set('api_key', server.accessToken);
+  params.set('DeviceId', deviceId);
+  params.set('PlaySessionId', `livetv-${channelId}-${Date.now()}`);
+  params.set('Container', 'ts,mp4');
+  params.set('VideoCodec', 'h264,mpeg2video');
+  params.set('AudioCodec', 'aac,mp3,ac3');
+
+  return `${jellyfinClient.url}/LiveTv/Channels/${channelId}/stream?${params.toString()}`;
+}
+
+// Get recording folders
+export async function getRecordingFolders(): Promise<{ Items: RecordingInfo[]; TotalRecordCount: number }> {
+  const response = await jellyfinClient.api.get('/LiveTv/Recordings/Folders');
+  return response.data;
+}
+
+// Get series timers (recurring recordings)
+export async function getSeriesTimers(): Promise<{ Items: SeriesTimerInfo[]; TotalRecordCount: number }> {
+  const response = await jellyfinClient.api.get('/LiveTv/SeriesTimers');
+  return response.data;
+}
+
+// Create series timer
+export async function createSeriesTimer(programId: string): Promise<void> {
+  const defaults = await jellyfinClient.api.get(`/LiveTv/SeriesTimers/Defaults?programId=${programId}`);
+  await jellyfinClient.api.post('/LiveTv/SeriesTimers', defaults.data);
+}
+
+// Cancel series timer
+export async function cancelSeriesTimer(timerId: string): Promise<void> {
+  await jellyfinClient.api.delete(`/LiveTv/SeriesTimers/${timerId}`);
+}
+
+// Delete recording
+export async function deleteRecording(recordingId: string): Promise<void> {
+  await jellyfinClient.api.delete(`/LiveTv/Recordings/${recordingId}`);
+}
+
+// Get Live TV playback info (similar to regular video)
+export async function getLiveTvPlaybackInfo(channelId: string, userId: string): Promise<any> {
+  const { useAuthStore } = require('@/stores/authStore');
+  const state = useAuthStore.getState();
+  const server = state.getActiveServer();
+  const deviceId = server?.deviceId || 'jellychub-mobile';
+
+  const response = await jellyfinClient.api.post(`/Items/${channelId}/PlaybackInfo`, {
+    UserId: userId,
+    DeviceId: deviceId,
+    MaxStreamingBitrate: 20000000,
+    AutoOpenLiveStream: true,
+    EnableDirectStream: true,
+    EnableDirectPlay: true,
+    DeviceProfile: {
+      MaxStreamingBitrate: 20000000,
+      DirectPlayProfiles: [
+        { Container: 'ts', Type: 'Video', VideoCodec: 'h264,hevc,mpeg2video', AudioCodec: 'aac,mp3,ac3' },
+        { Container: 'mp4', Type: 'Video', VideoCodec: 'h264,hevc', AudioCodec: 'aac,mp3,ac3' },
+      ],
+      TranscodingProfiles: [
+        {
+          Container: 'ts',
+          Type: 'Video',
+          VideoCodec: 'h264',
+          AudioCodec: 'aac,mp3,ac3',
+          Protocol: 'hls',
+          Context: 'Streaming',
+          MaxAudioChannels: '6',
+          MinSegments: 1,
+          BreakOnNonKeyFrames: true,
+        },
+      ],
+      ContainerProfiles: [],
+      CodecProfiles: [],
+      SubtitleProfiles: [],
+    },
+  });
+  return response.data;
+}
+
+export interface SeriesTimerInfo {
+  Id: string;
+  Name: string;
+  ChannelId: string;
+  ChannelName?: string;
+  ProgramId?: string;
+  RecordNewOnly: boolean;
+  Days: string[];
+  DayPattern?: string;
+  StartDate?: string;
+  EndDate?: string;
+  PrePaddingSeconds: number;
+  PostPaddingSeconds: number;
+  Priority: number;
+  Overview?: string;
+  ImageTags?: Record<string, string>;
 }

@@ -8,14 +8,34 @@ import type { JellyseerrRequestBody } from '@/types/jellyseerr';
 function useJellyseerrInit() {
   const jellyseerrUrl = useSettingsStore((s) => s.jellyseerrUrl);
   const jellyseerrAuthToken = useSettingsStore((s) => s.jellyseerrAuthToken);
+  const jellyfinServerUrl = useSettingsStore((s) => s.jellyseerrJellyfinServerUrl);
+  const jellyfinUserId = useSettingsStore((s) => s.jellyseerrJellyfinUserId);
+  const jellyfinToken = useSettingsStore((s) => s.jellyseerrJellyfinToken);
 
   useEffect(() => {
     if (jellyseerrUrl && jellyseerrAuthToken && !jellyseerrClient.isInitialized()) {
-      // If token looks like an API key (not 'jellyfin-auth' or 'local-auth'), use it
-      const isApiKey = jellyseerrAuthToken !== 'jellyfin-auth' && jellyseerrAuthToken !== 'local-auth';
-      jellyseerrClient.initialize(jellyseerrUrl, isApiKey ? jellyseerrAuthToken : undefined);
+      const isJellyfinAuth = jellyseerrAuthToken === 'jellyfin-auth';
+      const isLocalAuth = jellyseerrAuthToken === 'local-auth';
+
+      if (isJellyfinAuth && jellyfinServerUrl && jellyfinUserId && jellyfinToken) {
+        // Re-authenticate with stored Jellyfin credentials
+        jellyseerrClient.initializeWithJellyfin(
+          jellyseerrUrl,
+          jellyfinServerUrl,
+          jellyfinUserId,
+          jellyfinToken
+        ).catch((err) => {
+          console.error('Failed to re-authenticate Jellyseerr with Jellyfin:', err);
+        });
+      } else if (!isJellyfinAuth && !isLocalAuth) {
+        // API key auth - use the token directly
+        jellyseerrClient.initialize(jellyseerrUrl, jellyseerrAuthToken);
+      } else {
+        // Local auth - session may still be valid
+        jellyseerrClient.initialize(jellyseerrUrl);
+      }
     }
-  }, [jellyseerrUrl, jellyseerrAuthToken]);
+  }, [jellyseerrUrl, jellyseerrAuthToken, jellyfinServerUrl, jellyfinUserId, jellyfinToken]);
 }
 
 // Hook to check if Jellyseerr is ready to use

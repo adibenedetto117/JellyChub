@@ -9,6 +9,7 @@ import Animated, {
   useAnimatedStyle,
   withSpring
 } from 'react-native-reanimated';
+import { useTranslation } from 'react-i18next';
 import { useAuthStore, useSettingsStore } from '@/stores';
 import { validateServerUrl, getServerPublicInfo, jellyfinClient } from '@/api';
 import type { ServerInfo } from '@/api';
@@ -105,6 +106,7 @@ function ServerCard({
 }
 
 export default function ServerSelectScreen() {
+  const { t } = useTranslation();
   const [serverUrl, setServerUrl] = useState('');
   const [isValidating, setIsValidating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -158,7 +160,7 @@ export default function ServerSelectScreen() {
 
   const handleAddServer = async () => {
     if (!serverUrl.trim()) {
-      setError('Please enter a server URL');
+      setError(t('auth.invalidUrl'));
       return;
     }
 
@@ -174,7 +176,7 @@ export default function ServerSelectScreen() {
       const serverInfo = await validateServerUrl(url);
 
       if (!serverInfo) {
-        setError('Could not connect to server. Please check the URL.');
+        setError(t('auth.connectionFailed'));
         return;
       }
 
@@ -190,7 +192,7 @@ export default function ServerSelectScreen() {
       setShowAddServer(false);
       router.replace('/(auth)/login');
     } catch {
-      setError('Failed to connect to server');
+      setError(t('auth.connectionFailed'));
     } finally {
       setIsValidating(false);
     }
@@ -245,7 +247,7 @@ export default function ServerSelectScreen() {
         {servers.length > 0 && (
           <Animated.View entering={FadeInDown.delay(200).duration(400)} className="mb-6">
             <Text className="text-text-secondary text-sm font-medium uppercase tracking-wider mb-3">
-              Your Servers
+              {t('auth.savedServers')}
             </Text>
             {servers.map((server, index) => (
               <ServerCard
@@ -267,12 +269,12 @@ export default function ServerSelectScreen() {
             className="bg-surface rounded-2xl p-5 border border-white/5"
           >
             <Text className="text-white text-lg font-semibold mb-4">
-              Connect to Server
+              {t('auth.addServer')}
             </Text>
 
             <View className="mb-4">
               <Text className="text-text-tertiary text-xs uppercase tracking-wider mb-2">
-                Server URL
+                {t('auth.serverUrl')}
               </Text>
               <TextInput
                 className="bg-background-secondary text-white px-4 py-3.5 rounded-xl text-base"
@@ -306,10 +308,10 @@ export default function ServerSelectScreen() {
               {isValidating ? (
                 <View className="flex-row items-center">
                   <ActivityIndicator color="white" size="small" />
-                  <Text className="text-white font-semibold ml-2">Connecting...</Text>
+                  <Text className="text-white font-semibold ml-2">{t('auth.connecting')}</Text>
                 </View>
               ) : (
-                <Text className="text-white font-semibold text-base">Connect</Text>
+                <Text className="text-white font-semibold text-base">{t('auth.connect')}</Text>
               )}
             </Pressable>
 
@@ -322,7 +324,7 @@ export default function ServerSelectScreen() {
                   setServerUrl('');
                 }}
               >
-                <Text className="text-text-secondary">Cancel</Text>
+                <Text className="text-text-secondary">{t('common.cancel')}</Text>
               </Pressable>
             )}
           </Animated.View>
@@ -334,7 +336,7 @@ export default function ServerSelectScreen() {
             >
               <View className="flex-row items-center">
                 <Text className="text-accent text-xl mr-2">+</Text>
-                <Text className="text-accent font-semibold">Add Server</Text>
+                <Text className="text-accent font-semibold">{t('auth.addServer')}</Text>
               </View>
             </Pressable>
           </Animated.View>

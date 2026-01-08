@@ -51,13 +51,7 @@ export const NextUpCard = memo(function NextUpCard({ item, onPress }: Props) {
   }, [scale]);
 
   const getBackdropUrl = () => {
-    if (item.ImageTags?.Primary) {
-      return getImageUrl(item.Id, 'Primary', {
-        maxWidth: dimensions.width * 2,
-        maxHeight: dimensions.height * 2,
-        tag: item.ImageTags.Primary,
-      });
-    }
+    // Prioritize series backdrop (most appropriate for episode cards)
     if (item.ParentBackdropImageTags?.[0] && item.SeriesId) {
       return getImageUrl(item.SeriesId, 'Backdrop', {
         maxWidth: dimensions.width * 2,
@@ -65,11 +59,20 @@ export const NextUpCard = memo(function NextUpCard({ item, onPress }: Props) {
         tag: item.ParentBackdropImageTags[0],
       });
     }
+    // Fallback to series primary image
     if (item.SeriesPrimaryImageTag && item.SeriesId) {
       return getImageUrl(item.SeriesId, 'Primary', {
         maxWidth: dimensions.width * 2,
         maxHeight: dimensions.height * 2,
         tag: item.SeriesPrimaryImageTag,
+      });
+    }
+    // Last resort: episode's own primary image (rarely exists)
+    if (item.ImageTags?.Primary) {
+      return getImageUrl(item.Id, 'Primary', {
+        maxWidth: dimensions.width * 2,
+        maxHeight: dimensions.height * 2,
+        tag: item.ImageTags.Primary,
       });
     }
     return null;

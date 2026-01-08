@@ -24,8 +24,9 @@ import * as ScreenOrientation from 'expo-screen-orientation';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { useAuthStore, useSettingsStore, useLiveTvStore } from '@/stores';
-import { getChannel, getChannels, getLiveHlsStreamUrl } from '@/api';
+import { getChannel, getChannels, getLiveHlsStreamUrl, getLiveDirectStreamUrl, getLiveStreamUrl, getLiveTvPlaybackInfo, jellyfinClient } from '@/api';
 import { goBack } from '@/utils';
 import { colors } from '@/theme';
 import type { LiveTvChannel } from '@/types/livetv';
@@ -33,7 +34,15 @@ import type { LiveTvChannel } from '@/types/livetv';
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const CONTROLS_TIMEOUT = 5000;
 
+// Stream URL generators to try in order (fallbacks)
+const STREAM_URL_GENERATORS = [
+  getLiveHlsStreamUrl,
+  getLiveDirectStreamUrl,
+  getLiveStreamUrl,
+];
+
 export default function LiveTvPlayerScreen() {
+  const { t } = useTranslation();
   const { channelId } = useLocalSearchParams<{ channelId: string }>();
   const currentUser = useAuthStore((s) => s.currentUser);
   const accentColor = useSettingsStore((s) => s.accentColor);
@@ -49,9 +58,12 @@ export default function LiveTvPlayerScreen() {
   const [showChannelList, setShowChannelList] = useState(false);
   const [currentChannelId, setCurrentChannelId] = useState(channelId);
   const [streamUrl, setStreamUrl] = useState<string | null>(null);
+  const [streamError, setStreamError] = useState<string | null>(null);
+  const [streamUrlIndex, setStreamUrlIndex] = useState(0);
+  const [isOrientationLocked, setIsOrientationLocked] = useState(true);
 
   const controlsOpacity = useSharedValue(1);
-  const controlsTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
+  const controlsTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const { data: currentChannel, isLoading: channelLoading } = useQuery({
     queryKey: ['liveTvChannel', currentChannelId, userId],
@@ -68,13 +80,101 @@ export default function LiveTvPlayerScreen() {
 
   const channels = channelsData?.Items ?? [];
 
-  useEffect(() => {
-    if (currentChannelId) {
-      const url = getLiveHlsStreamUrl(currentChannelId);
-      setStreamUrl(url);
-      addRecentChannel(currentChannelId);
+  // Generate stream URL using current index
+  const generateStreamUrl = useCallback((chId: string, urlIndex: number) => {
+    const generator = STREAM_URL_GENERATORS[urlIndex];
+    if (!generator) return null;
+    try {
+      return generator(chId);
+    } catch {
+      return null;
     }
-  }, [currentChannelId, addRecentChannel]);
+  }, []);
+
+  // Try next stream URL when current one fails
+  const tryNextStreamUrl = useCallback(() => {
+    const nextIndex = streamUrlIndex + 1;
+    if (nextIndex < STREAM_URL_GENERATORS.length) {
+      setStreamUrlIndex(nextIndex);
+      setIsBuffering(true);
+      const url = generateStreamUrl(currentChannelId, nextIndex);
+      console.log(`[LiveTV] Trying stream URL format ${nextIndex}:`, url);
+      if (url) {
+        setStreamUrl(url);
+        setStreamError(null);
+      } else {
+        setStreamError('All stream formats failed');
+      }
+    } else {
+      console.log('[LiveTV] All stream formats exhausted');
+      setStreamError('Stream playback failed. Check that Live TV is properly configured on your server.');
+    }
+  }, [streamUrlIndex, currentChannelId, generateStreamUrl]);
+
+  useEffect(() => {
+    if (currentChannelId && userId) {
+      setStreamError(null);
+      setStreamUrlIndex(0);
+      setIsBuffering(true);
+
+      // Try PlaybackInfo approach first
+      const fetchStreamUrl = async () => {
+        try {
+          console.log('[LiveTV] Trying PlaybackInfo approach...');
+          const playbackInfo = await getLiveTvPlaybackInfo(currentChannelId, userId);
+          console.log('[LiveTV] PlaybackInfo response:', playbackInfo);
+
+          if (playbackInfo?.MediaSources?.[0]) {
+            const mediaSource = playbackInfo.MediaSources[0];
+
+            // Check for direct stream URL
+            if (mediaSource.SupportsDirectStream && mediaSource.DirectStreamUrl) {
+              const directUrl = `${jellyfinClient.url}${mediaSource.DirectStreamUrl}`;
+              console.log('[LiveTV] Using DirectStreamUrl:', directUrl);
+              setStreamUrl(directUrl);
+              addRecentChannel(currentChannelId);
+              return;
+            }
+
+            // Check for transcoding URL
+            if (mediaSource.SupportsTranscoding && mediaSource.TranscodingUrl) {
+              const transcodingUrl = `${jellyfinClient.url}${mediaSource.TranscodingUrl}`;
+              console.log('[LiveTV] Using TranscodingUrl:', transcodingUrl);
+              setStreamUrl(transcodingUrl);
+              addRecentChannel(currentChannelId);
+              return;
+            }
+          }
+
+          // Fallback to manual URL generation
+          console.log('[LiveTV] PlaybackInfo did not provide stream URL, falling back to manual URLs');
+          const url = generateStreamUrl(currentChannelId, 0);
+          console.log(`[LiveTV] Trying stream URL format 0:`, url);
+          if (url) {
+            setStreamUrl(url);
+            addRecentChannel(currentChannelId);
+          } else {
+            setStreamError('Failed to generate stream URL');
+            setIsBuffering(false);
+          }
+        } catch (error) {
+          console.error('[LiveTV] PlaybackInfo failed:', error);
+          // Fallback to manual URL generation
+          const url = generateStreamUrl(currentChannelId, 0);
+          console.log(`[LiveTV] Fallback - trying stream URL format 0:`, url);
+          if (url) {
+            setStreamUrl(url);
+            addRecentChannel(currentChannelId);
+          } else {
+            setStreamError('Failed to load stream');
+            setIsBuffering(false);
+          }
+        }
+      };
+
+      fetchStreamUrl();
+    }
+  }, [currentChannelId, userId, addRecentChannel, generateStreamUrl]);
 
   useEffect(() => {
     const setup = async () => {
@@ -101,17 +201,35 @@ export default function LiveTvPlayerScreen() {
     if (!player) return;
 
     const statusSub = player.addListener('statusChange', (event) => {
+      console.log('[LiveTV] Player status:', event.status, event);
       if (event.status === 'readyToPlay') {
         setIsBuffering(false);
+        setStreamError(null);
       } else if (event.status === 'loading') {
         setIsBuffering(true);
+      } else if (event.status === 'error') {
+        console.error('[LiveTV] Player error:', event);
+        setIsBuffering(false);
+        // Try next stream format automatically
+        if (streamUrlIndex < STREAM_URL_GENERATORS.length - 1) {
+          console.log(`Stream format ${streamUrlIndex} failed, trying next...`);
+          tryNextStreamUrl();
+        } else {
+          setStreamError('Stream playback failed - please try again');
+        }
       }
+    });
+
+    // Also listen for playback errors
+    const errorSub = player.addListener('playingChange', (event) => {
+      console.log('[LiveTV] Playing state:', event.isPlaying);
     });
 
     return () => {
       statusSub.remove();
+      errorSub.remove();
     };
-  }, [player]);
+  }, [player, streamUrlIndex, tryNextStreamUrl]);
 
   const hideControls = useCallback(() => {
     controlsOpacity.value = withTiming(0, { duration: 300 });
@@ -171,6 +289,16 @@ export default function LiveTvPlayerScreen() {
     }
   }, [channels, currentChannelId, handleChannelChange]);
 
+  const handleToggleOrientationLock = useCallback(async () => {
+    if (isOrientationLocked) {
+      await ScreenOrientation.unlockAsync();
+      setIsOrientationLocked(false);
+    } else {
+      await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
+      setIsOrientationLocked(true);
+    }
+  }, [isOrientationLocked]);
+
   const tapGesture = Gesture.Tap().onEnd(() => {
     runOnJS(toggleControls)();
   });
@@ -220,7 +348,7 @@ export default function LiveTvPlayerScreen() {
 
       <GestureDetector gesture={tapGesture}>
         <View style={styles.videoContainer}>
-          {streamUrl && (
+          {streamUrl && !streamError && (
             <VideoView
               player={player}
               style={styles.video}
@@ -229,23 +357,51 @@ export default function LiveTvPlayerScreen() {
             />
           )}
 
-          {isBuffering && (
+          {streamError ? (
+            <View style={styles.errorOverlay}>
+              <Ionicons name="alert-circle-outline" size={48} color="rgba(255,255,255,0.6)" />
+              <Text style={styles.errorText}>{streamError}</Text>
+              <Pressable
+                style={[styles.retryButton, { backgroundColor: accentColor }]}
+                onPress={() => {
+                  // Reset and try from the beginning
+                  setStreamError(null);
+                  setIsBuffering(true);
+                  setStreamUrlIndex(0);
+                  setStreamUrl(null);
+                  setTimeout(() => {
+                    const url = generateStreamUrl(currentChannelId, 0);
+                    setStreamUrl(url);
+                  }, 100);
+                }}
+              >
+                <Text style={styles.retryButtonText}>{t('common.retry')}</Text>
+              </Pressable>
+            </View>
+          ) : isBuffering ? (
             <View style={styles.bufferingOverlay}>
               <ActivityIndicator size="large" color={accentColor} />
-              <Text style={styles.bufferingText}>Loading stream...</Text>
+              <Text style={styles.bufferingText}>{t('player.loadingStream')}</Text>
             </View>
-          )}
+          ) : null}
         </View>
       </GestureDetector>
 
       <Animated.View style={[styles.controlsContainer, controlsStyle]}>
         <LinearGradient
-          colors={['rgba(0,0,0,0.8)', 'transparent']}
+          colors={['rgba(0,0,0,0.9)', 'rgba(0,0,0,0.5)', 'transparent']}
           style={styles.topGradient}
         >
-          <View style={[styles.topControls, { paddingTop: insets.top }]}>
-            <Pressable onPress={handleBack} style={styles.controlButton}>
-              <Ionicons name="arrow-back" size={28} color="#fff" />
+          <View style={[
+            styles.topControls,
+            {
+              paddingTop: Math.max(insets.top, 16) + 8,
+              paddingLeft: Math.max(insets.left, 24),
+              paddingRight: Math.max(insets.right, 24),
+            }
+          ]}>
+            <Pressable onPress={handleBack} style={styles.backButton} hitSlop={12}>
+              <Ionicons name="arrow-back" size={26} color="#fff" />
             </Pressable>
 
             <View style={styles.channelInfo}>
@@ -262,32 +418,47 @@ export default function LiveTvPlayerScreen() {
             </View>
 
             <View style={styles.topRightControls}>
-              <Pressable onPress={handleToggleFavorite} style={styles.controlButton}>
+              <Pressable onPress={handleToggleOrientationLock} style={styles.controlButton} hitSlop={8}>
+                <Ionicons
+                  name={isOrientationLocked ? 'lock-closed' : 'lock-open'}
+                  size={20}
+                  color={isOrientationLocked ? accentColor : '#fff'}
+                />
+              </Pressable>
+              <Pressable onPress={handleToggleFavorite} style={styles.controlButton} hitSlop={8}>
                 <Ionicons
                   name={isFavorite ? 'star' : 'star-outline'}
-                  size={24}
+                  size={22}
                   color={isFavorite ? '#FFD700' : '#fff'}
                 />
               </Pressable>
               <Pressable
                 onPress={() => setShowChannelList(!showChannelList)}
                 style={styles.controlButton}
+                hitSlop={8}
               >
-                <Ionicons name="list" size={24} color="#fff" />
+                <Ionicons name="list" size={22} color="#fff" />
               </Pressable>
             </View>
           </View>
         </LinearGradient>
 
         <LinearGradient
-          colors={['transparent', 'rgba(0,0,0,0.8)']}
+          colors={['transparent', 'rgba(0,0,0,0.5)', 'rgba(0,0,0,0.9)']}
           style={styles.bottomGradient}
         >
-          <View style={[styles.bottomControls, { paddingBottom: insets.bottom + 16 }]}>
+          <View style={[
+            styles.bottomControls,
+            {
+              paddingBottom: Math.max(insets.bottom, 16) + 12,
+              paddingLeft: Math.max(insets.left, 24),
+              paddingRight: Math.max(insets.right, 24),
+            }
+          ]}>
             {currentProgram && (
               <View style={styles.programInfo}>
                 <View style={[styles.liveBadge, { backgroundColor: accentColor }]}>
-                  <Text style={styles.liveBadgeText}>LIVE</Text>
+                  <Text style={styles.liveBadgeText}>{t('player.live')}</Text>
                 </View>
                 <Text style={styles.programTitle} numberOfLines={1}>
                   {currentProgram.Name}
@@ -321,7 +492,7 @@ export default function LiveTvPlayerScreen() {
       {showChannelList && (
         <Animated.View style={styles.channelListContainer}>
           <View style={styles.channelListHeader}>
-            <Text style={styles.channelListTitle}>Channels</Text>
+            <Text style={styles.channelListTitle}>{t('liveTV.channels')}</Text>
             <Pressable onPress={() => setShowChannelList(false)} style={styles.closeButton}>
               <Ionicons name="close" size={24} color="#fff" />
             </Pressable>
@@ -373,47 +544,84 @@ const styles = StyleSheet.create({
     marginTop: 12,
     fontSize: 14,
   },
+  errorOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.8)',
+    gap: 16,
+  },
+  errorText: {
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: 16,
+    textAlign: 'center',
+  },
+  retryButton: {
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+    marginTop: 8,
+  },
+  retryButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
   controlsContainer: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'space-between',
   },
   topGradient: {
-    paddingHorizontal: 16,
+    paddingBottom: 40,
   },
   topControls: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingTop: 16,
+  },
+  backButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   controlButton: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0,0,0,0.6)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   channelInfo: {
     flex: 1,
     alignItems: 'center',
+    paddingHorizontal: 16,
   },
   channelName: {
     color: '#fff',
     fontSize: 18,
     fontWeight: '600',
+    textShadowColor: 'rgba(0,0,0,0.8)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
   },
   channelNumberBadge: {
-    color: 'rgba(255,255,255,0.7)',
+    color: 'rgba(255,255,255,0.8)',
     fontSize: 12,
-    marginTop: 2,
+    marginTop: 4,
+    textShadowColor: 'rgba(0,0,0,0.8)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
   },
   topRightControls: {
     flexDirection: 'row',
-    gap: 8,
+    gap: 12,
   },
   bottomGradient: {
-    paddingHorizontal: 16,
+    paddingTop: 40,
   },
   bottomControls: {
     flexDirection: 'row',
@@ -422,38 +630,45 @@ const styles = StyleSheet.create({
   },
   programInfo: {
     flex: 1,
-    marginRight: 16,
+    marginRight: 20,
   },
   liveBadge: {
     alignSelf: 'flex-start',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     borderRadius: 4,
-    marginBottom: 8,
+    marginBottom: 10,
   },
   liveBadgeText: {
     color: '#fff',
     fontSize: 11,
     fontWeight: '700',
+    letterSpacing: 0.5,
   },
   programTitle: {
     color: '#fff',
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: '600',
+    textShadowColor: 'rgba(0,0,0,0.8)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
   },
   programTime: {
-    color: 'rgba(255,255,255,0.7)',
-    fontSize: 13,
-    marginTop: 4,
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: 14,
+    marginTop: 6,
+    textShadowColor: 'rgba(0,0,0,0.8)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
   },
   channelNavigation: {
-    gap: 8,
+    gap: 10,
   },
   navButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: 'rgba(0,0,0,0.6)',
     alignItems: 'center',
     justifyContent: 'center',
   },

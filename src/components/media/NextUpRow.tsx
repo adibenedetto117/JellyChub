@@ -1,6 +1,7 @@
 import { View, Text, FlatList, StyleSheet } from 'react-native';
 import { memo, useCallback } from 'react';
 import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { NextUpCard } from './NextUpCard';
 import { useResponsive } from '@/hooks';
 import { useSettingsStore } from '@/stores';
@@ -14,6 +15,7 @@ interface Props {
 const ITEM_WIDTH = 314;
 
 export const NextUpRow = memo(function NextUpRow({ items, onItemPress }: Props) {
+  const { t } = useTranslation();
   const { isTablet, isTV, fontSize } = useResponsive();
   const accentColor = useSettingsStore((s) => s.accentColor);
 
@@ -42,9 +44,9 @@ export const NextUpRow = memo(function NextUpRow({ items, onItemPress }: Props) 
       <View style={[styles.header, { paddingHorizontal: horizontalPadding, marginBottom: headerMarginBottom }]}>
         <View style={styles.headerLeft}>
           <Ionicons name="arrow-forward-circle" size={22} color={accentColor} />
-          <Text style={[styles.title, { fontSize: fontSize.lg }]}>Next Up</Text>
+          <Text style={[styles.title, { fontSize: fontSize.lg }]}>{t('home.upNext')}</Text>
         </View>
-        <Text style={[styles.itemCount, { fontSize: fontSize.sm }]}>{items.length} episodes</Text>
+        <Text style={[styles.itemCount, { fontSize: fontSize.sm }]}>{t('common.episodeCount', { count: items.length })}</Text>
       </View>
 
       <FlatList

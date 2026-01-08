@@ -3,6 +3,7 @@ import { View, Text, TextInput, FlatList, Pressable, ActivityIndicator } from 'r
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { useAuthStore, useSettingsStore } from '@/stores';
 import { search, getImageUrl } from '@/api';
 import { CachedImage } from '@/components/ui/CachedImage';
@@ -11,6 +12,7 @@ import { getDisplayName, getDisplayImageUrl } from '@/utils';
 import type { SearchHint } from '@/types/jellyfin';
 
 export default function SearchScreen() {
+  const { t } = useTranslation();
   const [query, setQuery] = useState('');
   const currentUser = useAuthStore((state) => state.currentUser);
   const accentColor = useSettingsStore((s) => s.accentColor);
@@ -46,38 +48,38 @@ export default function SearchScreen() {
 
   // Memoize navigation handler
   const handleItemPress = useCallback((item: SearchHint) => {
-    const t = item.Type.toLowerCase();
-    if (t === 'audio') {
+    const itemType = item.Type.toLowerCase();
+    if (itemType === 'audio') {
       router.push(`/player/music?itemId=${item.Id}`);
-    } else if (t === 'audiobook') {
+    } else if (itemType === 'audiobook') {
       router.push(`/player/audiobook?itemId=${item.Id}`);
-    } else if (t === 'book') {
+    } else if (itemType === 'book') {
       const container = (item as any).Container?.toLowerCase() || '';
       const path = (item as any).Path?.toLowerCase() || '';
       const isPdf = container === 'pdf' || path.endsWith('.pdf');
       router.push(isPdf ? `/reader/pdf?itemId=${item.Id}` : `/reader/epub?itemId=${item.Id}`);
-    } else if (t === 'musicartist') {
-      router.push(`/(tabs)/details/artist/${item.Id}`);
-    } else if (t === 'musicalbum') {
-      router.push(`/(tabs)/details/album/${item.Id}`);
+    } else if (itemType === 'musicartist') {
+      router.push(`/details/artist/${item.Id}`);
+    } else if (itemType === 'musicalbum') {
+      router.push(`/details/album/${item.Id}`);
     } else {
-      router.push(`/(tabs)/details/${t}/${item.Id}`);
+      router.push(`/details/${itemType}/${item.Id}`);
     }
   }, []);
 
   // Memoize label getter
   const getLabel = useCallback((item: SearchHint) => {
-    const t = (item.Type || '').toLowerCase();
-    switch (t) {
-      case 'musicartist': return 'Artist';
-      case 'musicalbum': return item.AlbumArtist ? `Album by ${item.AlbumArtist}` : 'Album';
-      case 'audio': return item.AlbumArtist || item.Artists?.[0] || 'Song';
-      case 'movie': return item.ProductionYear ? `Movie (${item.ProductionYear})` : 'Movie';
-      case 'series': return item.ProductionYear ? `Series (${item.ProductionYear})` : 'Series';
-      case 'episode': return item.Series || 'Episode';
+    const itemType = (item.Type || '').toLowerCase();
+    switch (itemType) {
+      case 'musicartist': return t('search.artistLabel');
+      case 'musicalbum': return item.AlbumArtist ? t('search.albumBy', { artist: item.AlbumArtist }) : t('search.albumLabel');
+      case 'audio': return item.AlbumArtist || item.Artists?.[0] || t('search.songLabel');
+      case 'movie': return item.ProductionYear ? `${t('mediaTypes.movie')} (${item.ProductionYear})` : t('mediaTypes.movie');
+      case 'series': return item.ProductionYear ? `${t('mediaTypes.series')} (${item.ProductionYear})` : t('mediaTypes.series');
+      case 'episode': return item.Series || t('mediaTypes.episode');
       default: return item.Type;
     }
-  }, []);
+  }, [t]);
 
   // Memoize renderItem to prevent unnecessary re-renders
   const renderItem = useCallback(({ item }: { item: SearchHint }) => {
@@ -117,12 +119,12 @@ export default function SearchScreen() {
   return (
     <SafeAreaView className="flex-1 bg-background" edges={['top']}>
       <View className="px-4 py-4">
-        <Text style={{ color: '#fff', fontSize: 28, fontWeight: '700', marginBottom: 16 }}>Search</Text>
+        <Text style={{ color: '#fff', fontSize: 28, fontWeight: '700', marginBottom: 16 }}>{t('search.title')}</Text>
 
         <View className="bg-surface rounded-xl flex-row items-center px-4">
           <TextInput
             className="flex-1 text-white py-3"
-            placeholder="Search movies, shows, music..."
+            placeholder={t('search.placeholder')}
             placeholderTextColor="rgba(255,255,255,0.3)"
             value={query}
             onChangeText={setQuery}
@@ -143,11 +145,11 @@ export default function SearchScreen() {
 
       {query.length < 2 ? (
         <View className="flex-1 items-center justify-center">
-          <Text className="text-text-tertiary">Start typing to search</Text>
+          <Text className="text-text-tertiary">{t('search.startTyping')}</Text>
         </View>
       ) : results.length === 0 && !isLoading ? (
         <View className="flex-1 items-center justify-center">
-          <Text className="text-text-tertiary">No results found</Text>
+          <Text className="text-text-tertiary">{t('common.noResults')}</Text>
         </View>
       ) : (
         <FlatList
@@ -159,7 +161,7 @@ export default function SearchScreen() {
           ListHeaderComponent={
             results.length > 0 ? (
               <Text className="text-text-secondary text-sm mb-3">
-                {results.length} results
+                {t('search.resultsCount', { count: results.length })}
               </Text>
             ) : null
           }

@@ -18,7 +18,7 @@ import {
 import { SearchButton } from '@/components/ui';
 import { FilterSortModal, DEFAULT_FILTERS, getActiveFilterCount } from '@/components/library';
 import type { FilterOptions, SortOption } from '@/components/library';
-import { getDisplayName, getDisplayImageUrl, goBack } from '@/utils';
+import { getDisplayName, getDisplayImageUrl, goBack, navigateToDetails } from '@/utils';
 import { colors } from '@/theme';
 import type { BaseItem } from '@/types/jellyfin';
 
@@ -159,7 +159,7 @@ function AlphabetScroller({ availableLetters, onLetterPress, accentColor }: { av
 }
 
 export default function LibraryDetailScreen() {
-  const { id: libraryId } = useLocalSearchParams<{ id: string }>();
+  const { id: libraryId, from } = useLocalSearchParams<{ id: string; from?: string }>();
   const [refreshing, setRefreshing] = useState(false);
   const [filters, setFilters] = useState<FilterOptions>(DEFAULT_FILTERS);
   const [showFilterModal, setShowFilterModal] = useState(false);
@@ -298,23 +298,19 @@ export default function LibraryDetailScreen() {
 
   const handleItemPress = (item: BaseItem) => {
     const type = item.Type?.toLowerCase();
-    if (type === 'movie') {
-      router.push(`/(tabs)/details/movie/${item.Id}`);
-    } else if (type === 'series') {
-      router.push(`/(tabs)/details/series/${item.Id}`);
-    } else if (type === 'musicalbum') {
-      router.push(`/(tabs)/details/album/${item.Id}`);
-    } else if (type === 'audiobook') {
+    // Navigate to this collection screen so back returns here
+    const sourceRoute = `/library/${libraryId}`;
+    if (type === 'audiobook') {
       router.push(`/player/audiobook?itemId=${item.Id}`);
     } else if (type === 'book') {
       const container = (item as any).Container?.toLowerCase() || '';
       const path = (item as any).Path?.toLowerCase() || '';
       const isPdf = container === 'pdf' || path.endsWith('.pdf');
       router.push(isPdf ? `/reader/pdf?itemId=${item.Id}` : `/reader/epub?itemId=${item.Id}`);
-    } else if (type === 'boxset') {
-      router.push(`/(tabs)/details/boxset/${item.Id}`);
     } else {
-      router.push(`/(tabs)/details/${type}/${item.Id}`);
+      // For detail routes, use navigateToDetails with source tracking
+      const detailType = type === 'musicalbum' ? 'album' : type;
+      navigateToDetails(detailType || 'item', item.Id, sourceRoute);
     }
   };
 
@@ -438,7 +434,7 @@ export default function LibraryDetailScreen() {
       <View style={styles.header}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
           <Pressable
-            onPress={() => goBack('/(tabs)/library')}
+            onPress={() => goBack(from, '/(tabs)/library')}
             style={styles.backButton}
           >
             <Ionicons name="chevron-back" size={24} color="#fff" />

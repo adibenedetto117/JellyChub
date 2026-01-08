@@ -4,9 +4,11 @@ import { useQuery, useQueries } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { useAuthStore, useSettingsStore } from '@/stores';
 import { useResponsive } from '@/hooks';
 import { isTV } from '@/utils/platform';
+import { navigateToDetails } from '@/utils';
 import {
   getResumeItems,
   getNextUp,
@@ -42,13 +44,14 @@ const DISPLAYABLE_COLLECTION_TYPES = [
 ];
 
 // Collection types that should NOT show "Latest" sections
-const EXCLUDED_COLLECTION_TYPES = ['playlists'];
+const EXCLUDED_COLLECTION_TYPES = ['playlists', 'livetv'];
 
 export default function HomeScreen() {
   if (isTV) {
     return <TVHomeScreen />;
   }
 
+  const { t } = useTranslation();
   const [refreshing, setRefreshing] = useState(false);
   const { isTablet, isTV: isResponsiveTV, fontSize } = useResponsive();
   const currentUser = useAuthStore((state) => state.currentUser);
@@ -68,8 +71,7 @@ export default function HomeScreen() {
     queryKey: ['resume', userId],
     queryFn: () => getResumeItems(userId, 12),
     enabled: !!userId,
-    staleTime: 1000 * 30, // 30 seconds - refetch when returning from player
-    refetchOnMount: 'always',
+    staleTime: 1000 * 30, // 30 seconds - refetch when stale
   });
 
   const { data: nextUp, refetch: refetchNextUp, isLoading: isLoadingNextUp } = useQuery({
@@ -77,7 +79,6 @@ export default function HomeScreen() {
     queryFn: () => getNextUp(userId),
     enabled: !!userId,
     staleTime: 1000 * 30,
-    refetchOnMount: 'always',
   });
 
   const { data: suggestions, refetch: refetchSuggestions, isLoading: isLoadingSuggestions } = useQuery({
@@ -158,11 +159,11 @@ export default function HomeScreen() {
   const handleItemPress = useCallback((item: BaseItem) => {
     const type = item.Type?.toLowerCase();
     if (type === 'movie') {
-      router.push(`/(tabs)/details/movie/${item.Id}`);
+      navigateToDetails('movie', item.Id, '/(tabs)/home');
     } else if (type === 'series') {
-      router.push(`/(tabs)/details/series/${item.Id}`);
+      navigateToDetails('series', item.Id, '/(tabs)/home');
     } else if (type === 'musicalbum') {
-      router.push(`/(tabs)/details/album/${item.Id}`);
+      navigateToDetails('album', item.Id, '/(tabs)/home');
     } else if (type === 'audio') {
       router.push(`/player/music?itemId=${item.Id}`);
     } else if (type === 'audiobook') {
@@ -173,13 +174,13 @@ export default function HomeScreen() {
       const isPdf = container === 'pdf' || path.endsWith('.pdf');
       router.push(isPdf ? `/reader/pdf?itemId=${item.Id}` : `/reader/epub?itemId=${item.Id}`);
     } else {
-      router.push(`/(tabs)/details/${type}/${item.Id}`);
+      navigateToDetails(type || 'item', item.Id, '/(tabs)/home');
     }
   }, []);
 
   const handleEpisodePress = useCallback((item: Episode) => {
     if (item.SeriesId) {
-      router.push(`/(tabs)/details/series/${item.SeriesId}`);
+      navigateToDetails('series', item.SeriesId, '/(tabs)/home');
     }
   }, []);
 
@@ -188,8 +189,28 @@ export default function HomeScreen() {
     if (type === 'movie') {
       router.push(`/player/video?itemId=${item.Id}`);
     } else if (type === 'series') {
-      router.push(`/(tabs)/details/series/${item.Id}`);
+      navigateToDetails('series', item.Id, '/(tabs)/home');
     }
+  }, []);
+
+  // Resume playback for Continue Watching items - goes directly to player
+  const handleResumePress = useCallback((item: BaseItem) => {
+    const type = item.Type?.toLowerCase();
+    if (type === 'movie' || type === 'episode') {
+      router.push(`/player/video?itemId=${item.Id}`);
+    } else if (type === 'audio') {
+      router.push(`/player/music?itemId=${item.Id}`);
+    } else if (type === 'audiobook') {
+      router.push(`/player/audiobook?itemId=${item.Id}`);
+    } else {
+      // Fallback to details for unknown types
+      handleItemPress(item);
+    }
+  }, [handleItemPress]);
+
+  // Play next episode - goes directly to player
+  const handleNextEpisodePlay = useCallback((item: Episode) => {
+    router.push(`/player/video?itemId=${item.Id}`);
   }, []);
 
   const heroItems = useMemo(() => {
@@ -218,11 +239,11 @@ export default function HomeScreen() {
 
     switch (collectionType) {
       case 'movies':
-        return 'Latest Movies';
+        return t('home.latestMovies');
       case 'tvshows':
-        return 'Latest TV Shows';
+        return t('home.latestShows');
       case 'music':
-        return 'Recently Added Music';
+        return t('home.recentlyAddedMusic');
       case 'books':
         return 'New Books';
       case 'audiobooks':
@@ -234,13 +255,28 @@ export default function HomeScreen() {
       default:
         return `Latest ${label}`;
     }
-  }, []);
+  }, [t]);
 
   const showHero = heroItems.length > 0 && !isLoadingResume;
 
   return (
     <SafeAreaView style={styles.container} edges={showHero ? [] : ['top']}>
       <AnimatedGradient intensity="subtle" />
+      {showHero && (
+        <View style={styles.floatingHeader}>
+          <SafeAreaView edges={['top']} style={styles.floatingHeaderInner}>
+            <View style={styles.floatingHeaderContent}>
+              <View style={{ flex: 1 }} />
+              <Pressable
+                style={styles.floatingSearchButton}
+                onPress={() => router.push('/(tabs)/search')}
+              >
+                <Ionicons name="search" size={22} color="#fff" />
+              </Pressable>
+            </View>
+          </SafeAreaView>
+        </View>
+      )}
       <ScrollView
         style={styles.scrollView}
         refreshControl={
@@ -260,7 +296,7 @@ export default function HomeScreen() {
         ) : (
           <View style={[styles.header, { paddingHorizontal: horizontalPadding, paddingTop: isTablet ? 20 : 16 }]}>
             <View style={styles.headerLeft}>
-              <Text style={[styles.headerTitle, { fontSize: fontSize['2xl'] }]}>Home</Text>
+              <Text style={[styles.headerTitle, { fontSize: fontSize['2xl'] }]}>{t('nav.home')}</Text>
             </View>
             <SearchButton />
           </View>
@@ -273,21 +309,21 @@ export default function HomeScreen() {
               onPress={() => router.push('/(tabs)/search')}
             >
               <Ionicons name="search" size={18} color={accentColor} />
-              <Text style={[styles.quickActionText, { color: accentColor }]}>Search</Text>
+              <Text style={[styles.quickActionText, { color: accentColor }]}>{t('nav.search')}</Text>
             </Pressable>
             <Pressable
               style={styles.quickActionButton}
               onPress={() => router.push('/(tabs)/library')}
             >
               <Ionicons name="library-outline" size={18} color="rgba(255,255,255,0.8)" />
-              <Text style={styles.quickActionText}>Library</Text>
+              <Text style={styles.quickActionText}>{t('nav.library')}</Text>
             </Pressable>
             <Pressable
               style={styles.quickActionButton}
               onPress={() => router.push('/(tabs)/favorites')}
             >
               <Ionicons name="heart-outline" size={18} color="rgba(255,255,255,0.8)" />
-              <Text style={styles.quickActionText}>Favorites</Text>
+              <Text style={styles.quickActionText}>{t('nav.favorites')}</Text>
             </Pressable>
           </View>
         )}
@@ -297,7 +333,7 @@ export default function HomeScreen() {
         ) : (resumeItems?.Items?.length ?? 0) > 0 ? (
           <ContinueWatching
             items={resumeItems?.Items ?? []}
-            onItemPress={handleItemPress}
+            onItemPress={handleResumePress}
           />
         ) : null}
 
@@ -306,13 +342,13 @@ export default function HomeScreen() {
         ) : (nextUp?.Items?.length ?? 0) > 0 ? (
           <NextUpRow
             items={nextUp?.Items ?? []}
-            onItemPress={handleEpisodePress}
+            onItemPress={handleNextEpisodePlay}
           />
         ) : null}
 
         {favoriteMovies.length > 0 && (
           <MediaRow
-            title="Favorite Movies"
+            title={t('home.favoriteMovies')}
             items={favoriteMovies}
             onItemPress={handleItemPress}
             icon="heart"
@@ -321,7 +357,7 @@ export default function HomeScreen() {
 
         {favoriteSeries.length > 0 && (
           <MediaRow
-            title="Favorite Shows"
+            title={t('home.favoriteShows')}
             items={favoriteSeries}
             onItemPress={handleItemPress}
             icon="heart"
@@ -332,7 +368,7 @@ export default function HomeScreen() {
           <SkeletonRow cardWidth={130} cardHeight={195} count={4} />
         ) : (suggestions?.length ?? 0) > 0 ? (
           <MediaRow
-            title="Recommended For You"
+            title={t('home.recommendedForYou')}
             items={suggestions ?? []}
             onItemPress={handleItemPress}
             icon="sparkles"
@@ -379,6 +415,31 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
+  },
+  floatingHeader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 10,
+  },
+  floatingHeaderInner: {
+    backgroundColor: 'transparent',
+  },
+  floatingHeaderContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  floatingSearchButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   header: {
     flexDirection: 'row',

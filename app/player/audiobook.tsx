@@ -14,6 +14,7 @@ import Animated, {
   runOnJS,
 } from 'react-native-reanimated';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
+import { useTranslation } from 'react-i18next';
 import { useAuthStore, usePlayerStore, useSettingsStore, useDownloadStore } from '@/stores';
 import { useReadingProgressStore } from '@/stores/readingProgressStore';
 import { downloadManager } from '@/services';
@@ -46,6 +47,7 @@ interface Chapter {
 type ModalView = 'none' | 'chapters' | 'bookmarks' | 'sleep' | 'speed';
 
 export default function AudiobookPlayerScreen() {
+  const { t } = useTranslation();
   const { itemId, startPosition } = useLocalSearchParams<{ itemId: string; startPosition?: string }>();
   const bookmarkStartPosition = startPosition ? parseInt(startPosition, 10) : undefined;
   const currentUser = useAuthStore((state) => state.currentUser);
@@ -107,10 +109,10 @@ export default function AudiobookPlayerScreen() {
     : null;
   const coverUrl = getDisplayImageUrl(item?.Id ?? '', rawCoverUrl, hideMedia, 'Primary');
 
-  const displayName = item ? getDisplayName(item, hideMedia) : 'Unknown';
-  const rawArtists = (item as any)?.Artists || [(item as any)?.AlbumArtist || 'Unknown Author'];
+  const displayName = item ? getDisplayName(item, hideMedia) : t('player.unknownTrack');
+  const rawArtists = (item as any)?.Artists || [(item as any)?.AlbumArtist || ''];
   const displayArtists = getDisplayArtist(rawArtists, hideMedia);
-  const displayAuthor = displayArtists[0] ?? 'Unknown Author';
+  const displayAuthor = displayArtists[0] ?? t('player.unknownArtist');
 
   // Track if we've already parsed chapters for this item
   const chaptersParsedForRef = useRef<string | null>(null);
@@ -523,7 +525,7 @@ export default function AudiobookPlayerScreen() {
       return (
         <View style={styles.emptyState}>
           <ActivityIndicator size="large" color={accentColor} />
-          <Text style={styles.emptyStateText}>Loading chapters...</Text>
+          <Text style={styles.emptyStateText}>{t('player.loadingChapters')}</Text>
           <Text style={styles.emptyStateSubtext}>Parsing chapter data from file</Text>
         </View>
       );
@@ -569,7 +571,7 @@ export default function AudiobookPlayerScreen() {
         ListEmptyComponent={
           <View style={styles.emptyState}>
             <Ionicons name="list" size={48} color="rgba(255,255,255,0.3)" />
-            <Text style={styles.emptyStateText}>No chapters found</Text>
+            <Text style={styles.emptyStateText}>{t('player.noChapters')}</Text>
             <Text style={styles.emptyStateSubtext}>This audiobook doesn't have chapter markers</Text>
           </View>
         }
@@ -584,13 +586,13 @@ export default function AudiobookPlayerScreen() {
         style={[styles.addBookmarkButton, { backgroundColor: accentColor }]}
       >
         <Ionicons name="add" size={20} color="#fff" />
-        <Text style={styles.addBookmarkText}>Add Bookmark</Text>
+        <Text style={styles.addBookmarkText}>{t('player.addBookmark')}</Text>
       </Pressable>
 
       {itemBookmarks.length === 0 ? (
         <View style={styles.emptyState}>
           <Ionicons name="bookmark" size={48} color="rgba(255,255,255,0.3)" />
-          <Text style={styles.emptyStateText}>No bookmarks yet</Text>
+          <Text style={styles.emptyStateText}>{t('player.noBookmarks')}</Text>
           <Text style={styles.emptyStateSubtext}>Tap the button above to add one</Text>
         </View>
       ) : (
@@ -707,7 +709,7 @@ export default function AudiobookPlayerScreen() {
             </Pressable>
 
             <View style={styles.headerCenter}>
-              <Text style={styles.headerLabel}>Now Playing</Text>
+              <Text style={styles.headerLabel}>{t('player.nowPlaying')}</Text>
               {currentChapter && (
                 <Text style={styles.headerChapter} numberOfLines={1}>
                   {hideMedia ? `Chapter ${chapters.indexOf(currentChapter) + 1}` : (currentChapter.Name || 'Chapter')}
@@ -901,10 +903,10 @@ export default function AudiobookPlayerScreen() {
                       <View style={styles.modalHandleBar} />
                     </View>
                     <Text style={styles.modalTitle}>
-                      {modalView === 'chapters' && 'Chapters'}
-                      {modalView === 'bookmarks' && 'Bookmarks'}
-                      {modalView === 'sleep' && 'Sleep Timer'}
-                      {modalView === 'speed' && 'Playback Speed'}
+                      {modalView === 'chapters' && t('player.chapters')}
+                      {modalView === 'bookmarks' && t('player.bookmarks')}
+                      {modalView === 'sleep' && t('player.sleepTimer')}
+                      {modalView === 'speed' && t('player.playbackSpeed')}
                     </Text>
                   </View>
                 </GestureDetector>

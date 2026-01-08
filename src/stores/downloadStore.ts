@@ -14,7 +14,7 @@ interface DownloadState {
   maxStorage: number; // in bytes
 
   // Actions
-  addDownload: (item: BaseItem, serverId: string, totalBytes: number) => string;
+  addDownload: (item: BaseItem, serverId: string, totalBytes: number, quality?: 'original' | 'high' | 'medium' | 'low') => string;
   updateDownloadProgress: (id: string, downloadedBytes: number) => void;
   setDownloadStatus: (
     id: string,
@@ -48,7 +48,7 @@ export const useDownloadStore = create<DownloadState>()(
       usedStorage: 0,
       maxStorage: 50 * 1024 * 1024 * 1024, // 50 GB default
 
-      addDownload: (item, serverId, totalBytes) => {
+      addDownload: (item, serverId, totalBytes, quality) => {
         const id = `download_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 
         const download: DownloadItem = {
@@ -61,6 +61,7 @@ export const useDownloadStore = create<DownloadState>()(
           totalBytes,
           downloadedBytes: 0,
           createdAt: new Date().toISOString(),
+          quality,
         };
 
         set((state) => ({

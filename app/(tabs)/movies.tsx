@@ -10,7 +10,7 @@ import { getLibraries, getItems, getImageUrl, getLibraryIdsByType, getItemsFromM
 import { SearchButton, AnimatedGradient } from '@/components/ui';
 import { FilterSortModal, DEFAULT_FILTERS, getActiveFilterCount } from '@/components/library';
 import type { FilterOptions, SortOption } from '@/components/library';
-import { getDisplayName, getDisplayImageUrl } from '@/utils';
+import { getDisplayName, getDisplayImageUrl, navigateToDetails } from '@/utils';
 import { colors } from '@/theme';
 import type { BaseItem, Movie } from '@/types/jellyfin';
 
@@ -256,7 +256,7 @@ export default function MoviesScreen() {
   }, [refetch]);
 
   const handleItemPress = useCallback((item: BaseItem) => {
-    router.push(`/(tabs)/details/movie/${item.Id}`);
+    navigateToDetails('movie', item.Id, '/(tabs)/movies');
   }, []);
 
   const handleFiltersApply = useCallback((newFilters: FilterOptions) => {

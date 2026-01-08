@@ -3,6 +3,7 @@ import { memo, useCallback, useMemo } from 'react';
 import Animated, { FadeIn, useSharedValue, useAnimatedStyle, withSpring } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { getImageUrl } from '@/api';
 import { formatDuration, getWatchProgress, formatEpisodeNumber, ticksToMs, getDisplayName, getDisplayImageUrl, getDisplaySeriesName, getDisplayYear } from '@/utils';
 import { CachedImage } from '@/components/ui/CachedImage';
@@ -119,9 +120,6 @@ const ContinueCard = memo(function ContinueCard({ item, onPress, cardWidth, card
                 {remainingTime} left
               </Text>
             </View>
-            <View style={[styles.resumeButton, { backgroundColor: accentColor }]}>
-              <Text style={[styles.resumeText, { fontSize: fontSize.xs }]}>Resume</Text>
-            </View>
           </View>
         </View>
       </Animated.View>
@@ -133,6 +131,7 @@ export const ContinueWatching = memo(function ContinueWatching({
   items,
   onItemPress,
 }: Props) {
+  const { t } = useTranslation();
   const { isTablet, isTV, fontSize } = useResponsive();
   const accentColor = useSettingsStore((s) => s.accentColor);
   const hideMedia = useSettingsStore((s) => s.hideMedia);
@@ -170,9 +169,9 @@ export const ContinueWatching = memo(function ContinueWatching({
       <View style={[styles.header, { paddingHorizontal: horizontalPadding }]}>
         <View style={styles.headerLeft}>
           <Ionicons name="play-circle" size={22} color={accentColor} />
-          <Text style={[styles.title, { fontSize: fontSize.lg }]}>Continue Watching</Text>
+          <Text style={[styles.title, { fontSize: fontSize.lg }]}>{t('home.continueWatching')}</Text>
         </View>
-        <Text style={[styles.itemCount, { fontSize: fontSize.sm }]}>{items.length} items</Text>
+        <Text style={[styles.itemCount, { fontSize: fontSize.sm }]}>{t('common.itemCount', { count: items.length })}</Text>
       </View>
 
       <FlatList
@@ -273,15 +272,6 @@ const styles = StyleSheet.create({
   },
   remainingText: {
     color: 'rgba(255,255,255,0.5)',
-  },
-  resumeButton: {
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 6,
-  },
-  resumeText: {
-    fontWeight: '600',
-    color: '#fff',
   },
   header: {
     flexDirection: 'row',

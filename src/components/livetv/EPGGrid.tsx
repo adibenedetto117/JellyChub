@@ -72,7 +72,7 @@ function getProgramOffset(program: LiveTvProgram, startTime: Date): number {
 
 const TimeHeader = memo(function TimeHeader({ timeSlots }: { timeSlots: TimeSlot[] }) {
   return (
-    <View style={styles.timeHeader}>
+    <View style={styles.header}>
       <View style={styles.channelColumnHeader} />
       <ScrollView horizontal showsHorizontalScrollIndicator={false} scrollEnabled={false}>
         <View style={styles.timeSlotContainer}>

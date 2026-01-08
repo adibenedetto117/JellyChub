@@ -19,7 +19,7 @@ export function useDeepLinking() {
       if (path.startsWith('details/')) {
         const [, type, id] = path.split('/');
         if (type && id) {
-          router.push(`/(tabs)/details/${type}/${id}`);
+          router.push(`/details/${type}/${id}`);
         }
       } else if (path.startsWith('player/video')) {
         const itemId = params?.itemId;
