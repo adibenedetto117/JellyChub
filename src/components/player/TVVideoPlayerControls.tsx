@@ -1,9 +1,11 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
-import { View, Text, Pressable } from 'react-native';
+import { useState, useCallback, useEffect } from 'react';
+import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withTiming,
+  withSequence,
+  runOnJS,
 } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -13,50 +15,28 @@ import { formatPlayerTime } from '@/utils';
 import { TVFocusableButton } from '@/components/tv';
 
 interface TVVideoPlayerControlsProps {
-  /** Current playback state */
   isPlaying: boolean;
-  /** Whether content is currently loading/buffering */
   isLoading: boolean;
-  /** Play/Pause handler */
   onPlayPause: () => void;
-  /** Seek backward handler */
   onSeekBack: () => void;
-  /** Seek forward handler */
   onSeekForward: () => void;
-  /** Close player handler */
   onClose: () => void;
-  /** Current progress in milliseconds */
   position: number;
-  /** Total duration in milliseconds */
   duration: number;
-  /** Buffered position in milliseconds */
   buffered: number;
-  /** Title to display */
   title: string;
-  /** Optional subtitle (e.g., "S1 E5 - Episode Title") */
   subtitle?: string;
-  /** Handler for subtitle toggle */
   onSubtitlePress?: () => void;
-  /** Handler for audio track toggle */
   onAudioPress?: () => void;
-  /** Handler for speed selection */
   onSpeedPress?: () => void;
-  /** Current playback speed */
   playbackSpeed?: number;
-  /** Whether subtitles are active */
   hasActiveSubtitle?: boolean;
-  /** Handler for next episode */
   onNextEpisode?: () => void;
-  /** Whether next episode is available */
   hasNextEpisode?: boolean;
+  visible?: boolean;
+  seekIndicator?: { direction: 'left' | 'right'; seconds: number } | null;
 }
 
-const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
-
-/**
- * TV-optimized video player controls with D-pad navigation support.
- * Features larger buttons and focus indicators for 10-foot UI.
- */
 export function TVVideoPlayerControls({
   isPlaying,
   isLoading,
@@ -76,33 +56,65 @@ export function TVVideoPlayerControls({
   hasActiveSubtitle,
   onNextEpisode,
   hasNextEpisode,
+  visible = true,
+  seekIndicator,
 }: TVVideoPlayerControlsProps) {
   const accentColor = useSettingsStore((s) => s.accentColor);
   const [focusedButton, setFocusedButton] = useState<string | null>('play');
 
-  // Progress bar calculations
+  const controlsOpacity = useSharedValue(visible ? 1 : 0);
+  const seekLeftOpacity = useSharedValue(0);
+  const seekRightOpacity = useSharedValue(0);
+
+  useEffect(() => {
+    controlsOpacity.value = withTiming(visible ? 1 : 0, { duration: 200 });
+  }, [visible, controlsOpacity]);
+
+  useEffect(() => {
+    if (seekIndicator) {
+      if (seekIndicator.direction === 'left') {
+        seekLeftOpacity.value = withSequence(
+          withTiming(1, { duration: 100 }),
+          withTiming(0, { duration: 400 })
+        );
+      } else {
+        seekRightOpacity.value = withSequence(
+          withTiming(1, { duration: 100 }),
+          withTiming(0, { duration: 400 })
+        );
+      }
+    }
+  }, [seekIndicator, seekLeftOpacity, seekRightOpacity]);
+
+  const containerStyle = useAnimatedStyle(() => ({
+    opacity: controlsOpacity.value,
+    pointerEvents: controlsOpacity.value > 0.5 ? 'auto' : 'none',
+  }));
+
+  const seekLeftStyle = useAnimatedStyle(() => ({
+    opacity: seekLeftOpacity.value,
+  }));
+
+  const seekRightStyle = useAnimatedStyle(() => ({
+    opacity: seekRightOpacity.value,
+  }));
+
   const progressPercent = duration > 0 ? (position / duration) * 100 : 0;
   const bufferedPercent = duration > 0 ? (buffered / duration) * 100 : 0;
 
   return (
-    <View className="absolute inset-0">
-      {/* Top gradient for visibility */}
+    <Animated.View style={[styles.container, containerStyle]}>
       <LinearGradient
         colors={['rgba(0,0,0,0.8)', 'transparent']}
-        style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 200 }}
+        style={styles.topGradient}
       />
 
-      {/* Bottom gradient for visibility */}
       <LinearGradient
         colors={['transparent', 'rgba(0,0,0,0.9)']}
-        style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 300 }}
+        style={styles.bottomGradient}
       />
 
-      {/* Top Row: Close and Title */}
-      <View
-        style={{ padding: tvConstants.controlBarPadding }}
-        className="flex-row items-center"
-      >
+      <View style={styles.topRow}>
         <TVFocusableButton
           icon="close"
           onPress={onClose}
@@ -110,19 +122,18 @@ export function TVVideoPlayerControls({
           onFocus={() => setFocusedButton('close')}
           accessibilityLabel="Close player"
         />
-        <View className="flex-1 mx-6">
-          <Text className="text-white text-2xl font-bold" numberOfLines={1}>
+        <View style={styles.titleContainer}>
+          <Text style={styles.title} numberOfLines={1}>
             {title}
           </Text>
           {subtitle && (
-            <Text className="text-text-secondary text-lg mt-1" numberOfLines={1}>
+            <Text style={styles.subtitle} numberOfLines={1}>
               {subtitle}
             </Text>
           )}
         </View>
 
-        {/* Options buttons */}
-        <View className="flex-row" style={{ gap: tvConstants.buttonGap }}>
+        <View style={styles.optionsRow}>
           {onSubtitlePress && (
             <TVFocusableButton
               icon="text"
@@ -154,13 +165,15 @@ export function TVVideoPlayerControls({
         </View>
       </View>
 
-      {/* Center Row: Playback Controls */}
-      <View className="flex-1 justify-center items-center">
-        <View
-          className="flex-row items-center justify-center"
-          style={{ gap: tvConstants.buttonGap * 2 }}
-        >
-          {/* Seek Back */}
+      <View style={styles.centerRow}>
+        <Animated.View style={[styles.seekIndicator, styles.seekLeft, seekLeftStyle]}>
+          <Ionicons name="play-back" size={48} color="#fff" />
+          {seekIndicator?.direction === 'left' && (
+            <Text style={styles.seekText}>-{seekIndicator.seconds}s</Text>
+          )}
+        </Animated.View>
+
+        <View style={styles.controlsRow}>
           <TVFocusableButton
             icon="play-back"
             onPress={onSeekBack}
@@ -169,17 +182,10 @@ export function TVVideoPlayerControls({
             accessibilityLabel="Seek back 10 seconds"
           />
 
-          {/* Play/Pause - Primary focus */}
-          <View>
+          <View style={styles.playButtonContainer}>
             {isLoading ? (
-              <View
-                style={{
-                  width: tvConstants.controlButtonSize * 1.5,
-                  height: tvConstants.controlButtonSize * 1.5,
-                }}
-                className="items-center justify-center"
-              >
-                <Ionicons name="sync" size={48} color="#FFFFFF" />
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color="#fff" />
               </View>
             ) : (
               <TVFocusableButton
@@ -189,15 +195,11 @@ export function TVVideoPlayerControls({
                 autoFocus
                 onFocus={() => setFocusedButton('play')}
                 accessibilityLabel={isPlaying ? 'Pause' : 'Play'}
-                style={{
-                  width: tvConstants.controlButtonSize * 1.5,
-                  height: tvConstants.controlButtonSize * 1.5,
-                }}
+                style={styles.playButton}
               />
             )}
           </View>
 
-          {/* Seek Forward */}
           <TVFocusableButton
             icon="play-forward"
             onPress={onSeekForward}
@@ -206,7 +208,6 @@ export function TVVideoPlayerControls({
             accessibilityLabel="Seek forward 10 seconds"
           />
 
-          {/* Next Episode (if available) */}
           {hasNextEpisode && onNextEpisode && (
             <TVFocusableButton
               icon="play-skip-forward"
@@ -217,52 +218,173 @@ export function TVVideoPlayerControls({
             />
           )}
         </View>
+
+        <Animated.View style={[styles.seekIndicator, styles.seekRight, seekRightStyle]}>
+          <Ionicons name="play-forward" size={48} color="#fff" />
+          {seekIndicator?.direction === 'right' && (
+            <Text style={styles.seekText}>+{seekIndicator.seconds}s</Text>
+          )}
+        </Animated.View>
       </View>
 
-      {/* Bottom Row: Progress and Time */}
-      <View
-        style={{
-          paddingHorizontal: tvConstants.controlBarPadding,
-          paddingBottom: tvConstants.controlBarPadding,
-        }}
-      >
-        {/* Time display */}
-        <View className="flex-row justify-between mb-3">
-          <Text className="text-white text-lg font-mono">
+      <View style={styles.bottomRow}>
+        <View style={styles.timeRow}>
+          <Text style={styles.timeText}>
             {formatPlayerTime(position)}
           </Text>
-          <Text className="text-white text-lg font-mono">
+          <Text style={styles.timeText}>
             {formatPlayerTime(duration)}
           </Text>
         </View>
 
-        {/* Progress bar */}
-        <View
-          className="w-full bg-white/20 rounded-full overflow-hidden"
-          style={{ height: tvConstants.progressBarHeight || 8 }}
-        >
-          {/* Buffered progress */}
+        <View style={styles.progressContainer}>
           <View
-            className="absolute h-full bg-white/30 rounded-full"
-            style={{ width: `${bufferedPercent}%` }}
+            style={[styles.progressBuffered, { width: `${bufferedPercent}%` }]}
           />
-          {/* Playback progress */}
           <View
-            className="absolute h-full rounded-full"
-            style={{
-              width: `${progressPercent}%`,
-              backgroundColor: accentColor,
-            }}
+            style={[
+              styles.progressFill,
+              { width: `${progressPercent}%`, backgroundColor: accentColor },
+            ]}
           />
         </View>
 
-        {/* Seek hint text */}
-        <View className="flex-row justify-center mt-4">
-          <Text className="text-text-secondary text-sm">
-            Use LEFT/RIGHT to seek • UP/DOWN for volume • OK to play/pause
+        <View style={styles.hintRow}>
+          <Text style={styles.hintText}>
+            LEFT/RIGHT to seek  |  OK to play/pause  |  BACK to exit
           </Text>
         </View>
       </View>
-    </View>
+    </Animated.View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  topGradient: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 200,
+  },
+  bottomGradient: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 300,
+  },
+  topRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: tvConstants.controlBarPadding,
+  },
+  titleContainer: {
+    flex: 1,
+    marginHorizontal: 24,
+  },
+  title: {
+    color: '#fff',
+    fontSize: 28,
+    fontWeight: 'bold',
+  },
+  subtitle: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 18,
+    marginTop: 4,
+  },
+  optionsRow: {
+    flexDirection: 'row',
+    gap: tvConstants.buttonGap,
+  },
+  centerRow: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexDirection: 'row',
+  },
+  controlsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: tvConstants.buttonGap * 2,
+  },
+  playButtonContainer: {
+    marginHorizontal: 16,
+  },
+  playButton: {
+    width: tvConstants.controlButtonSize * 1.5,
+    height: tvConstants.controlButtonSize * 1.5,
+  },
+  loadingContainer: {
+    width: tvConstants.controlButtonSize * 1.5,
+    height: tvConstants.controlButtonSize * 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  seekIndicator: {
+    position: 'absolute',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  seekLeft: {
+    left: 80,
+  },
+  seekRight: {
+    right: 80,
+  },
+  seekText: {
+    color: '#fff',
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginTop: 8,
+  },
+  bottomRow: {
+    paddingHorizontal: tvConstants.controlBarPadding,
+    paddingBottom: tvConstants.controlBarPadding,
+  },
+  timeRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  timeText: {
+    color: '#fff',
+    fontSize: 18,
+    fontFamily: 'monospace',
+  },
+  progressContainer: {
+    height: tvConstants.progressBarHeight || 8,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  progressBuffered: {
+    position: 'absolute',
+    height: '100%',
+    backgroundColor: 'rgba(255,255,255,0.3)',
+    borderRadius: 4,
+  },
+  progressFill: {
+    position: 'absolute',
+    height: '100%',
+    borderRadius: 4,
+  },
+  hintRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginTop: 16,
+  },
+  hintText: {
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: 14,
+  },
+});
