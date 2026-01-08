@@ -1,9 +1,11 @@
-import { View, Text, Pressable, RefreshControl, ScrollView, StyleSheet } from 'react-native';
+import { View, Text, Pressable, RefreshControl, ScrollView, StyleSheet, Dimensions } from 'react-native';
 import { useState, useCallback, useMemo, memo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import Animated, { FadeIn } from 'react-native-reanimated';
 import { useAuthStore, useSettingsStore } from '@/stores';
 import { useResponsive } from '@/hooks';
 import {
@@ -12,11 +14,13 @@ import {
   getImageUrl,
   getLibraryIcon,
 } from '@/api';
-import { SearchButton, AnimatedGradient } from '@/components/ui';
+import { AnimatedGradient } from '@/components/ui';
 import { CachedImage } from '@/components/ui/CachedImage';
 import { SkeletonRow } from '@/components/ui/Skeleton';
 import { getDisplayName, getDisplayImageUrl } from '@/utils';
 import type { BaseItem, Library, CollectionType } from '@/types/jellyfin';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 function getIoniconName(iconName: string): keyof typeof Ionicons.glyphMap {
   const iconMap: Record<string, keyof typeof Ionicons.glyphMap> = {
@@ -65,73 +69,46 @@ function getDetailRoute(item: BaseItem): string {
   return `/(tabs)/details/${type}/${item.Id}`;
 }
 
-interface LibraryCardProps {
-  item: BaseItem;
-  isSquare?: boolean;
-  onPress: () => void;
-  cardWidth: number;
-  cardHeight: number;
-  fontSize: number;
-  hideMedia: boolean;
-}
+const filterOptions = [
+  { key: 'all', label: 'All', icon: 'grid-outline' as const },
+  { key: 'movies', label: 'Movies', icon: 'film-outline' as const },
+  { key: 'tvshows', label: 'Shows', icon: 'tv-outline' as const },
+  { key: 'music', label: 'Music', icon: 'musical-notes-outline' as const },
+  { key: 'books', label: 'Books', icon: 'book-outline' as const },
+];
 
-const LibraryCard = memo(function LibraryCard({ item, isSquare, onPress, cardWidth, cardHeight, fontSize, hideMedia }: LibraryCardProps) {
-  const rawImageUrl = item.ImageTags?.Primary
-    ? getImageUrl(item.Id, 'Primary', { maxWidth: cardWidth * 2, tag: item.ImageTags.Primary })
-    : null;
-  const imageUrl = getDisplayImageUrl(item.Id, rawImageUrl, hideMedia, 'Primary');
-  const displayName = getDisplayName(item, hideMedia);
-
-  return (
-    <Pressable onPress={onPress} style={styles.cardPressable}>
-      <View style={[styles.cardContainer, { width: cardWidth, height: cardHeight }]}>
-        <CachedImage
-          uri={imageUrl}
-          style={{ width: cardWidth, height: cardHeight }}
-          borderRadius={8}
-          fallbackText={displayName?.charAt(0) ?? '?'}
-        />
-      </View>
-      <Text
-        style={[styles.cardTitle, { width: cardWidth, fontSize }]}
-        numberOfLines={1}
-      >
-        {displayName}
-      </Text>
-    </Pressable>
-  );
-});
-
-interface LibrarySectionProps {
+interface LibraryContentRowProps {
   library: Library;
   userId: string;
   accentColor: string;
   hideMedia: boolean;
 }
 
-const LibrarySection = memo(function LibrarySection({ library, userId, accentColor, hideMedia }: LibrarySectionProps) {
+const LibraryContentRow = memo(function LibraryContentRow({
+  library,
+  userId,
+  accentColor,
+  hideMedia,
+}: LibraryContentRowProps) {
   const { isTablet, isTV, fontSize } = useResponsive();
-  const iconName = getLibraryIcon(library.CollectionType);
   const itemTypes = getItemTypes(library.CollectionType);
   const isSquare = library.CollectionType === 'music';
+  const iconName = getLibraryIcon(library.CollectionType);
 
-  const cardWidth = isTV ? 180 : isTablet ? 140 : isSquare ? 120 : 100;
+  const cardWidth = isTV ? 180 : isTablet ? 140 : isSquare ? 110 : 100;
   const cardHeight = isSquare ? cardWidth : cardWidth * 1.5;
   const horizontalPadding = isTV ? 48 : isTablet ? 24 : 16;
-  const iconSize = isTV ? 24 : isTablet ? 20 : 16;
-  const iconContainerSize = isTV ? 44 : isTablet ? 36 : 32;
 
   const { data, isLoading } = useQuery({
     queryKey: ['libraryPreview', userId, library.Id],
-    queryFn: () =>
-      getItems<BaseItem>(userId, {
-        parentId: library.Id,
-        includeItemTypes: itemTypes,
-        sortBy: 'DateCreated',
-        sortOrder: 'Descending',
-        limit: isTablet ? 15 : 10,
-        recursive: true,
-      }),
+    queryFn: () => getItems<BaseItem>(userId, {
+      parentId: library.Id,
+      includeItemTypes: itemTypes,
+      sortBy: 'DateCreated',
+      sortOrder: 'Descending',
+      limit: isTablet ? 15 : 10,
+      recursive: true,
+    }),
     enabled: !!userId,
     staleTime: Infinity,
     refetchOnMount: false,
@@ -156,65 +133,97 @@ const LibrarySection = memo(function LibrarySection({ library, userId, accentCol
   }, []);
 
   const items = data?.Items ?? [];
-  const totalCount = data?.TotalRecordCount ?? 0;
+
+  // Get backdrop from first item for section header
+  const backdropItem = items.find(item => item.BackdropImageTags?.length);
+  const backdropTag = backdropItem?.BackdropImageTags?.[0];
+  const rawBackdropUrl = backdropTag && backdropItem
+    ? getImageUrl(backdropItem.Id, 'Backdrop', { maxWidth: SCREEN_WIDTH, tag: backdropTag })
+    : null;
+  const backdropUrl = getDisplayImageUrl(backdropItem?.Id ?? '', rawBackdropUrl, hideMedia, 'Backdrop');
 
   if (isLoading && !data) {
     return <SkeletonRow cardWidth={cardWidth} cardHeight={cardHeight} count={4} isSquare={isSquare} />;
   }
 
+  if (items.length === 0) return null;
+
   return (
-    <View style={{ marginBottom: isTablet ? 32 : 24 }}>
-      <Pressable
-        onPress={handleSeeAll}
-        style={[styles.sectionHeader, { paddingHorizontal: horizontalPadding, marginBottom: isTablet ? 16 : 12 }]}
-      >
-        <View style={styles.sectionHeaderLeft}>
-          <View
-            style={[styles.iconContainer, { width: iconContainerSize, height: iconContainerSize, backgroundColor: accentColor }]}
-          >
-            <Ionicons name={getIoniconName(iconName)} size={iconSize} color="#fff" />
+    <Animated.View entering={FadeIn.duration(300)} style={{ marginBottom: isTablet ? 32 : 28 }}>
+      {/* Section header with backdrop */}
+      <Pressable onPress={handleSeeAll} style={{ marginBottom: isTablet ? 16 : 14 }}>
+        <View style={[styles.sectionHeaderWithImage, { marginHorizontal: horizontalPadding }]}>
+          {backdropUrl && (
+            <>
+              <CachedImage
+                uri={backdropUrl}
+                style={StyleSheet.absoluteFill}
+                borderRadius={12}
+              />
+              <LinearGradient
+                colors={['rgba(0,0,0,0.2)', 'rgba(0,0,0,0.85)']}
+                style={[StyleSheet.absoluteFill, { borderRadius: 12 }]}
+              />
+            </>
+          )}
+          <View style={styles.sectionHeaderContent}>
+            <View style={[styles.sectionIconBadge, { backgroundColor: accentColor }]}>
+              <Ionicons name={getIoniconName(iconName)} size={16} color="#fff" />
+            </View>
+            <Text style={[styles.sectionLibraryName, { fontSize: fontSize.lg, flex: 1 }]}>{library.Name}</Text>
+            <View style={[styles.seeAllPill, { backgroundColor: accentColor }]}>
+              <Text style={styles.seeAllPillText}>Browse All</Text>
+              <Ionicons name="arrow-forward" size={14} color="#fff" />
+            </View>
           </View>
-          <View>
-            <Text style={[styles.sectionTitle, { fontSize: fontSize.lg }]}>{library.Name}</Text>
-            <Text style={[styles.sectionSubtitle, { fontSize: fontSize.xs }]}>{totalCount} items</Text>
-          </View>
-        </View>
-        <View style={styles.seeAllContainer}>
-          <Text style={[styles.seeAllText, { fontSize: fontSize.sm }]}>See all</Text>
-          <Ionicons name="chevron-forward" size={iconSize} color="rgba(255,255,255,0.5)" />
         </View>
       </Pressable>
 
-      {items.length > 0 ? (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ paddingHorizontal: horizontalPadding }}
-        >
-          {items.map((item) => (
-            <LibraryCard
-              key={item.Id}
-              item={item}
-              isSquare={isSquare}
-              onPress={() => handleItemPress(item)}
-              cardWidth={cardWidth}
-              cardHeight={cardHeight}
-              fontSize={fontSize.xs}
-              hideMedia={hideMedia}
-            />
-          ))}
-        </ScrollView>
-      ) : (
-        <View style={styles.emptyContainer}>
-          <Text style={[styles.emptyText, { fontSize: fontSize.sm }]}>No items yet</Text>
-        </View>
-      )}
-    </View>
+      {/* Recently Added label */}
+      <Text style={[styles.recentlyAddedLabel, { paddingHorizontal: horizontalPadding, fontSize: fontSize.sm }]}>
+        Recently Added
+      </Text>
+
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={{ paddingHorizontal: horizontalPadding, gap: 12 }}
+      >
+        {items.map((item) => {
+          const posterTag = item.ImageTags?.Primary;
+          const rawPosterUrl = posterTag
+            ? getImageUrl(item.Id, 'Primary', { maxWidth: cardWidth * 2, tag: posterTag })
+            : null;
+          const posterUrl = getDisplayImageUrl(item.Id, rawPosterUrl, hideMedia, 'Primary');
+          const displayName = getDisplayName(item, hideMedia);
+
+          return (
+            <Pressable key={item.Id} onPress={() => handleItemPress(item)}>
+              <View style={[styles.contentCard, { width: cardWidth, height: cardHeight }]}>
+                <CachedImage
+                  uri={posterUrl}
+                  style={{ width: cardWidth, height: cardHeight }}
+                  borderRadius={10}
+                  fallbackText={displayName?.charAt(0) ?? '?'}
+                />
+              </View>
+              <Text
+                style={[styles.cardTitle, { width: cardWidth, fontSize: fontSize.xs }]}
+                numberOfLines={1}
+              >
+                {displayName}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+    </Animated.View>
   );
 });
 
 export default function LibraryScreen() {
   const [refreshing, setRefreshing] = useState(false);
+  const [activeFilter, setActiveFilter] = useState('all');
   const { isTablet, isTV, fontSize } = useResponsive();
 
   const currentUser = useAuthStore((state) => state.currentUser);
@@ -239,8 +248,17 @@ export default function LibraryScreen() {
       if (lib.CollectionType && excludeTypes.includes(lib.CollectionType)) {
         return false;
       }
+      if (activeFilter !== 'all' && lib.CollectionType !== activeFilter) {
+        return false;
+      }
       return true;
     });
+  }, [libraries, activeFilter]);
+
+  const availableFilters = useMemo(() => {
+    if (!libraries) return [filterOptions[0]];
+    const types = new Set(libraries.map(lib => lib.CollectionType).filter(Boolean));
+    return filterOptions.filter(opt => opt.key === 'all' || types.has(opt.key as CollectionType));
   }, [libraries]);
 
   const onRefresh = useCallback(async () => {
@@ -252,17 +270,58 @@ export default function LibraryScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <AnimatedGradient intensity="subtle" />
-      <View style={[styles.header, { paddingHorizontal: horizontalPadding, paddingTop: isTablet ? 20 : 16 }]}>
-        <View style={styles.headerLeft}>
-          <View>
-            <Text style={[styles.headerTitle, { fontSize: fontSize['2xl'] }]}>Library</Text>
-            <Text style={[styles.headerSubtitle, { fontSize: fontSize.sm }]}>
-              {browsableLibraries.length} {browsableLibraries.length === 1 ? 'library' : 'libraries'}
-            </Text>
-          </View>
-        </View>
-        <SearchButton />
+
+      {/* Header */}
+      <View style={[styles.header, { paddingHorizontal: horizontalPadding }]}>
+        <Animated.View entering={FadeIn.duration(400)}>
+          <Text style={[styles.headerTitle, { fontSize: fontSize['3xl'] }]}>Library</Text>
+          <Text style={[styles.headerSubtitle, { fontSize: fontSize.sm }]}>
+            {browsableLibraries.length} {browsableLibraries.length === 1 ? 'collection' : 'collections'}
+          </Text>
+        </Animated.View>
       </View>
+
+      {/* Filter chips with scroll indicator */}
+      {availableFilters.length > 1 && (
+        <Animated.View entering={FadeIn.delay(100).duration(400)} style={styles.filterWrapper}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={[styles.filterContainer, { paddingHorizontal: horizontalPadding, paddingRight: 48 }]}
+          >
+            {availableFilters.map((filter) => {
+              const isActive = activeFilter === filter.key;
+              return (
+                <Pressable
+                  key={filter.key}
+                  onPress={() => setActiveFilter(filter.key)}
+                  style={[
+                    styles.filterChip,
+                    isActive && { backgroundColor: accentColor },
+                  ]}
+                >
+                  <Ionicons
+                    name={filter.icon}
+                    size={16}
+                    color={isActive ? '#fff' : 'rgba(255,255,255,0.7)'}
+                  />
+                  <Text style={[styles.filterChipText, isActive && { color: '#fff' }]}>
+                    {filter.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+          {/* Fade indicator to show more content */}
+          <LinearGradient
+            colors={['transparent', '#0a0a0a']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.filterFade}
+            pointerEvents="none"
+          />
+        </Animated.View>
+      )}
 
       <ScrollView
         style={styles.scrollView}
@@ -275,33 +334,45 @@ export default function LibraryScreen() {
           />
         }
       >
-        <View style={{ paddingTop: 8 }}>
-          {isLoadingLibraries && !libraries ? (
-            <>
-              <SkeletonRow cardWidth={100} cardHeight={150} count={4} />
-              <SkeletonRow cardWidth={100} cardHeight={150} count={4} />
-              <SkeletonRow cardWidth={100} cardHeight={150} count={4} />
-            </>
-          ) : (
-            browsableLibraries.map((library) => (
-              <LibrarySection
-                key={library.Id}
-                library={library}
-                userId={userId}
-                accentColor={accentColor}
-                hideMedia={hideMedia}
-              />
-            ))
-          )}
-        </View>
+        {/* Loading skeleton */}
+        {isLoadingLibraries && (
+          <View style={{ paddingTop: 16 }}>
+            <SkeletonRow cardWidth={100} cardHeight={150} count={4} />
+            <SkeletonRow cardWidth={100} cardHeight={150} count={4} />
+          </View>
+        )}
 
-        {userId && browsableLibraries.length === 0 && (
+        {/* Content rows for each library */}
+        {browsableLibraries.map((library) => (
+          <LibraryContentRow
+            key={library.Id}
+            library={library}
+            userId={userId}
+            accentColor={accentColor}
+            hideMedia={hideMedia}
+          />
+        ))}
+
+        {/* Empty state */}
+        {userId && !isLoadingLibraries && browsableLibraries.length === 0 && (
           <View style={styles.emptyStateContainer}>
-            <Ionicons name="library-outline" size={isTablet ? 64 : 48} color="rgba(255,255,255,0.2)" />
-            <Text style={[styles.emptyStateTitle, { fontSize: fontSize.lg }]}>No libraries found</Text>
+            <View style={[styles.emptyIconContainer, { backgroundColor: accentColor + '20' }]}>
+              <Ionicons name="library-outline" size={48} color={accentColor} />
+            </View>
+            <Text style={[styles.emptyStateTitle, { fontSize: fontSize.xl }]}>No libraries found</Text>
             <Text style={[styles.emptyStateSubtitle, { fontSize: fontSize.sm }]}>
-              Add libraries in your Jellyfin server
+              {activeFilter !== 'all'
+                ? 'Try a different filter or add libraries in Jellyfin'
+                : 'Add libraries in your Jellyfin server'}
             </Text>
+            {activeFilter !== 'all' && (
+              <Pressable
+                style={[styles.resetButton, { borderColor: accentColor }]}
+                onPress={() => setActiveFilter('all')}
+              >
+                <Text style={[styles.resetButtonText, { color: accentColor }]}>Show all libraries</Text>
+              </Pressable>
+            )}
           </View>
         )}
 
@@ -317,14 +388,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#0a0a0a',
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingBottom: 8,
-  },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    paddingTop: 16,
+    paddingBottom: 16,
   },
   headerTitle: {
     color: '#fff',
@@ -334,76 +399,122 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.5)',
     marginTop: 4,
   },
+  filterWrapper: {
+    position: 'relative',
+  },
+  filterContainer: {
+    gap: 10,
+    paddingBottom: 16,
+  },
+  filterChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  filterChipText: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  filterFade: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: 40,
+  },
   scrollView: {
     flex: 1,
   },
-  cardPressable: {
-    marginRight: 12,
+  sectionHeaderWithImage: {
+    height: 64,
+    borderRadius: 12,
+    backgroundColor: '#1a1a1a',
+    overflow: 'hidden',
+    justifyContent: 'flex-end',
   },
-  cardContainer: {
-    borderRadius: 8,
+  sectionHeaderContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+  },
+  sectionIconBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 7,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  sectionLibraryName: {
+    color: '#fff',
+    fontWeight: '700',
+  },
+  seeAllPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 16,
+    gap: 4,
+  },
+  seeAllPillText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  recentlyAddedLabel: {
+    color: 'rgba(255,255,255,0.6)',
+    fontWeight: '600',
+    marginBottom: 10,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  contentCard: {
+    borderRadius: 10,
     overflow: 'hidden',
     backgroundColor: '#1c1c1c',
   },
   cardTitle: {
     color: '#fff',
-    marginTop: 6,
+    marginTop: 8,
     fontWeight: '500',
   },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  sectionHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  iconContainer: {
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 10,
-  },
-  sectionTitle: {
-    color: '#fff',
-    fontWeight: '600',
-  },
-  sectionSubtitle: {
-    color: 'rgba(255,255,255,0.5)',
-  },
-  seeAllContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  seeAllText: {
-    color: 'rgba(255,255,255,0.5)',
-    marginRight: 4,
-  },
-  loadingContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  emptyContainer: {
-    height: 100,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  emptyText: {
-    color: 'rgba(255,255,255,0.3)',
-  },
   emptyStateContainer: {
-    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 80,
+    paddingVertical: 60,
+    paddingHorizontal: 32,
+  },
+  emptyIconContainer: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
   },
   emptyStateTitle: {
-    color: 'rgba(255,255,255,0.5)',
-    marginTop: 16,
+    color: '#fff',
+    fontWeight: '600',
+    marginBottom: 8,
   },
   emptyStateSubtitle: {
-    color: 'rgba(255,255,255,0.3)',
-    marginTop: 4,
+    color: 'rgba(255,255,255,0.5)',
+    textAlign: 'center',
+  },
+  resetButton: {
+    marginTop: 20,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  resetButtonText: {
+    fontWeight: '600',
   },
 });

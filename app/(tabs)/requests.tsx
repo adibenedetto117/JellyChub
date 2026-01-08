@@ -1,8 +1,11 @@
-import { View, Text, ScrollView, RefreshControl, TextInput, FlatList, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, RefreshControl, TextInput, FlatList, Pressable, StyleSheet, ActivityIndicator, Dimensions } from 'react-native';
 import { useState, useCallback, useMemo } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import Animated, { FadeIn, FadeInDown, FadeInRight } from 'react-native-reanimated';
+import { BlurView } from 'expo-blur';
 import { useSettingsStore, selectHasJellyseerr } from '@/stores/settingsStore';
 import {
   useJellyseerrUser,
@@ -22,26 +25,64 @@ import { JellyseerrPosterCard, RequestCard } from '@/components/jellyseerr';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { colors } from '@/theme';
 import type { JellyseerrDiscoverItem, JellyseerrMediaRequest } from '@/types/jellyseerr';
-import { hasPermission, JELLYSEERR_PERMISSIONS } from '@/types/jellyseerr';
+import { hasPermission, JELLYSEERR_PERMISSIONS, REQUEST_STATUS } from '@/types/jellyseerr';
+
+const JELLYSEERR_PURPLE = '#6366f1';
+const JELLYSEERR_PURPLE_LIGHT = '#818cf8';
+const JELLYSEERR_PURPLE_DARK = '#4f46e5';
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 type TabType = 'discover' | 'requests' | 'manage';
+type FilterType = 'all' | 'pending' | 'approved' | 'available' | 'declined';
 
-// Horizontal media row component
+function StatCard({
+  icon,
+  label,
+  value,
+  color,
+  delay = 0,
+}: {
+  icon: string;
+  label: string;
+  value: number;
+  color: string;
+  delay?: number;
+}) {
+  return (
+    <Animated.View entering={FadeInDown.delay(delay).duration(400)} style={styles.statCard}>
+      <LinearGradient
+        colors={[`${color}20`, `${color}08`]}
+        style={styles.statCardGradient}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      >
+        <View style={[styles.statIconContainer, { backgroundColor: `${color}25` }]}>
+          <Ionicons name={icon as any} size={18} color={color} />
+        </View>
+        <Text style={styles.statValue}>{value}</Text>
+        <Text style={styles.statLabel}>{label}</Text>
+      </LinearGradient>
+    </Animated.View>
+  );
+}
+
 function MediaRow({
   title,
   items,
   onItemPress,
   isLoading,
+  delay = 0,
 }: {
   title: string;
   items: JellyseerrDiscoverItem[];
   onItemPress: (item: JellyseerrDiscoverItem) => void;
   isLoading?: boolean;
+  delay?: number;
 }) {
   if (!isLoading && (!items || items.length === 0)) return null;
 
   return (
-    <View style={styles.section}>
+    <Animated.View entering={FadeInDown.delay(delay).duration(400)} style={styles.section}>
       <Text style={styles.sectionTitle}>{title}</Text>
       <ScrollView
         horizontal
@@ -55,7 +96,7 @@ function MediaRow({
             </View>
           ))
         ) : (
-          items.slice(0, 15).map((item) => (
+          items.slice(0, 15).map((item, index) => (
             <JellyseerrPosterCard
               key={`${item.mediaType}-${item.id}`}
               item={item}
@@ -64,7 +105,80 @@ function MediaRow({
           ))
         )}
       </ScrollView>
-    </View>
+    </Animated.View>
+  );
+}
+
+function FilterPill({
+  label,
+  isActive,
+  count,
+  onPress,
+}: {
+  label: string;
+  isActive: boolean;
+  count?: number;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable onPress={onPress}>
+      <LinearGradient
+        colors={isActive ? [JELLYSEERR_PURPLE, JELLYSEERR_PURPLE_DARK] : ['transparent', 'transparent']}
+        style={[styles.filterPill, !isActive && styles.filterPillInactive]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      >
+        <Text style={[styles.filterPillText, isActive && styles.filterPillTextActive]}>
+          {label}
+        </Text>
+        {count !== undefined && count > 0 && (
+          <View style={[styles.filterBadge, isActive && styles.filterBadgeActive]}>
+            <Text style={styles.filterBadgeText}>{count}</Text>
+          </View>
+        )}
+      </LinearGradient>
+    </Pressable>
+  );
+}
+
+function EmptyState({
+  icon,
+  title,
+  subtitle,
+  action,
+  onAction,
+}: {
+  icon: string;
+  title: string;
+  subtitle: string;
+  action?: string;
+  onAction?: () => void;
+}) {
+  return (
+    <Animated.View entering={FadeIn.duration(400)} style={styles.emptyStateContainer}>
+      <LinearGradient
+        colors={[`${JELLYSEERR_PURPLE}15`, 'transparent']}
+        style={styles.emptyStateGradient}
+      >
+        <View style={styles.emptyStateIconContainer}>
+          <Ionicons name={icon as any} size={48} color={JELLYSEERR_PURPLE} />
+        </View>
+        <Text style={styles.emptyStateTitle}>{title}</Text>
+        <Text style={styles.emptyStateSubtitle}>{subtitle}</Text>
+        {action && onAction && (
+          <Pressable onPress={onAction}>
+            <LinearGradient
+              colors={[JELLYSEERR_PURPLE, JELLYSEERR_PURPLE_DARK]}
+              style={styles.emptyStateButton}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            >
+              <Text style={styles.emptyStateButtonText}>{action}</Text>
+            </LinearGradient>
+          </Pressable>
+        )}
+      </LinearGradient>
+    </Animated.View>
   );
 }
 
@@ -72,22 +186,19 @@ export default function RequestsScreen() {
   const [activeTab, setActiveTab] = useState<TabType>('discover');
   const [searchQuery, setSearchQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
-  const [requestFilter, setRequestFilter] = useState<'all' | 'pending' | 'approved'>('all');
+  const [requestFilter, setRequestFilter] = useState<FilterType>('all');
 
   const accentColor = useSettingsStore((s) => s.accentColor);
   const hasJellyseerr = useSettingsStore(selectHasJellyseerr);
 
-  // User & auth
   const { data: user, refetch: refetchUser } = useJellyseerrUser();
 
-  // Discovery data
   const { data: trending, refetch: refetchTrending, isLoading: loadingTrending } = useTrending();
   const { data: popularMovies, refetch: refetchPopularMovies, isLoading: loadingPopularMovies } = usePopularMovies();
   const { data: popularTv, refetch: refetchPopularTv, isLoading: loadingPopularTv } = usePopularTv();
   const { data: upcoming, refetch: refetchUpcoming, isLoading: loadingUpcoming } = useUpcomingMovies();
   const { data: searchResults, isLoading: isSearching } = useJellyseerrSearch(searchQuery);
 
-  // Requests data with pagination
   const {
     data: myRequests,
     refetch: refetchMyRequests,
@@ -101,10 +212,9 @@ export default function RequestsScreen() {
     fetchNextPage: fetchNextAllRequests,
     hasNextPage: hasNextAllRequests,
     isFetchingNextPage: isFetchingNextAllRequests,
-  } = useAllRequests(requestFilter);
+  } = useAllRequests(requestFilter === 'all' ? 'all' : requestFilter);
   const { data: pendingRequests } = usePendingRequests();
 
-  // Flatten paginated results
   const myRequestsList = useMemo(
     () => myRequests?.pages.flatMap((p) => p.results) ?? [],
     [myRequests]
@@ -122,7 +232,16 @@ export default function RequestsScreen() {
     ? hasPermission(user.permissions, JELLYSEERR_PERMISSIONS.MANAGE_REQUESTS)
     : false;
 
-  const pendingCount = pendingRequests?.results?.length ?? 0;
+  const stats = useMemo(() => {
+    const all = allRequests?.pages.flatMap((p) => p.results) ?? [];
+    const pending = all.filter((r) => r.status === REQUEST_STATUS.PENDING).length;
+    const approved = all.filter((r) => r.status === REQUEST_STATUS.APPROVED).length;
+    const available = all.filter((r) => r.status === REQUEST_STATUS.AVAILABLE || r.status === REQUEST_STATUS.PARTIALLY_AVAILABLE).length;
+    const processing = all.filter((r) => r.status === REQUEST_STATUS.APPROVED && r.media?.status === 3).length;
+    return { pending, approved, available, processing };
+  }, [allRequests]);
+
+  const pendingCount = pendingRequests?.results?.length ?? stats.pending;
   const myRequestsCount = myRequests?.pages?.[0]?.pageInfo?.results ?? 0;
 
   const tabs: { id: TabType; label: string; visible: boolean; badge?: number }[] = useMemo(() => [
@@ -167,19 +286,36 @@ export default function RequestsScreen() {
 
   if (!hasJellyseerr) {
     return (
-      <SafeAreaView style={styles.emptyContainer} edges={['top']}>
-        <Ionicons name="film-outline" size={64} color="rgba(255,255,255,0.2)" />
-        <Text style={styles.emptyTitle}>Jellyseerr Not Connected</Text>
-        <Text style={styles.emptySubtitle}>
-          Connect your Jellyseerr server to discover and request movies and TV shows.
-        </Text>
-        <Pressable
-          style={[styles.connectButton, { backgroundColor: accentColor }]}
-          onPress={() => router.push('/settings/jellyseerr')}
-        >
-          <Ionicons name="link-outline" size={18} color="#fff" />
-          <Text style={styles.connectButtonText}>Connect Jellyseerr</Text>
-        </Pressable>
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <LinearGradient
+          colors={[`${JELLYSEERR_PURPLE}15`, 'transparent']}
+          style={styles.headerGradient}
+        />
+        <View style={styles.notConnectedContainer}>
+          <View style={styles.notConnectedIconContainer}>
+            <LinearGradient
+              colors={[JELLYSEERR_PURPLE, JELLYSEERR_PURPLE_DARK]}
+              style={styles.notConnectedIconGradient}
+            >
+              <Ionicons name="film" size={48} color="#fff" />
+            </LinearGradient>
+          </View>
+          <Text style={styles.notConnectedTitle}>Jellyseerr</Text>
+          <Text style={styles.notConnectedSubtitle}>
+            Discover and request movies and TV shows from your media server
+          </Text>
+          <Pressable onPress={() => router.push('/settings/jellyseerr')}>
+            <LinearGradient
+              colors={[JELLYSEERR_PURPLE, JELLYSEERR_PURPLE_DARK]}
+              style={styles.connectButton}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            >
+              <Ionicons name="link" size={18} color="#fff" />
+              <Text style={styles.connectButtonText}>Connect Server</Text>
+            </LinearGradient>
+          </Pressable>
+        </View>
       </SafeAreaView>
     );
   }
@@ -188,13 +324,13 @@ export default function RequestsScreen() {
     <ScrollView
       style={{ flex: 1 }}
       refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={accentColor} />
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={JELLYSEERR_PURPLE} />
       }
+      showsVerticalScrollIndicator={false}
     >
-      {/* Search Bar */}
-      <View style={styles.searchContainer}>
+      <Animated.View entering={FadeInDown.duration(400)} style={styles.searchContainer}>
         <View style={styles.searchInputContainer}>
-          <Ionicons name="search-outline" size={18} color="rgba(255,255,255,0.4)" />
+          <Ionicons name="search" size={20} color="rgba(255,255,255,0.4)" />
           <TextInput
             style={styles.searchInput}
             placeholder="Search movies and TV shows..."
@@ -203,12 +339,14 @@ export default function RequestsScreen() {
             onChangeText={setSearchQuery}
           />
           {searchQuery.length > 0 && (
-            <Pressable onPress={() => setSearchQuery('')}>
-              <Ionicons name="close-circle" size={18} color="rgba(255,255,255,0.4)" />
+            <Pressable onPress={() => setSearchQuery('')} hitSlop={8}>
+              <View style={styles.clearButton}>
+                <Ionicons name="close" size={14} color="rgba(255,255,255,0.6)" />
+              </View>
             </Pressable>
           )}
         </View>
-      </View>
+      </Animated.View>
 
       {searchQuery.length >= 2 ? (
         <View style={{ paddingHorizontal: 16 }}>
@@ -222,10 +360,11 @@ export default function RequestsScreen() {
               ))}
             </View>
           ) : searchResults?.results.length === 0 ? (
-            <View style={styles.noResultsContainer}>
-              <Ionicons name="search-outline" size={48} color="rgba(255,255,255,0.2)" />
-              <Text style={styles.noResultsText}>No results found for "{searchQuery}"</Text>
-            </View>
+            <EmptyState
+              icon="search-outline"
+              title="No Results"
+              subtitle={`No movies or shows found for "${searchQuery}"`}
+            />
           ) : (
             <View style={styles.gridContainer}>
               {searchResults?.results.map((item) => (
@@ -240,36 +379,36 @@ export default function RequestsScreen() {
         </View>
       ) : (
         <>
-          {/* Trending */}
           <MediaRow
             title="Trending Now"
             items={trending?.results ?? []}
             onItemPress={handleItemPress}
             isLoading={loadingTrending}
+            delay={100}
           />
 
-          {/* Popular Movies */}
           <MediaRow
             title="Popular Movies"
             items={popularMovies?.results?.map(item => ({ ...item, mediaType: 'movie' as const })) ?? []}
             onItemPress={handleItemPress}
             isLoading={loadingPopularMovies}
+            delay={200}
           />
 
-          {/* Popular TV */}
           <MediaRow
             title="Popular TV Shows"
             items={popularTv?.results?.map(item => ({ ...item, mediaType: 'tv' as const })) ?? []}
             onItemPress={handleItemPress}
             isLoading={loadingPopularTv}
+            delay={300}
           />
 
-          {/* Upcoming */}
           <MediaRow
             title="Coming Soon"
             items={upcoming?.results?.map(item => ({ ...item, mediaType: 'movie' as const })) ?? []}
             onItemPress={handleItemPress}
             isLoading={loadingUpcoming}
+            delay={400}
           />
         </>
       )}
@@ -282,18 +421,21 @@ export default function RequestsScreen() {
     <FlatList
       data={myRequestsList}
       keyExtractor={(item) => item.id.toString()}
-      renderItem={({ item }) => (
-        <RequestCard
-          request={item}
-          onPress={() => handleRequestPress(item)}
-          onDelete={() => handleDelete(item.id)}
-          isOwnRequest
-          isDeleting={deleteRequest.isPending && deleteRequest.variables === item.id}
-        />
+      renderItem={({ item, index }) => (
+        <Animated.View entering={FadeInRight.delay(index * 50).duration(300)}>
+          <RequestCard
+            request={item}
+            onPress={() => handleRequestPress(item)}
+            onDelete={() => handleDelete(item.id)}
+            isOwnRequest
+            isDeleting={deleteRequest.isPending && deleteRequest.variables === item.id}
+          />
+        </Animated.View>
       )}
       contentContainerStyle={styles.listContent}
+      showsVerticalScrollIndicator={false}
       refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={accentColor} />
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={JELLYSEERR_PURPLE} />
       }
       onEndReached={() => {
         if (hasNextMyRequests && !isFetchingNextMyRequests) {
@@ -304,69 +446,82 @@ export default function RequestsScreen() {
       ListFooterComponent={
         isFetchingNextMyRequests ? (
           <View style={styles.loadingFooter}>
-            <ActivityIndicator color={accentColor} />
+            <ActivityIndicator color={JELLYSEERR_PURPLE} />
           </View>
         ) : null
       }
       ListEmptyComponent={
-        <View style={styles.emptyListContainer}>
-          <Ionicons name="document-text-outline" size={48} color="rgba(255,255,255,0.2)" />
-          <Text style={styles.emptyListTitle}>No Requests Yet</Text>
-          <Text style={styles.emptyListSubtitle}>
-            Browse the Discover tab to find and request movies and shows
-          </Text>
-        </View>
+        <EmptyState
+          icon="film-outline"
+          title="No Requests Yet"
+          subtitle="Discover movies and TV shows to request from your media server"
+          action="Browse Content"
+          onAction={() => setActiveTab('discover')}
+        />
       }
     />
   );
 
   const renderManageContent = () => (
     <View style={{ flex: 1 }}>
-      {/* Filter pills */}
-      <View style={styles.filterRow}>
-        {(['all', 'pending', 'approved'] as const).map((filter) => {
-          const isActive = requestFilter === filter;
-          const count = filter === 'pending' ? pendingCount : undefined;
-          return (
-            <Pressable
-              key={filter}
-              style={[
-                styles.filterPill,
-                { backgroundColor: isActive ? accentColor : colors.surface.default },
-              ]}
-              onPress={() => setRequestFilter(filter)}
-            >
-              <Text style={[styles.filterPillText, { color: isActive ? '#fff' : colors.text.secondary }]}>
-                {filter.charAt(0).toUpperCase() + filter.slice(1)}
-              </Text>
-              {count !== undefined && count > 0 && (
-                <View style={[styles.filterBadge, { backgroundColor: isActive ? 'rgba(255,255,255,0.3)' : accentColor }]}>
-                  <Text style={styles.filterBadgeText}>{count}</Text>
-                </View>
-              )}
-            </Pressable>
-          );
-        })}
-      </View>
+      <Animated.View entering={FadeInDown.duration(300)}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.statsContainer}
+        >
+          <StatCard icon="time" label="Pending" value={stats.pending} color="#fbbf24" delay={0} />
+          <StatCard icon="checkmark-circle" label="Approved" value={stats.approved} color="#3b82f6" delay={100} />
+          <StatCard icon="checkmark-done" label="Available" value={stats.available} color="#22c55e" delay={200} />
+          <StatCard icon="sync" label="Processing" value={stats.processing} color="#8b5cf6" delay={300} />
+        </ScrollView>
+      </Animated.View>
+
+      <Animated.View entering={FadeInDown.delay(200).duration(300)}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filterRow}
+        >
+          {([
+            { key: 'all', label: 'All' },
+            { key: 'pending', label: 'Pending', count: stats.pending },
+            { key: 'approved', label: 'Approved' },
+            { key: 'available', label: 'Available' },
+            { key: 'declined', label: 'Declined' },
+          ] as const).map((filter) => (
+            <FilterPill
+              key={filter.key}
+              label={filter.label}
+              isActive={requestFilter === filter.key}
+              count={filter.count}
+              onPress={() => setRequestFilter(filter.key)}
+            />
+          ))}
+        </ScrollView>
+      </Animated.View>
 
       <FlatList
         data={allRequestsList}
         keyExtractor={(item) => item.id.toString()}
-        renderItem={({ item }) => (
-          <RequestCard
-            request={item}
-            onPress={() => handleRequestPress(item)}
-            showActions
-            userPermissions={user?.permissions ?? 0}
-            onApprove={() => handleApprove(item.id)}
-            onDecline={() => handleDecline(item.id)}
-            isApproving={approveRequest.isPending && approveRequest.variables === item.id}
-            isDeclining={declineRequest.isPending && declineRequest.variables === item.id}
-          />
+        renderItem={({ item, index }) => (
+          <Animated.View entering={FadeInRight.delay(index * 50).duration(300)}>
+            <RequestCard
+              request={item}
+              onPress={() => handleRequestPress(item)}
+              showActions
+              userPermissions={user?.permissions ?? 0}
+              onApprove={() => handleApprove(item.id)}
+              onDecline={() => handleDecline(item.id)}
+              isApproving={approveRequest.isPending && approveRequest.variables === item.id}
+              isDeclining={declineRequest.isPending && declineRequest.variables === item.id}
+            />
+          </Animated.View>
         )}
         contentContainerStyle={styles.listContent}
+        showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={accentColor} />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={JELLYSEERR_PURPLE} />
         }
         onEndReached={() => {
           if (hasNextAllRequests && !isFetchingNextAllRequests) {
@@ -377,16 +532,16 @@ export default function RequestsScreen() {
         ListFooterComponent={
           isFetchingNextAllRequests ? (
             <View style={styles.loadingFooter}>
-              <ActivityIndicator color={accentColor} />
+              <ActivityIndicator color={JELLYSEERR_PURPLE} />
             </View>
           ) : null
         }
         ListEmptyComponent={
-          <View style={styles.emptyListContainer}>
-            <Ionicons name="checkmark-circle-outline" size={48} color="rgba(255,255,255,0.2)" />
-            <Text style={styles.emptyListTitle}>All Clear</Text>
-            <Text style={styles.emptyListSubtitle}>No requests to manage</Text>
-          </View>
+          <EmptyState
+            icon="checkmark-done-circle-outline"
+            title="All Clear"
+            subtitle="No requests to manage right now"
+          />
         }
       />
     </View>
@@ -394,31 +549,60 @@ export default function RequestsScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Requests</Text>
-      </View>
+      <LinearGradient
+        colors={[`${JELLYSEERR_PURPLE}20`, `${JELLYSEERR_PURPLE}05`, 'transparent']}
+        style={styles.headerGradient}
+      />
 
-      {/* Tab Bar */}
+      <Animated.View entering={FadeInDown.duration(400)} style={styles.header}>
+        <View style={styles.headerLeft}>
+          <View style={styles.logoContainer}>
+            <LinearGradient
+              colors={[JELLYSEERR_PURPLE, JELLYSEERR_PURPLE_DARK]}
+              style={styles.logoGradient}
+            >
+              <Ionicons name="film" size={16} color="#fff" />
+            </LinearGradient>
+          </View>
+          <View>
+            <Text style={styles.headerTitle}>Jellyseerr</Text>
+            {user && (
+              <Text style={styles.headerSubtitle}>Welcome, {user.displayName || user.username || 'User'}</Text>
+            )}
+          </View>
+        </View>
+      </Animated.View>
+
       <View style={styles.tabBar}>
-        {tabs.filter((t) => t.visible).map((tab) => {
+        {tabs.filter((t) => t.visible).map((tab, index) => {
           const isActive = activeTab === tab.id;
           return (
             <Pressable key={tab.id} onPress={() => setActiveTab(tab.id)} style={styles.tab}>
-              <Text
-                style={[
-                  styles.tabText,
-                  { color: isActive ? accentColor : colors.text.tertiary },
-                ]}
-              >
-                {tab.label}
-              </Text>
-              {tab.badge && (
-                <View style={[styles.tabBadge, { backgroundColor: accentColor }]}>
-                  <Text style={styles.tabBadgeText}>{tab.badge}</Text>
-                </View>
+              <View style={styles.tabContent}>
+                <Text
+                  style={[
+                    styles.tabText,
+                    { color: isActive ? JELLYSEERR_PURPLE : colors.text.tertiary },
+                  ]}
+                >
+                  {tab.label}
+                </Text>
+                {tab.badge !== undefined && (
+                  <View style={[styles.tabBadge, { backgroundColor: JELLYSEERR_PURPLE }]}>
+                    <Text style={styles.tabBadgeText}>{tab.badge}</Text>
+                  </View>
+                )}
+              </View>
+              {isActive && (
+                <Animated.View entering={FadeIn.duration(200)}>
+                  <LinearGradient
+                    colors={[JELLYSEERR_PURPLE, JELLYSEERR_PURPLE_DARK]}
+                    style={styles.tabIndicator}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                  />
+                </Animated.View>
               )}
-              {isActive && <View style={[styles.tabIndicator, { backgroundColor: accentColor }]} />}
             </Pressable>
           );
         })}
@@ -436,35 +620,64 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background.primary,
   },
+  headerGradient: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 200,
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 8,
+    paddingTop: 8,
+    paddingBottom: 12,
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  logoContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  logoGradient: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   headerTitle: {
     color: '#fff',
-    fontSize: 28,
+    fontSize: 22,
     fontWeight: '700',
+  },
+  headerSubtitle: {
+    color: colors.text.tertiary,
+    fontSize: 13,
+    marginTop: 1,
   },
   tabBar: {
     flexDirection: 'row',
     paddingHorizontal: 16,
-    paddingBottom: 12,
-    gap: 20,
+    paddingBottom: 8,
+    gap: 24,
   },
   tab: {
-    position: 'relative',
+    paddingBottom: 8,
+  },
+  tabContent: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingBottom: 8,
   },
   tabText: {
     fontSize: 15,
-    fontWeight: '500',
+    fontWeight: '600',
   },
   tabBadge: {
     minWidth: 18,
@@ -477,15 +690,12 @@ const styles = StyleSheet.create({
   tabBadgeText: {
     color: '#fff',
     fontSize: 10,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   tabIndicator: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: 2,
-    borderRadius: 1,
+    height: 3,
+    borderRadius: 1.5,
+    marginTop: 4,
   },
   searchContainer: {
     paddingHorizontal: 16,
@@ -494,26 +704,36 @@ const styles = StyleSheet.create({
   searchInputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.surface.default,
-    borderRadius: 12,
+    backgroundColor: colors.surface.elevated,
+    borderRadius: 14,
     paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: colors.border.subtle,
     gap: 10,
   },
   searchInput: {
     flex: 1,
-    paddingVertical: 12,
+    paddingVertical: 14,
     color: '#fff',
     fontSize: 15,
   },
+  clearButton: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   section: {
-    marginBottom: 24,
+    marginBottom: 28,
   },
   sectionTitle: {
     color: '#fff',
-    fontSize: 17,
-    fontWeight: '600',
+    fontSize: 18,
+    fontWeight: '700',
     paddingHorizontal: 16,
-    marginBottom: 12,
+    marginBottom: 14,
   },
   horizontalScroll: {
     paddingHorizontal: 16,
@@ -522,105 +742,181 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
   },
-  noResultsContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 48,
-  },
-  noResultsText: {
-    color: colors.text.tertiary,
-    marginTop: 12,
-    textAlign: 'center',
-  },
-  listContent: {
+  statsContainer: {
     paddingHorizontal: 16,
     paddingVertical: 16,
-    flexGrow: 1,
+    gap: 12,
+  },
+  statCard: {
+    width: (SCREEN_WIDTH - 56) / 4,
+    minWidth: 80,
+  },
+  statCardGradient: {
+    borderRadius: 16,
+    padding: 12,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.border.subtle,
+  },
+  statIconContainer: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  statValue: {
+    color: '#fff',
+    fontSize: 20,
+    fontWeight: '700',
+  },
+  statLabel: {
+    color: colors.text.tertiary,
+    fontSize: 11,
+    marginTop: 2,
   },
   filterRow: {
-    flexDirection: 'row',
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingBottom: 12,
     gap: 8,
   },
   filterPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 24,
     gap: 6,
+  },
+  filterPillInactive: {
+    backgroundColor: colors.surface.default,
+    borderWidth: 1,
+    borderColor: colors.border.subtle,
   },
   filterPillText: {
     fontSize: 13,
-    fontWeight: '500',
+    fontWeight: '600',
+    color: colors.text.secondary,
+  },
+  filterPillTextActive: {
+    color: '#fff',
   },
   filterBadge: {
-    minWidth: 16,
-    height: 16,
-    borderRadius: 8,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 4,
+    paddingHorizontal: 5,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+  },
+  filterBadgeActive: {
+    backgroundColor: 'rgba(255,255,255,0.3)',
   },
   filterBadgeText: {
     color: '#fff',
     fontSize: 10,
-    fontWeight: '600',
+    fontWeight: '700',
   },
-  emptyContainer: {
+  listContent: {
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 16,
+    flexGrow: 1,
+  },
+  loadingFooter: {
+    paddingVertical: 24,
+    alignItems: 'center',
+  },
+  emptyStateContainer: {
     flex: 1,
-    backgroundColor: colors.background.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 32,
+    paddingVertical: 48,
   },
-  emptyTitle: {
+  emptyStateGradient: {
+    alignItems: 'center',
+    padding: 32,
+    borderRadius: 24,
+    width: '100%',
+  },
+  emptyStateIconContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 24,
+    backgroundColor: `${JELLYSEERR_PURPLE}15`,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+  },
+  emptyStateTitle: {
     color: '#fff',
-    fontSize: 20,
-    fontWeight: '600',
-    marginTop: 16,
-    textAlign: 'center',
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 8,
   },
-  emptySubtitle: {
+  emptyStateSubtitle: {
     color: colors.text.tertiary,
+    fontSize: 14,
     textAlign: 'center',
-    marginTop: 8,
     lineHeight: 20,
+    maxWidth: 280,
   },
-  connectButton: {
+  emptyStateButton: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     marginTop: 24,
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 12,
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    borderRadius: 14,
   },
-  connectButtonText: {
+  emptyStateButtonText: {
     color: '#fff',
     fontWeight: '600',
+    fontSize: 15,
   },
-  emptyListContainer: {
+  notConnectedContainer: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 64,
+    paddingHorizontal: 32,
   },
-  emptyListTitle: {
-    color: 'rgba(255,255,255,0.5)',
-    fontSize: 16,
-    fontWeight: '500',
-    marginTop: 12,
+  notConnectedIconContainer: {
+    marginBottom: 24,
   },
-  emptyListSubtitle: {
-    color: colors.text.tertiary,
-    fontSize: 13,
-    marginTop: 4,
-    textAlign: 'center',
-  },
-  loadingFooter: {
-    paddingVertical: 20,
+  notConnectedIconGradient: {
+    width: 100,
+    height: 100,
+    borderRadius: 28,
     alignItems: 'center',
+    justifyContent: 'center',
+  },
+  notConnectedTitle: {
+    color: '#fff',
+    fontSize: 28,
+    fontWeight: '700',
+    marginBottom: 12,
+  },
+  notConnectedSubtitle: {
+    color: colors.text.tertiary,
+    fontSize: 15,
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 32,
+  },
+  connectButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 28,
+    paddingVertical: 16,
+    borderRadius: 16,
+  },
+  connectButtonText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 16,
   },
 });

@@ -312,7 +312,7 @@ export default function LibraryDetailScreen() {
       const isPdf = container === 'pdf' || path.endsWith('.pdf');
       router.push(isPdf ? `/reader/pdf?itemId=${item.Id}` : `/reader/epub?itemId=${item.Id}`);
     } else if (type === 'boxset') {
-      router.push(`/(tabs)/library/${item.Id}`);
+      router.push(`/(tabs)/details/boxset/${item.Id}`);
     } else {
       router.push(`/(tabs)/details/${type}/${item.Id}`);
     }

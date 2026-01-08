@@ -7,7 +7,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeIn, FadeOut, useSharedValue, useAnimatedStyle, withTiming, runOnJS, Easing } from 'react-native-reanimated';
 import { useAuthStore, useSettingsStore, usePlayerStore, useDownloadStore } from '@/stores';
-import { getItem, getImageUrl, getSimilarItems, getSeasons, getEpisodes, getAlbumTracks, getArtistAlbums, getPlaylistItems, getNextUp, markAsFavorite } from '@/api';
+import { getItem, getImageUrl, getSimilarItems, getSeasons, getEpisodes, getAlbumTracks, getArtistAlbums, getPlaylistItems, getCollectionItems, getNextUp, markAsFavorite } from '@/api';
 import { formatDuration, formatYear, formatRating, ticksToMs, getWatchProgress, getDisplayName, getDisplayImageUrl, getDisplaySeriesName, getDisplayArtist, goBack } from '@/utils';
 import { MediaRow } from '@/components/media/MediaRow';
 import { Button } from '@/components/ui/Button';
@@ -103,7 +103,9 @@ export default function DetailScreen() {
   }));
 
   const handleGoBack = () => {
-    goBack('/(tabs)/home');
+    // Navigate back to appropriate screen based on content type
+    const fallback = type === 'boxset' ? '/(tabs)/library' : '/(tabs)/home';
+    goBack(fallback);
   };
 
   // Check download status
@@ -169,6 +171,12 @@ export default function DetailScreen() {
     queryFn: () => getArtistAlbums(id, userId),
     enabled: !!userId && !!id && type === 'artist',
     staleTime: 1000 * 60 * 60, // 1 hour for artist albums
+  });
+
+  const { data: collectionItems, isLoading: isLoadingCollectionItems } = useQuery({
+    queryKey: ['collectionItems', id, userId],
+    queryFn: () => getCollectionItems(userId, id),
+    enabled: !!userId && !!id && type === 'boxset',
   });
 
   // For seasons, we need to get the SeriesId from the item to fetch episodes
@@ -545,12 +553,17 @@ export default function DetailScreen() {
                     {artistAlbums.TotalRecordCount} {artistAlbums.TotalRecordCount === 1 ? 'Album' : 'Albums'}
                   </Text>
                 )}
+                {type === 'boxset' && collectionItems && (
+                  <Text className="text-text-secondary text-sm mr-3">
+                    {collectionItems.TotalRecordCount} {collectionItems.TotalRecordCount === 1 ? 'item' : 'items'}
+                  </Text>
+                )}
                 {item?.ProductionYear && (
                   <Text className="text-text-secondary text-sm mr-3">
                     {formatYear(item.ProductionYear)}
                   </Text>
                 )}
-                {type !== 'artist' && type !== 'playlist' && type !== 'series' && type !== 'season' && duration && (
+                {type !== 'artist' && type !== 'playlist' && type !== 'series' && type !== 'season' && type !== 'boxset' && duration && (
                   <Text className="text-text-secondary text-sm mr-3">
                     {duration}
                   </Text>
@@ -576,8 +589,8 @@ export default function DetailScreen() {
             </View>
           </View>
 
-          {/* Play Button - Not shown for artists */}
-          {type !== 'artist' && (
+          {/* Play Button - Not shown for artists or collections */}
+          {type !== 'artist' && type !== 'boxset' && (
             <View className="mt-5 flex-row gap-3">
               <View className="flex-1">
                 <Button
@@ -1155,6 +1168,93 @@ export default function DetailScreen() {
                 })
               ) : (
                 <Text className="text-text-tertiary text-center py-4">No albums found</Text>
+              )}
+            </View>
+          )}
+
+          {type === 'boxset' && (
+            <View className="mt-6">
+              <Text className="text-white text-lg font-semibold mb-3">
+                {collectionItems ? `${collectionItems.TotalRecordCount} ${collectionItems.TotalRecordCount === 1 ? 'Item' : 'Items'}` : 'Items'}
+              </Text>
+              {isLoadingCollectionItems ? (
+                <>
+                  {[1, 2, 3].map((i) => (
+                    <View key={i} className="bg-surface p-3 rounded-xl mb-2 flex-row items-center">
+                      <View className="w-16 h-24 rounded-lg bg-surface-elevated mr-3" />
+                      <View className="flex-1">
+                        <View className="h-4 w-32 bg-surface-elevated rounded mb-2" />
+                        <View className="h-3 w-16 bg-surface-elevated rounded" />
+                      </View>
+                    </View>
+                  ))}
+                </>
+              ) : collectionItems && collectionItems.Items.length > 0 ? (
+                collectionItems.Items.map((collectionItem) => {
+                  const itemProgress = getWatchProgress(collectionItem);
+                  const hasItemProgress = itemProgress > 0;
+                  const itemImageTag = collectionItem.ImageTags?.Primary;
+                  const rawItemImageUrl = itemImageTag
+                    ? getImageUrl(collectionItem.Id, 'Primary', { maxWidth: 200, tag: itemImageTag })
+                    : null;
+                  const itemImageUrl = getDisplayImageUrl(collectionItem.Id, rawItemImageUrl, hideMedia, 'Primary');
+                  const itemDisplayName = getDisplayName(collectionItem, hideMedia);
+                  const itemType = collectionItem.Type?.toLowerCase();
+
+                  return (
+                    <Pressable
+                      key={collectionItem.Id}
+                      className="bg-surface rounded-xl mb-3 flex-row items-center overflow-hidden"
+                      onPress={() => router.push(`/(tabs)/details/${itemType}/${collectionItem.Id}`)}
+                    >
+                      <View className="w-16 h-24 bg-surface-elevated">
+                        {itemImageUrl ? (
+                          <CachedImage
+                            uri={itemImageUrl}
+                            style={{ width: 64, height: 96 }}
+                          />
+                        ) : (
+                          <View className="w-full h-full items-center justify-center">
+                            <Ionicons name="film-outline" size={24} color="rgba(255,255,255,0.3)" />
+                          </View>
+                        )}
+                        {hasItemProgress && (
+                          <View className="absolute bottom-0 left-0 right-0 h-1 bg-black/50">
+                            <View
+                              className="h-full"
+                              style={{ width: `${itemProgress}%`, backgroundColor: accentColor }}
+                            />
+                          </View>
+                        )}
+                      </View>
+                      <View className="flex-1 pl-4 pr-3 py-2">
+                        <Text className="text-white font-medium" numberOfLines={2}>{itemDisplayName}</Text>
+                        <View className="flex-row items-center mt-1">
+                          {collectionItem.ProductionYear && (
+                            <Text className="text-text-tertiary text-xs">
+                              {collectionItem.ProductionYear}
+                            </Text>
+                          )}
+                          {collectionItem.RunTimeTicks && (
+                            <Text className="text-text-tertiary text-xs">
+                              {collectionItem.ProductionYear ? ' • ' : ''}{formatDuration(ticksToMs(collectionItem.RunTimeTicks))}
+                            </Text>
+                          )}
+                          {collectionItem.CommunityRating && (
+                            <Text className="text-text-tertiary text-xs">
+                              {(collectionItem.ProductionYear || collectionItem.RunTimeTicks) ? ' • ' : ''}⭐ {collectionItem.CommunityRating.toFixed(1)}
+                            </Text>
+                          )}
+                        </View>
+                      </View>
+                      <View className="pr-3">
+                        <Ionicons name="chevron-forward" size={20} color="rgba(255,255,255,0.4)" />
+                      </View>
+                    </Pressable>
+                  );
+                })
+              ) : (
+                <Text className="text-text-tertiary text-center py-4">No items in this collection</Text>
               )}
             </View>
           )}

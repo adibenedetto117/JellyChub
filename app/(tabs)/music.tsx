@@ -7,17 +7,17 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useAuthStore, useSettingsStore } from '@/stores';
-import { getLibraries, getItems, getImageUrl, getLatestMedia, getArtists, createPlaylist, getFavoriteSongs, getLibraryIdsByType, getItemsFromMultipleLibraries, getLatestMediaFromMultipleLibraries } from '@/api';
+import { getLibraries, getItems, getImageUrl, getLatestMedia, getArtists, createPlaylist, getLibraryIdsByType, getItemsFromMultipleLibraries, getLatestMediaFromMultipleLibraries, getRecentlyPlayed, getMostPlayed } from '@/api';
 import { SkeletonGrid, SearchButton, AnimatedGradient } from '@/components/ui';
-import { getDisplayName, getDisplayImageUrl, getDisplayArtist } from '@/utils';
+import { getDisplayName, getDisplayImageUrl, getDisplayArtist, formatPlayerTime, ticksToMs } from '@/utils';
 import { colors } from '@/theme';
-import type { BaseItem, MusicAlbum } from '@/types/jellyfin';
+import type { BaseItem, MusicAlbum, AudioTrack } from '@/types/jellyfin';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const ALBUM_SIZE = (SCREEN_WIDTH - 48) / 2;
 const HORIZONTAL_ALBUM_SIZE = 140;
 
-type ViewMode = 'home' | 'albums' | 'artists' | 'playlists';
+type ViewMode = 'home' | 'albums' | 'artists' | 'playlists' | 'songs';
 
 const AlbumCard = memo(function AlbumCard({ item, onPress, size = ALBUM_SIZE, hideMedia }: { item: BaseItem; onPress: () => void; size?: number; hideMedia: boolean }) {
   const rawImageUrl = item.ImageTags?.Primary
@@ -152,6 +152,53 @@ const AlbumRow = memo(function AlbumRow({ item, onPress, hideMedia }: { item: Ba
           </Text>
         ) : null}
       </View>
+    </Pressable>
+  );
+});
+
+const SongRow = memo(function SongRow({ item, onPress, hideMedia, showPlayCount }: { item: BaseItem; onPress: () => void; hideMedia: boolean; showPlayCount?: boolean }) {
+  const getItemImageUrl = () => {
+    if (item.ImageTags?.Primary) {
+      return getImageUrl(item.Id, 'Primary', { maxWidth: 120, tag: item.ImageTags.Primary });
+    }
+    const albumId = (item as any)?.AlbumId;
+    const albumTag = (item as any)?.AlbumPrimaryImageTag;
+    if (albumId && albumTag) {
+      return getImageUrl(albumId, 'Primary', { maxWidth: 120, tag: albumTag });
+    }
+    if (albumId) {
+      return getImageUrl(albumId, 'Primary', { maxWidth: 120 });
+    }
+    return null;
+  };
+
+  const rawImageUrl = getItemImageUrl();
+  const imageUrl = getDisplayImageUrl(item.Id, rawImageUrl, hideMedia, 'Primary');
+  const displayName = getDisplayName(item, hideMedia);
+  const rawArtists = (item as any)?.Artists || [(item as any)?.AlbumArtist || ''];
+  const displayArtists = getDisplayArtist(rawArtists, hideMedia);
+  const artist = displayArtists[0] || '';
+  const duration = item.RunTimeTicks ? formatPlayerTime(ticksToMs(item.RunTimeTicks)) : '';
+  const playCount = (item.UserData as any)?.PlayCount ?? 0;
+
+  return (
+    <Pressable onPress={onPress} style={styles.songRow}>
+      <View style={styles.songRowImageContainer}>
+        {imageUrl ? (
+          <Image source={imageUrl} style={styles.songRowImage} contentFit="cover" cachePolicy="memory-disk" />
+        ) : (
+          <View style={styles.songRowPlaceholder}>
+            <Ionicons name="musical-note" size={20} color="rgba(255,255,255,0.3)" />
+          </View>
+        )}
+      </View>
+      <View style={styles.songRowInfo}>
+        <Text style={styles.songRowName} numberOfLines={1}>{displayName}</Text>
+        <Text style={styles.songRowArtist} numberOfLines={1}>
+          {artist}{showPlayCount && playCount > 0 ? ` • ${playCount} plays` : ''}
+        </Text>
+      </View>
+      <Text style={styles.songRowDuration}>{duration}</Text>
     </Pressable>
   );
 });
@@ -292,12 +339,6 @@ export default function MusicScreen() {
     enabled: !!userId && hasMusicLibraries,
   });
 
-  const { data: favorites, refetch: refetchFavorites } = useQuery({
-    queryKey: ['favoriteSongs', userId],
-    queryFn: () => getFavoriteSongs(userId),
-    enabled: !!userId,
-    staleTime: 0,
-  });
 
   const { data: allAlbums, isLoading: albumsLoading, refetch: refetchAlbums, fetchNextPage: fetchNextAlbums, hasNextPage: hasNextAlbums, isFetchingNextPage: isFetchingNextAlbums } = useInfiniteQuery({
     queryKey: ['musicAlbums', userId, musicLibraryIds.join(',')],
@@ -364,14 +405,55 @@ export default function MusicScreen() {
     enabled: !!userId && viewMode === 'playlists',
   });
 
+  // Recently played tracks
+  const { data: recentlyPlayedTracks, refetch: refetchRecentTracks } = useQuery({
+    queryKey: ['recentlyPlayedTracks', userId],
+    queryFn: () => getRecentlyPlayed(userId, 15, ['Audio']),
+    enabled: !!userId && hasMusicLibraries,
+    staleTime: 1000 * 60 * 5,
+  });
+
+  // Most played tracks
+  const { data: mostPlayedTracks, refetch: refetchMostPlayed } = useQuery({
+    queryKey: ['mostPlayedTracks', userId],
+    queryFn: () => getMostPlayed(userId, 15, ['Audio']),
+    enabled: !!userId && hasMusicLibraries,
+    staleTime: 1000 * 60 * 5,
+  });
+
+  // All songs query for Songs tab
+  const { data: allSongs, isLoading: songsLoading, refetch: refetchSongs, fetchNextPage: fetchNextSongs, hasNextPage: hasNextSongs, isFetchingNextPage: isFetchingNextSongs } = useInfiniteQuery({
+    queryKey: ['musicSongs', userId, musicLibraryIds.join(',')],
+    queryFn: ({ pageParam = 0 }) =>
+      getItemsFromMultipleLibraries<AudioTrack>(userId, musicLibraryIds, {
+        includeItemTypes: ['Audio'],
+        sortBy: 'SortName',
+        sortOrder: 'Ascending',
+        startIndex: pageParam,
+        limit: 50,
+        recursive: true,
+        fields: ['Artists', 'AlbumArtist', 'Album', 'AlbumId', 'AlbumPrimaryImageTag', 'RunTimeTicks'],
+      }),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, pages) => {
+      const totalFetched = pages.reduce((acc, p) => acc + p.Items.length, 0);
+      return totalFetched < lastPage.TotalRecordCount ? totalFetched : undefined;
+    },
+    enabled: !!userId && hasMusicLibraries && viewMode === 'songs',
+    staleTime: 1000 * 60 * 30,
+  });
+
   const albums = allAlbums?.pages.flatMap((p) => p.Items) ?? [];
   const artists = allArtists?.pages.flatMap((p) => p.Items) ?? [];
+  const songs = allSongs?.pages.flatMap((p) => p.Items) ?? [];
   const totalAlbums = allAlbums?.pages[0]?.TotalRecordCount ?? 0;
   const totalArtists = allArtists?.pages[0]?.TotalRecordCount ?? 0;
+  const totalSongs = allSongs?.pages[0]?.TotalRecordCount ?? 0;
 
   const albumsSectionListRef = useRef<SectionList<BaseItem>>(null);
   const artistsSectionListRef = useRef<SectionList<BaseItem>>(null);
   const playlistsSectionListRef = useRef<SectionList<BaseItem>>(null);
+  const songsSectionListRef = useRef<SectionList<BaseItem>>(null);
 
   const playlistItems = playlists?.Items ?? [];
   const totalPlaylists = playlistItems.length;
@@ -457,6 +539,33 @@ export default function MusicScreen() {
     };
   }, [artists]);
 
+  // Group songs by first letter for section list
+  const { sections: songSections, availableLetters: songAvailableLetters } = useMemo(() => {
+    if (!songs.length) return { sections: [], availableLetters: [] };
+
+    const grouped: Record<string, BaseItem[]> = {};
+    songs.forEach((song) => {
+      const firstChar = (song.Name ?? '?').charAt(0).toUpperCase();
+      const letter = /[A-Z]/.test(firstChar) ? firstChar : '#';
+      if (!grouped[letter]) grouped[letter] = [];
+      grouped[letter].push(song);
+    });
+
+    const sortedLetters = Object.keys(grouped).sort((a, b) => {
+      if (a === '#') return 1;
+      if (b === '#') return -1;
+      return a.localeCompare(b);
+    });
+
+    return {
+      sections: sortedLetters.map((letter) => ({
+        title: letter,
+        data: grouped[letter],
+      })),
+      availableLetters: sortedLetters,
+    };
+  }, [songs]);
+
   const scrollToAlbumLetter = useCallback((letter: string) => {
     const sectionIndex = albumSections.findIndex((s) => s.title === letter);
     if (sectionIndex !== -1 && albumsSectionListRef.current) {
@@ -493,11 +602,23 @@ export default function MusicScreen() {
     }
   }, [playlistSections]);
 
+  const scrollToSongLetter = useCallback((letter: string) => {
+    const sectionIndex = songSections.findIndex((s) => s.title === letter);
+    if (sectionIndex !== -1 && songsSectionListRef.current) {
+      songsSectionListRef.current.scrollToLocation({
+        sectionIndex,
+        itemIndex: 0,
+        animated: true,
+        viewOffset: 0,
+      });
+    }
+  }, [songSections]);
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([refetchRecent(), refetchAdded(), refetchFavorites(), refetchAlbums(), refetchArtists(), refetchPlaylists()]);
+    await Promise.all([refetchRecent(), refetchAdded(), refetchAlbums(), refetchArtists(), refetchPlaylists(), refetchRecentTracks(), refetchMostPlayed(), refetchSongs()]);
     setRefreshing(false);
-  }, [refetchRecent, refetchAdded, refetchFavorites, refetchAlbums, refetchArtists, refetchPlaylists]);
+  }, [refetchRecent, refetchAdded, refetchAlbums, refetchArtists, refetchPlaylists, refetchRecentTracks, refetchMostPlayed, refetchSongs]);
 
   const handleAlbumPress = useCallback((item: BaseItem) => {
     router.push(`/(tabs)/details/album/${item.Id}`);
@@ -509,6 +630,10 @@ export default function MusicScreen() {
 
   const handlePlaylistPress = useCallback((item: BaseItem) => {
     router.push(`/(tabs)/playlist/${item.Id}`);
+  }, []);
+
+  const handleSongPress = useCallback((item: BaseItem) => {
+    router.push(`/player/music?itemId=${item.Id}`);
   }, []);
 
   const createPlaylistMutation = useMutation({
@@ -541,6 +666,7 @@ export default function MusicScreen() {
   const setViewModeAlbums = useCallback(() => setViewMode('albums'), []);
   const setViewModeArtists = useCallback(() => setViewMode('artists'), []);
   const setViewModePlaylists = useCallback(() => setViewMode('playlists'), []);
+  const setViewModeSongs = useCallback(() => setViewMode('songs'), []);
 
   // Memoized renderItem callbacks to prevent re-renders
   const renderAlbumRow = useCallback(({ item }: { item: BaseItem }) => (
@@ -555,6 +681,10 @@ export default function MusicScreen() {
     <PlaylistRow item={item} onPress={() => handlePlaylistPress(item)} hideMedia={hideMedia} />
   ), [handlePlaylistPress, hideMedia]);
 
+  const renderSongRow = useCallback(({ item }: { item: BaseItem }) => (
+    <SongRow item={item} onPress={() => handleSongPress(item)} hideMedia={hideMedia} />
+  ), [handleSongPress, hideMedia]);
+
   const renderSectionHeader = useCallback(({ section }: { section: { title: string; data: BaseItem[] } }) => (
     <View style={styles.sectionHeaderContainer}>
       <Text style={[styles.sectionHeaderText, { color: accentColor }]}>{section.title}</Text>
@@ -568,9 +698,34 @@ export default function MusicScreen() {
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={accentColor} />
       }
     >
+      {/* Recently Played Tracks */}
+      {recentlyPlayedTracks?.Items && recentlyPlayedTracks.Items.length > 0 && (
+        <>
+          <SectionHeader title="Recently Played" icon="time-outline" onSeeAll={setViewModeSongs} />
+          <View style={styles.tracksSection}>
+            {recentlyPlayedTracks.Items.slice(0, 5).map((item) => (
+              <SongRow key={item.Id} item={item} onPress={() => handleSongPress(item)} hideMedia={hideMedia} />
+            ))}
+          </View>
+        </>
+      )}
+
+      {/* Most Played Tracks */}
+      {mostPlayedTracks?.Items && mostPlayedTracks.Items.length > 0 && (
+        <>
+          <SectionHeader title="Most Played" icon="trending-up" onSeeAll={setViewModeSongs} />
+          <View style={styles.tracksSection}>
+            {mostPlayedTracks.Items.slice(0, 5).map((item) => (
+              <SongRow key={item.Id} item={item} onPress={() => handleSongPress(item)} hideMedia={hideMedia} showPlayCount />
+            ))}
+          </View>
+        </>
+      )}
+
+      {/* Recently Played Albums */}
       {recentlyPlayed?.Items && recentlyPlayed.Items.length > 0 && (
         <>
-          <SectionHeader title="Recently Played" onSeeAll={setViewModeAlbums} />
+          <SectionHeader title="Jump Back In" icon="albums-outline" onSeeAll={setViewModeAlbums} />
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalScroll}>
             {recentlyPlayed.Items.map((item) => (
               <View key={item.Id} style={styles.horizontalItem}>
@@ -581,9 +736,10 @@ export default function MusicScreen() {
         </>
       )}
 
+      {/* Recently Added Albums */}
       {recentlyAdded && recentlyAdded.length > 0 && (
         <>
-          <SectionHeader title="Recently Added" onSeeAll={setViewModeAlbums} />
+          <SectionHeader title="New Releases" icon="sparkles" onSeeAll={setViewModeAlbums} />
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalScroll}>
             {recentlyAdded.map((item) => (
               <View key={item.Id} style={styles.horizontalItem}>
@@ -694,8 +850,6 @@ export default function MusicScreen() {
     </View>
   );
 
-  const favoritesCount = favorites?.Items?.length ?? 0;
-
   const renderPlaylistsView = () => (
     <View style={styles.playlistsContainer}>
       <SectionList
@@ -710,31 +864,15 @@ export default function MusicScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={accentColor} />
         }
         ListHeaderComponent={
-          <>
-            <View style={styles.playlistsHeader}>
-              <Text style={styles.listHeader}>{totalPlaylists + 1} {totalPlaylists === 0 ? 'playlist' : 'playlists'}</Text>
-              <Pressable
-                onPress={handleCreatePlaylist}
-                style={({ pressed }) => [styles.newPlaylistButton, { backgroundColor: pressed ? accentColor : accentColor + '20' }]}
-              >
-                <Text style={[styles.newPlaylistButtonText, { color: accentColor }]}>+ New</Text>
-              </Pressable>
-            </View>
-            {/* Favorites as a special playlist */}
+          <View style={styles.playlistsHeader}>
+            <Text style={styles.listHeader}>{totalPlaylists} {totalPlaylists === 1 ? 'playlist' : 'playlists'}</Text>
             <Pressable
-              onPress={() => router.push('/favorites')}
-              style={styles.favoritesPlaylistRow}
+              onPress={handleCreatePlaylist}
+              style={({ pressed }) => [styles.newPlaylistButton, { backgroundColor: pressed ? accentColor : accentColor + '20' }]}
             >
-              <View style={[styles.favoritesPlaylistIcon, { backgroundColor: accentColor + '20' }]}>
-                <Ionicons name="heart" size={24} color={accentColor} />
-              </View>
-              <View style={styles.favoritesPlaylistInfo}>
-                <Text style={styles.favoritesPlaylistName}>Favorites</Text>
-                <Text style={styles.favoritesPlaylistCount}>{favoritesCount} {favoritesCount === 1 ? 'song' : 'songs'}</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color="rgba(255,255,255,0.3)" />
+              <Text style={[styles.newPlaylistButtonText, { color: accentColor }]}>+ New</Text>
             </Pressable>
-          </>
+          </View>
         }
         ListEmptyComponent={
           playlistsLoading ? (
@@ -761,6 +899,54 @@ export default function MusicScreen() {
     </View>
   );
 
+  const renderSongsView = () => (
+    <View style={styles.songsContainer}>
+      <SectionList
+        ref={songsSectionListRef}
+        sections={songSections}
+        contentContainerStyle={styles.songsListContainer}
+        renderItem={renderSongRow}
+        renderSectionHeader={renderSectionHeader}
+        keyExtractor={(item) => item.Id}
+        stickySectionHeadersEnabled={true}
+        onEndReached={() => hasNextSongs && !isFetchingNextSongs && fetchNextSongs()}
+        onEndReachedThreshold={0.5}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={accentColor} />
+        }
+        ListHeaderComponent={
+          <Text style={styles.listHeader}>{totalSongs} songs</Text>
+        }
+        ListFooterComponent={
+          isFetchingNextSongs ? (
+            <View style={styles.loadingFooter}>
+              <ActivityIndicator color={accentColor} size="small" />
+              <Text style={styles.loadingFooterText}>Loading more...</Text>
+            </View>
+          ) : <View style={styles.bottomSpacer} />
+        }
+        ListEmptyComponent={
+          songsLoading ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator color={accentColor} size="large" />
+              <Text style={styles.loadingText}>Loading songs...</Text>
+            </View>
+          ) : (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyStateText}>No songs found</Text>
+            </View>
+          )
+        }
+        getItemLayout={(data, index) => ({ length: 64, offset: 64 * index, index })}
+      />
+      <AlphabetScroller
+        availableLetters={songAvailableLetters}
+        onLetterPress={scrollToSongLetter}
+        accentColor={accentColor}
+      />
+    </View>
+  );
+
   if (!hasMusicLibraries) {
     return (
       <SafeAreaView style={styles.noLibraryContainer} edges={['top']}>
@@ -783,6 +969,7 @@ export default function MusicScreen() {
       <View style={styles.tabContainer}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
           <TabButton label="Home" active={viewMode === 'home'} onPress={setViewModeHome} accentColor={accentColor} />
+          <TabButton label="Songs" active={viewMode === 'songs'} onPress={setViewModeSongs} accentColor={accentColor} />
           <TabButton label="Albums" active={viewMode === 'albums'} onPress={setViewModeAlbums} accentColor={accentColor} />
           <TabButton label="Artists" active={viewMode === 'artists'} onPress={setViewModeArtists} accentColor={accentColor} />
           <TabButton label="Playlists" active={viewMode === 'playlists'} onPress={setViewModePlaylists} accentColor={accentColor} />
@@ -790,6 +977,7 @@ export default function MusicScreen() {
       </View>
 
       {viewMode === 'home' && renderHomeView()}
+      {viewMode === 'songs' && renderSongsView()}
       {viewMode === 'albums' && renderAlbumsView()}
       {viewMode === 'artists' && renderArtistsView()}
       {viewMode === 'playlists' && renderPlaylistsView()}
@@ -1013,6 +1201,62 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 100,
   },
+  // Song Row
+  songRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.08)',
+  },
+  songRowImageContainer: {
+    width: 44,
+    height: 44,
+    borderRadius: 4,
+    overflow: 'hidden',
+    backgroundColor: colors.surface.default,
+    marginRight: 12,
+  },
+  songRowImage: {
+    width: '100%',
+    height: '100%',
+  },
+  songRowPlaceholder: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.1)',
+  },
+  songRowInfo: {
+    flex: 1,
+  },
+  songRowName: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '500',
+  },
+  songRowArtist: {
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: 13,
+    marginTop: 2,
+  },
+  songRowDuration: {
+    color: 'rgba(255,255,255,0.4)',
+    fontSize: 13,
+    marginLeft: 12,
+  },
+  // Songs container with alphabet scroller
+  songsContainer: {
+    flex: 1,
+    flexDirection: 'row',
+  },
+  songsListContainer: {
+    paddingTop: 8,
+    paddingHorizontal: 16,
+    paddingBottom: 100,
+  },
   // Artist Row
   artistRow: {
     flexDirection: 'row',
@@ -1185,6 +1429,10 @@ const styles = StyleSheet.create({
   },
   horizontalItem: {
     marginRight: 12,
+  },
+  tracksSection: {
+    paddingHorizontal: 16,
+    marginBottom: 8,
   },
   quickPicksContainer: {
     paddingHorizontal: 16,

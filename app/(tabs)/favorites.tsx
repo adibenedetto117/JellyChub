@@ -1,57 +1,61 @@
 import { useState, useMemo, useCallback } from 'react';
-import { View, Text, FlatList, Pressable, ActivityIndicator, StyleSheet, Dimensions } from 'react-native';
+import { View, Text, FlatList, Pressable, StyleSheet, Dimensions, ScrollView, RefreshControl } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Stack, router } from 'expo-router';
+import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
+import { LinearGradient } from 'expo-linear-gradient';
+import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { useAuthStore, useSettingsStore, usePlayerStore } from '@/stores';
+import { useResponsive } from '@/hooks';
 import { getFavorites, getFavoriteSongs, getImageUrl } from '@/api';
+import { AnimatedGradient } from '@/components/ui';
 import { CachedImage } from '@/components/ui/CachedImage';
-import { NowPlayingBars } from '@/components/ui/NowPlayingBars';
-import { TrackOptionsMenu } from '@/components/music/TrackOptionsMenu';
+import { SkeletonRow } from '@/components/ui/Skeleton';
 import { formatDuration, ticksToMs, getDisplayName, getDisplayImageUrl, getDisplayArtist, goBack } from '@/utils';
-import { colors } from '@/theme';
 import type { BaseItem } from '@/types/jellyfin';
 
 type FilterType = 'all' | 'movies' | 'shows' | 'music';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const POSTER_WIDTH = (SCREEN_WIDTH - 48) / 3;
-const POSTER_HEIGHT = POSTER_WIDTH * 1.5;
 
 export default function FavoritesScreen() {
   const currentUser = useAuthStore((state) => state.currentUser);
   const accentColor = useSettingsStore((s) => s.accentColor);
   const hideMedia = useSettingsStore((s) => s.hideMedia);
   const setQueue = usePlayerStore((s) => s.setQueue);
-  const currentItem = usePlayerStore((s) => s.currentItem);
-  const playerState = usePlayerStore((s) => s.playerState);
   const userId = currentUser?.Id ?? '';
+  const { isTablet, fontSize } = useResponsive();
 
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
-  const [selectedTrack, setSelectedTrack] = useState<BaseItem | null>(null);
-  const [showTrackOptions, setShowTrackOptions] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
-  const handleGoBack = () => {
-    goBack('/(tabs)/home');
-  };
+  const horizontalPadding = isTablet ? 24 : 16;
+  const numColumns = isTablet ? 4 : 3;
+  const posterWidth = (SCREEN_WIDTH - (horizontalPadding * 2) - ((numColumns - 1) * 12)) / numColumns;
+  const posterHeight = posterWidth * 1.5;
 
-  const { data: mediaFavorites, isLoading: isLoadingMedia } = useQuery({
+  const { data: mediaFavorites, isLoading: isLoadingMedia, refetch: refetchMedia } = useQuery({
     queryKey: ['allFavorites', userId],
     queryFn: () => getFavorites(userId, ['Movie', 'Series'], 100),
     enabled: !!userId,
-    staleTime: 0,
+    staleTime: 1000 * 30, // 30 seconds - refetch when returning
     refetchOnMount: 'always',
   });
 
-  const { data: musicFavorites, isLoading: isLoadingMusic } = useQuery({
+  const { data: musicFavorites, isLoading: isLoadingMusic, refetch: refetchMusic } = useQuery({
     queryKey: ['favoriteSongs', userId],
     queryFn: () => getFavoriteSongs(userId),
     enabled: !!userId,
-    staleTime: 0,
+    staleTime: 1000 * 30,
     refetchOnMount: 'always',
   });
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await Promise.all([refetchMedia(), refetchMusic()]);
+    setRefreshing(false);
+  }, [refetchMedia, refetchMusic]);
 
   const movies = useMemo(() =>
     (mediaFavorites?.Items ?? []).filter(item => item.Type === 'Movie'),
@@ -69,9 +73,16 @@ export default function FavoritesScreen() {
   );
 
   const isLoading = isLoadingMedia || isLoadingMusic;
-
   const totalCount = movies.length + shows.length + tracks.length;
-  const totalDuration = tracks.reduce((sum, t) => sum + (t.RunTimeTicks ?? 0), 0);
+
+  const filteredItems = useMemo(() => {
+    switch (activeFilter) {
+      case 'movies': return movies;
+      case 'shows': return shows;
+      case 'music': return tracks;
+      default: return [...movies, ...shows];
+    }
+  }, [activeFilter, movies, shows, tracks]);
 
   const handleItemPress = useCallback((item: BaseItem) => {
     const type = item.Type?.toLowerCase();
@@ -79,382 +90,270 @@ export default function FavoritesScreen() {
       router.push(`/(tabs)/details/movie/${item.Id}`);
     } else if (type === 'series') {
       router.push(`/(tabs)/details/series/${item.Id}`);
+    } else if (type === 'audio') {
+      const queueItems = tracks.map((t, i) => ({ id: t.Id, item: t, index: i }));
+      setQueue(queueItems);
+      router.push(`/player/music?itemId=${item.Id}`);
     }
-  }, []);
+  }, [tracks, setQueue]);
 
-  const handlePlayAll = () => {
-    if (tracks.length === 0) return;
-    const queueItems = tracks.map((track, index) => ({
-      id: track.Id,
-      item: track,
-      index,
-    }));
-    setQueue(queueItems);
-    router.push(`/player/music?itemId=${tracks[0].Id}`);
-  };
+  const handlePlayAllMusic = useCallback(() => {
+    if (tracks.length > 0) {
+      const queueItems = tracks.map((t, i) => ({ id: t.Id, item: t, index: i }));
+      setQueue(queueItems);
+      router.push(`/player/music?itemId=${tracks[0].Id}`);
+    }
+  }, [tracks, setQueue]);
 
-  const handleShuffle = () => {
-    if (tracks.length === 0) return;
-    const shuffled = [...tracks].sort(() => Math.random() - 0.5);
-    const queueItems = shuffled.map((track, index) => ({
-      id: track.Id,
-      item: track,
-      index,
-    }));
-    setQueue(queueItems);
-    router.push(`/player/music?itemId=${shuffled[0].Id}`);
-  };
-
-  const handleTrackPress = (track: BaseItem) => {
-    const queueItems = tracks.map((t, i) => ({
-      id: t.Id,
-      item: t,
-      index: i,
-    }));
-    setQueue(queueItems);
-    router.push(`/player/music?itemId=${track.Id}`);
-  };
-
-  const renderPoster = ({ item }: { item: BaseItem }) => {
+  const renderPosterItem = ({ item, index }: { item: BaseItem; index: number }) => {
+    // Always try to get image - Jellyfin will return it even without tag
     const imageTag = item.ImageTags?.Primary;
-    const rawImageUrl = imageTag
-      ? getImageUrl(item.Id, 'Primary', { maxWidth: 300, tag: imageTag })
-      : null;
+    const rawImageUrl = getImageUrl(item.Id, 'Primary', { maxWidth: posterWidth * 2, tag: imageTag });
     const imageUrl = getDisplayImageUrl(item.Id, rawImageUrl, hideMedia, 'Primary');
     const displayName = getDisplayName(item, hideMedia);
 
     return (
-      <Pressable
-        style={styles.posterContainer}
-        onPress={() => handleItemPress(item)}
-      >
-        <View style={styles.posterImage}>
-          {imageUrl ? (
+      <Animated.View entering={FadeInDown.delay(index * 30).duration(300)}>
+        <Pressable style={[styles.posterContainer, { width: posterWidth }]} onPress={() => handleItemPress(item)}>
+          <View style={[styles.posterImage, { width: posterWidth, height: posterHeight }]}>
             <CachedImage
               uri={imageUrl}
-              style={{ width: POSTER_WIDTH, height: POSTER_HEIGHT }}
-              borderRadius={8}
+              style={{ width: posterWidth, height: posterHeight }}
+              borderRadius={10}
+              fallbackText={displayName?.charAt(0) ?? '?'}
             />
-          ) : (
-            <View style={styles.posterPlaceholder}>
+            {/* Type badge */}
+            <View style={[styles.typeBadge, { backgroundColor: accentColor }]}>
               <Ionicons
-                name={item.Type === 'Movie' ? 'film-outline' : 'tv-outline'}
-                size={32}
-                color="rgba(255,255,255,0.3)"
+                name={item.Type === 'Movie' ? 'film' : 'tv'}
+                size={10}
+                color="#fff"
               />
             </View>
-          )}
-        </View>
-        <Text style={styles.posterTitle} numberOfLines={2}>{displayName}</Text>
-        <Text style={styles.posterType}>{item.Type === 'Movie' ? 'Movie' : 'Series'}</Text>
-      </Pressable>
+          </View>
+          <Text style={[styles.posterTitle, { fontSize: fontSize.xs }]} numberOfLines={2}>{displayName}</Text>
+        </Pressable>
+      </Animated.View>
     );
   };
 
-  const renderTrack = ({ item }: { item: BaseItem }) => {
+  const renderTrackItem = ({ item, index }: { item: BaseItem; index: number }) => {
     const albumId = (item as any).AlbumId || item.Id;
     const imageTag = (item as any).AlbumPrimaryImageTag || item.ImageTags?.Primary;
-    const rawImageUrl = imageTag
-      ? getImageUrl(albumId, 'Primary', { maxWidth: 100, tag: imageTag })
-      : null;
+    const rawImageUrl = imageTag ? getImageUrl(albumId, 'Primary', { maxWidth: 120, tag: imageTag }) : null;
     const imageUrl = getDisplayImageUrl(albumId, rawImageUrl, hideMedia, 'Primary');
     const rawArtists = (item as any).Artists || [(item as any).AlbumArtist || ''];
     const displayArtists = getDisplayArtist(rawArtists, hideMedia);
-    const artistName = displayArtists[0] || '';
-    const albumName = (item as any).Album || '';
     const displayName = getDisplayName(item, hideMedia);
-    const isPlaying = currentItem?.item?.Id === item.Id;
-    const isActive = isPlaying && (playerState === 'playing' || playerState === 'paused');
 
     return (
-      <View style={styles.trackRow}>
+      <Animated.View entering={FadeInDown.delay(index * 20).duration(250)}>
         <Pressable
-          style={styles.trackContent}
-          onPress={() => handleTrackPress(item)}
+          style={[styles.trackRow, { paddingHorizontal: horizontalPadding }]}
+          onPress={() => handleItemPress(item)}
         >
+          <Text style={styles.trackNumber}>{index + 1}</Text>
           <View style={styles.trackImage}>
-            {imageUrl ? (
-              <CachedImage
-                uri={imageUrl}
-                style={{ width: 48, height: 48 }}
-                borderRadius={6}
-              />
-            ) : (
-              <View style={styles.trackPlaceholder}>
-                <Ionicons name="musical-note" size={20} color="rgba(255,255,255,0.3)" />
-              </View>
-            )}
-            {isActive && (
-              <Animated.View
-                entering={FadeIn.duration(200)}
-                exiting={FadeOut.duration(200)}
-                style={[styles.playingOverlay, { backgroundColor: accentColor + 'E6' }]}
-              >
-                <NowPlayingBars isPlaying={playerState === 'playing'} color="#fff" />
-              </Animated.View>
-            )}
+            <CachedImage
+              uri={imageUrl}
+              style={{ width: 48, height: 48 }}
+              borderRadius={6}
+              fallbackText={displayName?.charAt(0) ?? '?'}
+            />
           </View>
           <View style={styles.trackInfo}>
-            <Text style={[styles.trackName, isActive && { color: accentColor }]} numberOfLines={1}>{displayName}</Text>
-            {(artistName || albumName) && (
-              <Text style={styles.trackArtist} numberOfLines={1}>
-                {artistName}{artistName && albumName ? ' - ' : ''}{albumName}
-              </Text>
-            )}
+            <Text style={[styles.trackName, { fontSize: fontSize.base }]} numberOfLines={1}>{displayName}</Text>
+            <Text style={[styles.trackArtist, { fontSize: fontSize.sm }]} numberOfLines={1}>{displayArtists[0] || 'Unknown Artist'}</Text>
           </View>
-          <Text style={styles.trackDuration}>
+          <Text style={[styles.trackDuration, { fontSize: fontSize.sm }]}>
             {formatDuration(ticksToMs(item.RunTimeTicks ?? 0))}
           </Text>
         </Pressable>
-        <Pressable
-          style={styles.trackOptionsButton}
-          onPress={() => {
-            setSelectedTrack(item);
-            setShowTrackOptions(true);
-          }}
-        >
-          <Ionicons name="ellipsis-horizontal" size={20} color="rgba(255,255,255,0.5)" />
-        </Pressable>
-      </View>
+      </Animated.View>
     );
   };
 
-  const renderFilterButton = (filter: FilterType, label: string, count: number) => (
-    <Pressable
-      style={[
-        styles.filterButton,
-        activeFilter === filter && { backgroundColor: accentColor },
-      ]}
-      onPress={() => setActiveFilter(filter)}
-    >
-      <Text
-        style={[
-          styles.filterButtonText,
-          activeFilter === filter && { color: '#fff' },
-        ]}
-      >
-        {label} ({count})
-      </Text>
-    </Pressable>
-  );
+  const filters: { key: FilterType; label: string; icon: keyof typeof Ionicons.glyphMap; count: number }[] = [
+    { key: 'all', label: 'All', icon: 'heart', count: totalCount },
+    { key: 'movies', label: 'Movies', icon: 'film-outline', count: movies.length },
+    { key: 'shows', label: 'Shows', icon: 'tv-outline', count: shows.length },
+    { key: 'music', label: 'Music', icon: 'musical-notes-outline', count: tracks.length },
+  ];
 
-  const renderContent = () => {
-    if (activeFilter === 'movies' || (activeFilter === 'all' && movies.length > 0 && shows.length === 0 && tracks.length === 0)) {
-      const items = activeFilter === 'all' ? movies : movies;
-      if (items.length === 0) return renderEmpty('No favorite movies yet');
-      return (
-        <FlatList
-          data={items}
-          keyExtractor={(item) => item.Id}
-          renderItem={renderPoster}
-          numColumns={3}
-          contentContainerStyle={styles.gridContent}
-          columnWrapperStyle={styles.gridRow}
-        />
-      );
-    }
-
-    if (activeFilter === 'shows' || (activeFilter === 'all' && shows.length > 0 && movies.length === 0 && tracks.length === 0)) {
-      const items = activeFilter === 'all' ? shows : shows;
-      if (items.length === 0) return renderEmpty('No favorite shows yet');
-      return (
-        <FlatList
-          data={items}
-          keyExtractor={(item) => item.Id}
-          renderItem={renderPoster}
-          numColumns={3}
-          contentContainerStyle={styles.gridContent}
-          columnWrapperStyle={styles.gridRow}
-        />
-      );
-    }
-
-    if (activeFilter === 'music') {
-      if (tracks.length === 0) return renderEmpty('No favorite songs yet');
-      return (
-        <FlatList
-          data={tracks}
-          keyExtractor={(item) => item.Id}
-          renderItem={renderTrack}
-          contentContainerStyle={styles.listContent}
-          ListHeaderComponent={
-            <View style={styles.musicHeader}>
-              <Text style={styles.musicCount}>
-                {tracks.length} {tracks.length === 1 ? 'song' : 'songs'} - {formatDuration(ticksToMs(totalDuration))}
-              </Text>
-              <View style={styles.musicButtons}>
-                <Pressable
-                  style={[styles.playButton, { backgroundColor: accentColor }]}
-                  onPress={handlePlayAll}
-                >
-                  <Ionicons name="play" size={16} color="#fff" />
-                  <Text style={styles.playButtonText}>Play</Text>
-                </Pressable>
-                <Pressable
-                  style={[styles.shuffleButton, { backgroundColor: accentColor + '20' }]}
-                  onPress={handleShuffle}
-                >
-                  <Ionicons name="shuffle" size={16} color={accentColor} />
-                </Pressable>
-              </View>
-            </View>
-          }
-        />
-      );
-    }
-
-    const allItems = [...movies, ...shows];
-    if (allItems.length === 0 && tracks.length === 0) {
-      return renderEmpty('No favorites yet');
-    }
-
-    if (allItems.length > 0 && tracks.length === 0) {
-      return (
-        <FlatList
-          data={allItems}
-          keyExtractor={(item) => item.Id}
-          renderItem={renderPoster}
-          numColumns={3}
-          contentContainerStyle={styles.gridContent}
-          columnWrapperStyle={styles.gridRow}
-        />
-      );
-    }
-
-    if (allItems.length === 0 && tracks.length > 0) {
-      return (
-        <FlatList
-          data={tracks}
-          keyExtractor={(item) => item.Id}
-          renderItem={renderTrack}
-          contentContainerStyle={styles.listContent}
-          ListHeaderComponent={
-            <View style={styles.musicHeader}>
-              <Text style={styles.musicCount}>
-                {tracks.length} {tracks.length === 1 ? 'song' : 'songs'} - {formatDuration(ticksToMs(totalDuration))}
-              </Text>
-              <View style={styles.musicButtons}>
-                <Pressable
-                  style={[styles.playButton, { backgroundColor: accentColor }]}
-                  onPress={handlePlayAll}
-                >
-                  <Ionicons name="play" size={16} color="#fff" />
-                  <Text style={styles.playButtonText}>Play</Text>
-                </Pressable>
-                <Pressable
-                  style={[styles.shuffleButton, { backgroundColor: accentColor + '20' }]}
-                  onPress={handleShuffle}
-                >
-                  <Ionicons name="shuffle" size={16} color={accentColor} />
-                </Pressable>
-              </View>
-            </View>
-          }
-        />
-      );
-    }
-
-    return (
-      <FlatList
-        data={allItems}
-        keyExtractor={(item) => item.Id}
-        renderItem={renderPoster}
-        numColumns={3}
-        contentContainerStyle={styles.gridContent}
-        columnWrapperStyle={styles.gridRow}
-        ListFooterComponent={
-          tracks.length > 0 ? (
-            <View style={styles.musicSection}>
-              <View style={styles.musicSectionHeader}>
-                <Ionicons name="musical-notes" size={20} color={accentColor} />
-                <Text style={styles.musicSectionTitle}>Favorite Songs</Text>
-                <Text style={styles.musicSectionCount}>({tracks.length})</Text>
-              </View>
-              {tracks.slice(0, 5).map((track) => renderTrack({ item: track }))}
-              {tracks.length > 5 && (
-                <Pressable
-                  style={styles.showMoreButton}
-                  onPress={() => setActiveFilter('music')}
-                >
-                  <Text style={[styles.showMoreText, { color: accentColor }]}>
-                    Show all {tracks.length} songs
-                  </Text>
-                  <Ionicons name="chevron-forward" size={16} color={accentColor} />
-                </Pressable>
-              )}
-            </View>
-          ) : null
-        }
-      />
-    );
-  };
-
-  const renderEmpty = (message: string) => (
-    <View style={styles.emptyContainer}>
-      <Ionicons name="heart-outline" size={64} color="rgba(255,255,255,0.2)" />
-      <Text style={styles.emptyTitle}>{message}</Text>
-      <Text style={styles.emptySubtitle}>
-        Tap the heart icon on items to add them here
-      </Text>
-    </View>
-  );
+  const visibleFilters = filters.filter(f => f.key === 'all' || f.count > 0);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <Stack.Screen
-        options={{
-          headerShown: true,
-          headerTitle: 'Favorites',
-          headerStyle: { backgroundColor: colors.background.primary },
-          headerTintColor: '#fff',
-          headerLeft: () => (
-            <Pressable onPress={handleGoBack} style={{ marginRight: 16 }}>
-              <Ionicons name="arrow-back" size={24} color="#fff" />
-            </Pressable>
-          ),
-          headerRight: () => (
-            <Pressable onPress={() => router.push('/search')} style={{ marginLeft: 16 }}>
-              <Ionicons name="search" size={22} color="#fff" />
-            </Pressable>
-          ),
-        }}
-      />
+      <AnimatedGradient intensity="subtle" />
 
+      {/* Header */}
+      <Animated.View entering={FadeIn.duration(400)} style={[styles.header, { paddingHorizontal: horizontalPadding }]}>
+        <Pressable onPress={() => goBack('/(tabs)/home')} style={styles.backButton}>
+          <Ionicons name="chevron-back" size={28} color="#fff" />
+        </Pressable>
+        <View style={styles.headerCenter}>
+          <Text style={[styles.headerTitle, { fontSize: fontSize['2xl'] }]}>Favorites</Text>
+          <Text style={[styles.headerSubtitle, { fontSize: fontSize.sm }]}>
+            {totalCount} {totalCount === 1 ? 'item' : 'items'} saved
+          </Text>
+        </View>
+        <View style={styles.headerSpacer} />
+      </Animated.View>
+
+      {/* Filter chips */}
+      <Animated.View entering={FadeIn.delay(100).duration(400)} style={styles.filterWrapper}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={[styles.filterContainer, { paddingHorizontal: horizontalPadding }]}
+        >
+          {visibleFilters.map((filter) => {
+            const isActive = activeFilter === filter.key;
+            return (
+              <Pressable
+                key={filter.key}
+                onPress={() => setActiveFilter(filter.key)}
+                style={[
+                  styles.filterChip,
+                  isActive && { backgroundColor: accentColor },
+                ]}
+              >
+                <Ionicons
+                  name={filter.icon}
+                  size={16}
+                  color={isActive ? '#fff' : 'rgba(255,255,255,0.7)'}
+                />
+                <Text style={[styles.filterChipText, isActive && { color: '#fff' }]}>
+                  {filter.label}
+                </Text>
+                <View style={[styles.filterCount, isActive && { backgroundColor: 'rgba(255,255,255,0.2)' }]}>
+                  <Text style={[styles.filterCountText, isActive && { color: '#fff' }]}>
+                    {filter.count}
+                  </Text>
+                </View>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+        <LinearGradient
+          colors={['transparent', '#0a0a0a']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 0 }}
+          style={styles.filterFade}
+          pointerEvents="none"
+        />
+      </Animated.View>
+
+      {/* Content */}
       {isLoading ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={accentColor} />
+        <View style={{ paddingTop: 16 }}>
+          <SkeletonRow cardWidth={posterWidth} cardHeight={posterHeight} count={numColumns} />
+          <SkeletonRow cardWidth={posterWidth} cardHeight={posterHeight} count={numColumns} />
         </View>
+      ) : totalCount === 0 ? (
+        <Animated.View entering={FadeIn.delay(200).duration(400)} style={styles.emptyContainer}>
+          <View style={[styles.emptyIconContainer, { backgroundColor: accentColor + '20' }]}>
+            <Ionicons name="heart-outline" size={48} color={accentColor} />
+          </View>
+          <Text style={[styles.emptyTitle, { fontSize: fontSize.xl }]}>No Favorites Yet</Text>
+          <Text style={[styles.emptySubtitle, { fontSize: fontSize.sm }]}>
+            Tap the heart icon on movies, shows, or songs to add them here
+          </Text>
+          <Pressable
+            style={[styles.emptyButton, { backgroundColor: accentColor }]}
+            onPress={() => router.push('/(tabs)/home')}
+          >
+            <Text style={styles.emptyButtonText}>Browse Content</Text>
+          </Pressable>
+        </Animated.View>
+      ) : activeFilter === 'music' ? (
+        <View style={{ flex: 1 }}>
+          {/* Music header with play all */}
+          <Animated.View
+            entering={FadeIn.duration(300)}
+            style={[styles.musicHeader, { paddingHorizontal: horizontalPadding }]}
+          >
+            <View>
+              <Text style={[styles.musicHeaderTitle, { fontSize: fontSize.lg }]}>Favorite Tracks</Text>
+              <Text style={[styles.musicHeaderSubtitle, { fontSize: fontSize.sm }]}>{tracks.length} songs</Text>
+            </View>
+            <Pressable
+              style={[styles.playAllButton, { backgroundColor: accentColor }]}
+              onPress={handlePlayAllMusic}
+            >
+              <Ionicons name="play" size={18} color="#fff" />
+              <Text style={styles.playAllText}>Play All</Text>
+            </Pressable>
+          </Animated.View>
+          <FlatList
+            data={tracks}
+            keyExtractor={(item) => item.Id}
+            renderItem={renderTrackItem}
+            contentContainerStyle={styles.listContent}
+            showsVerticalScrollIndicator={false}
+            refreshControl={
+              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={accentColor} />
+            }
+          />
+        </View>
+      ) : activeFilter === 'all' ? (
+        <ScrollView
+          style={{ flex: 1 }}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingBottom: 100 }}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={accentColor} />
+          }
+        >
+          {/* Movies & Shows Grid */}
+          {filteredItems.length > 0 && (
+            <Animated.View entering={FadeIn.duration(300)}>
+              <Text style={[styles.sectionLabel, { fontSize: fontSize.sm, paddingHorizontal: horizontalPadding }]}>
+                Movies & Shows
+              </Text>
+              <View style={[styles.gridContainer, { paddingHorizontal: horizontalPadding }]}>
+                {filteredItems.map((item, index) => (
+                  <View key={item.Id}>{renderPosterItem({ item, index })}</View>
+                ))}
+              </View>
+            </Animated.View>
+          )}
+
+          {/* Music Section */}
+          {tracks.length > 0 && (
+            <Animated.View entering={FadeIn.delay(100).duration(300)} style={{ marginTop: 24 }}>
+              <View style={[styles.musicHeader, { paddingHorizontal: horizontalPadding }]}>
+                <View>
+                  <Text style={[styles.musicHeaderTitle, { fontSize: fontSize.lg }]}>Favorite Tracks</Text>
+                  <Text style={[styles.musicHeaderSubtitle, { fontSize: fontSize.sm }]}>{tracks.length} songs</Text>
+                </View>
+                <Pressable
+                  style={[styles.playAllButton, { backgroundColor: accentColor }]}
+                  onPress={handlePlayAllMusic}
+                >
+                  <Ionicons name="play" size={18} color="#fff" />
+                  <Text style={styles.playAllText}>Play All</Text>
+                </Pressable>
+              </View>
+              {tracks.map((item, index) => (
+                <View key={item.Id}>{renderTrackItem({ item, index })}</View>
+              ))}
+            </Animated.View>
+          )}
+        </ScrollView>
       ) : (
-        <View style={styles.contentContainer}>
-          <View style={styles.header}>
-            <View style={[styles.headerIcon, { backgroundColor: accentColor + '20' }]}>
-              <Ionicons name="heart" size={32} color={accentColor} />
-            </View>
-            <View style={styles.headerInfo}>
-              <Text style={styles.headerTitle}>Your Favorites</Text>
-              <Text style={styles.headerSubtitle}>{totalCount} items</Text>
-            </View>
-          </View>
-
-          <View style={styles.filterRow}>
-            {renderFilterButton('all', 'All', totalCount)}
-            {movies.length > 0 && renderFilterButton('movies', 'Movies', movies.length)}
-            {shows.length > 0 && renderFilterButton('shows', 'Shows', shows.length)}
-            {tracks.length > 0 && renderFilterButton('music', 'Music', tracks.length)}
-          </View>
-
-          {renderContent()}
-        </View>
-      )}
-
-      {selectedTrack && (
-        <TrackOptionsMenu
-          track={selectedTrack}
-          visible={showTrackOptions}
-          onClose={() => {
-            setShowTrackOptions(false);
-            setSelectedTrack(null);
-          }}
+        <FlatList
+          data={filteredItems}
+          keyExtractor={(item) => item.Id}
+          renderItem={renderPosterItem}
+          numColumns={numColumns}
+          key={numColumns}
+          contentContainerStyle={[styles.gridContent, { paddingHorizontal: horizontalPadding }]}
+          columnWrapperStyle={styles.gridRow}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={accentColor} />
+          }
         />
       )}
     </SafeAreaView>
@@ -464,247 +363,219 @@ export default function FavoritesScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background.primary,
-  },
-  loadingContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  contentContainer: {
-    flex: 1,
+    backgroundColor: '#0a0a0a',
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-    gap: 16,
+    paddingTop: 8,
+    paddingBottom: 16,
   },
-  headerIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 12,
+  backButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.1)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  headerInfo: {
+  headerCenter: {
     flex: 1,
+    alignItems: 'center',
   },
   headerTitle: {
     color: '#fff',
-    fontSize: 22,
     fontWeight: 'bold',
   },
   headerSubtitle: {
     color: 'rgba(255,255,255,0.5)',
-    fontSize: 14,
-    marginTop: 4,
+    marginTop: 2,
   },
-  filterRow: {
+  headerSpacer: {
+    width: 44,
+  },
+  filterWrapper: {
+    position: 'relative',
+    marginBottom: 16,
+  },
+  filterContainer: {
+    gap: 10,
+    paddingRight: 48,
+  },
+  filterChip: {
     flexDirection: 'row',
-    paddingHorizontal: 16,
-    paddingBottom: 16,
-    gap: 8,
-  },
-  filterButton: {
-    paddingHorizontal: 14,
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    paddingLeft: 12,
+    paddingRight: 6,
     paddingVertical: 8,
     borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.1)',
   },
-  filterButtonText: {
+  filterChipText: {
     color: 'rgba(255,255,255,0.7)',
     fontSize: 13,
     fontWeight: '600',
   },
+  filterCount: {
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+    marginLeft: 2,
+  },
+  filterCountText: {
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  filterFade: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: 40,
+  },
   gridContent: {
-    paddingHorizontal: 16,
+    paddingTop: 8,
     paddingBottom: 100,
   },
+  gridContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
   gridRow: {
-    gap: 8,
+    gap: 12,
     marginBottom: 16,
-  },
-  posterContainer: {
-    width: POSTER_WIDTH,
-  },
-  posterImage: {
-    width: POSTER_WIDTH,
-    height: POSTER_HEIGHT,
-    borderRadius: 8,
-    overflow: 'hidden',
-    backgroundColor: colors.surface.default,
-  },
-  posterPlaceholder: {
-    width: '100%',
-    height: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.surface.elevated,
-  },
-  posterTitle: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '500',
-    marginTop: 8,
-  },
-  posterType: {
-    color: 'rgba(255,255,255,0.5)',
-    fontSize: 11,
-    marginTop: 2,
   },
   listContent: {
     paddingBottom: 100,
+  },
+  posterContainer: {
+    marginBottom: 4,
+  },
+  posterImage: {
+    borderRadius: 10,
+    overflow: 'hidden',
+    backgroundColor: '#1a1a1a',
+  },
+  typeBadge: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  posterTitle: {
+    color: '#fff',
+    fontWeight: '500',
+    marginTop: 8,
+  },
+  sectionLabel: {
+    color: 'rgba(255,255,255,0.5)',
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 16,
   },
   musicHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingBottom: 12,
+    paddingVertical: 16,
   },
-  musicCount: {
+  musicHeaderTitle: {
+    color: '#fff',
+    fontWeight: '600',
+  },
+  musicHeaderSubtitle: {
     color: 'rgba(255,255,255,0.5)',
-    fontSize: 14,
+    marginTop: 2,
   },
-  musicButtons: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  playButton: {
+  playAllButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 20,
     gap: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
   },
-  playButtonText: {
+  playAllText: {
     color: '#fff',
     fontSize: 14,
     fontWeight: '600',
-  },
-  shuffleButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   trackRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.06)',
+    gap: 12,
   },
-  trackContent: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  trackOptionsButton: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: 8,
+  trackNumber: {
+    color: 'rgba(255,255,255,0.4)',
+    fontSize: 14,
+    fontWeight: '500',
+    width: 24,
+    textAlign: 'center',
   },
   trackImage: {
     width: 48,
     height: 48,
     borderRadius: 6,
     overflow: 'hidden',
-    backgroundColor: colors.surface.default,
-    marginRight: 12,
-  },
-  playingOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 6,
-  },
-  trackPlaceholder: {
-    width: '100%',
-    height: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.surface.elevated,
+    backgroundColor: '#1a1a1a',
   },
   trackInfo: {
     flex: 1,
   },
   trackName: {
     color: '#fff',
-    fontSize: 15,
     fontWeight: '500',
   },
   trackArtist: {
     color: 'rgba(255,255,255,0.5)',
-    fontSize: 13,
     marginTop: 2,
   },
   trackDuration: {
     color: 'rgba(255,255,255,0.4)',
-    fontSize: 13,
-    marginLeft: 12,
-  },
-  musicSection: {
-    marginTop: 24,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.1)',
-  },
-  musicSectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    marginBottom: 8,
-    gap: 8,
-  },
-  musicSectionTitle: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  musicSectionCount: {
-    color: 'rgba(255,255,255,0.5)',
-    fontSize: 14,
-  },
-  showMoreButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 16,
-    gap: 4,
-  },
-  showMoreText: {
-    fontSize: 14,
-    fontWeight: '600',
   },
   emptyContainer: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 80,
     paddingHorizontal: 32,
   },
+  emptyIconContainer: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+  },
   emptyTitle: {
-    color: 'rgba(255,255,255,0.6)',
-    fontSize: 18,
+    color: '#fff',
     fontWeight: '600',
-    marginTop: 16,
+    marginBottom: 8,
   },
   emptySubtitle: {
-    color: 'rgba(255,255,255,0.4)',
-    fontSize: 14,
+    color: 'rgba(255,255,255,0.5)',
     textAlign: 'center',
-    marginTop: 8,
+    lineHeight: 20,
+  },
+  emptyButton: {
+    marginTop: 24,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 24,
+  },
+  emptyButtonText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '600',
   },
 });
