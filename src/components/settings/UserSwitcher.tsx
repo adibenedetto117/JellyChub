@@ -2,8 +2,12 @@ import { useState } from 'react';
 import { View, Text, Pressable, ScrollView, TextInput, ActivityIndicator, Image } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getPublicUsers, authenticateByName } from '@/api';
-import { useAuthStore } from '@/stores';
+import { useAuthStore, useSettingsStore } from '@/stores';
 import type { JellyfinUser } from '@/types/jellyfin';
+
+function getHiddenUserName(index: number): string {
+  return `User ${index + 1}`;
+}
 
 interface Props {
   onClose: () => void;
@@ -16,6 +20,7 @@ export function UserSwitcher({ onClose }: Props) {
 
   const { setUser, currentUser } = useAuthStore();
   const activeServer = useAuthStore((s) => s.getActiveServer());
+  const hideMedia = useSettingsStore((s) => s.hideMedia);
   const queryClient = useQueryClient();
 
   const { data: publicUsers, isLoading } = useQuery({
@@ -58,6 +63,12 @@ export function UserSwitcher({ onClose }: Props) {
   };
 
   if (selectedUser) {
+    // Find the index for hide media mode - current user is index 0, then non-current users follow
+    const nonCurrentUsers = publicUsers?.filter((u) => u.Id !== currentUser?.Id) ?? [];
+    const selectedUserIndex = nonCurrentUsers.findIndex((u) => u.Id === selectedUser.Id);
+    const displayIndex = selectedUserIndex >= 0 ? selectedUserIndex + 1 : 1; // +1 because current user is User 1
+    const selectedDisplayName = hideMedia ? getHiddenUserName(displayIndex) : selectedUser.Name;
+
     return (
       <View className="absolute inset-0 bg-black/95 z-50 items-center justify-center p-6">
         <View className="w-full max-w-sm bg-surface rounded-2xl p-6">
@@ -66,7 +77,7 @@ export function UserSwitcher({ onClose }: Props) {
           </Text>
 
           <Text className="text-text-secondary text-center mb-4">
-            {selectedUser.Name}
+            {selectedDisplayName}
           </Text>
 
           {error && (
@@ -129,63 +140,69 @@ export function UserSwitcher({ onClose }: Props) {
           </View>
         ) : (
           <ScrollView className="flex-1">
-            {currentUser && (
-              <View className="mb-6">
-                <Text className="text-text-secondary text-sm mb-2">Current User</Text>
-                <Pressable
-                  onPress={onClose}
-                  className="bg-accent/20 p-4 rounded-xl flex-row items-center active:bg-accent/30"
-                >
-                  {getImageUrl(currentUser as JellyfinUser) ? (
-                    <Image
-                      source={{ uri: getImageUrl(currentUser as JellyfinUser)! }}
-                      className="w-12 h-12 rounded-full mr-3"
-                    />
-                  ) : (
-                    <View className="w-12 h-12 rounded-full bg-accent items-center justify-center mr-3">
-                      <Text className="text-white text-lg font-bold">
-                        {currentUser.Name.charAt(0).toUpperCase()}
-                      </Text>
+            {currentUser && (() => {
+              const currentDisplayName = hideMedia ? getHiddenUserName(0) : currentUser.Name;
+              return (
+                <View className="mb-6">
+                  <Text className="text-text-secondary text-sm mb-2">Current User</Text>
+                  <Pressable
+                    onPress={onClose}
+                    className="bg-accent/20 p-4 rounded-xl flex-row items-center active:bg-accent/30"
+                  >
+                    {!hideMedia && getImageUrl(currentUser as JellyfinUser) ? (
+                      <Image
+                        source={{ uri: getImageUrl(currentUser as JellyfinUser)! }}
+                        className="w-12 h-12 rounded-full mr-3"
+                      />
+                    ) : (
+                      <View className="w-12 h-12 rounded-full bg-accent items-center justify-center mr-3">
+                        <Text className="text-white text-lg font-bold">
+                          {currentDisplayName.charAt(0).toUpperCase()}
+                        </Text>
+                      </View>
+                    )}
+                    <View className="flex-1">
+                      <Text className="text-white font-medium">{currentDisplayName}</Text>
+                      <Text className="text-accent text-xs">Tap to continue</Text>
                     </View>
-                  )}
-                  <View className="flex-1">
-                    <Text className="text-white font-medium">{currentUser.Name}</Text>
-                    <Text className="text-accent text-xs">Tap to continue</Text>
-                  </View>
-                </Pressable>
-              </View>
-            )}
+                  </Pressable>
+                </View>
+              );
+            })()}
 
             <Text className="text-text-secondary text-sm mb-2">Available Users</Text>
 
             {publicUsers
               ?.filter((user) => user.Id !== currentUser?.Id)
-              .map((user) => (
-                <Pressable
-                  key={user.Id}
-                  onPress={() => handleSelectUser(user)}
-                  className="p-4 rounded-xl mb-2 flex-row items-center bg-surface active:bg-surface/80"
-                >
-                  {getImageUrl(user) ? (
-                    <Image
-                      source={{ uri: getImageUrl(user)! }}
-                      className="w-12 h-12 rounded-full mr-3"
-                    />
-                  ) : (
-                    <View className="w-12 h-12 rounded-full bg-accent/50 items-center justify-center mr-3">
-                      <Text className="text-white text-lg font-bold">
-                        {user.Name.charAt(0).toUpperCase()}
-                      </Text>
-                    </View>
-                  )}
-                  <View className="flex-1">
-                    <Text className="text-white font-medium">{user.Name}</Text>
-                    {user.HasPassword && (
-                      <Text className="text-text-tertiary text-xs">Password protected</Text>
+              .map((user, index) => {
+                const displayName = hideMedia ? getHiddenUserName(index + 1) : user.Name;
+                return (
+                  <Pressable
+                    key={user.Id}
+                    onPress={() => handleSelectUser(user)}
+                    className="p-4 rounded-xl mb-2 flex-row items-center bg-surface active:bg-surface/80"
+                  >
+                    {!hideMedia && getImageUrl(user) ? (
+                      <Image
+                        source={{ uri: getImageUrl(user)! }}
+                        className="w-12 h-12 rounded-full mr-3"
+                      />
+                    ) : (
+                      <View className="w-12 h-12 rounded-full bg-accent/50 items-center justify-center mr-3">
+                        <Text className="text-white text-lg font-bold">
+                          {displayName.charAt(0).toUpperCase()}
+                        </Text>
+                      </View>
                     )}
-                  </View>
-                </Pressable>
-              ))}
+                    <View className="flex-1">
+                      <Text className="text-white font-medium">{displayName}</Text>
+                      {user.HasPassword && (
+                        <Text className="text-text-tertiary text-xs">Password protected</Text>
+                      )}
+                    </View>
+                  </Pressable>
+                );
+              })}
 
             {publicUsers?.filter((u) => u.Id !== currentUser?.Id).length === 0 && (
               <Text className="text-text-tertiary text-center py-8">

@@ -39,6 +39,13 @@ export const colors = {
     info: '#3b82f6',
   },
 
+  // Border colors
+  border: {
+    default: 'rgba(255, 255, 255, 0.15)',
+    subtle: 'rgba(255, 255, 255, 0.08)',
+    strong: 'rgba(255, 255, 255, 0.25)',
+  },
+
   // Gradient presets
   gradients: {
     accent: ['#0ea5e9', '#06b6d4'],

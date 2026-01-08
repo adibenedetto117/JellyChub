@@ -1,7 +1,7 @@
 import { Image, ImageStyle, ImageContentFit, ImageProps } from 'expo-image';
 import { StyleProp, ViewStyle, View, Text } from 'react-native';
 import { memo, useState, useCallback } from 'react';
-import Animated, { FadeOut } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { Skeleton } from './Skeleton';
 
 const blurhash = 'L6PZfSi_.AyE_3t7t7R**0o#DgR4';
