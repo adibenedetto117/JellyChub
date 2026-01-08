@@ -1,13 +1,29 @@
+import { useMemo, useCallback, memo } from 'react';
 import { Tabs } from 'expo-router';
-import { Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Text, View, StyleSheet } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { colors } from '@/theme';
 import { useSettingsStore, useAuthStore } from '@/stores';
 import { selectHasJellyseerr, DEFAULT_TAB_ORDER, type TabId } from '@/stores/settingsStore';
 import { getLibraries } from '@/api';
-import { isTV, platformSelect } from '@/utils/platform';
+import { isTV } from '@/utils/platform';
 import type { Library } from '@/types/jellyfin';
+
+// Static icon mapping - defined outside component to avoid recreation
+const TAB_ICONS: Record<string, string> = {
+  home: '\u2302',
+  search: '\u26B2',
+  library: '\u25A6',
+  movies: '\u25B6',
+  shows: '\u25A4',
+  music: '\u266B',
+  books: '\u25AF',
+  downloads: '\u2193',
+  requests: '\u2606',
+  admin: '\u2318',
+  settings: '\u2699',
+  livetv: '\u25CE',
+};
 
 interface TabIconProps {
   name: string;
@@ -16,48 +32,25 @@ interface TabIconProps {
   isLandingPage?: boolean;
 }
 
-function TabIcon({ name, focused, accentColor, isLandingPage }: TabIconProps) {
-  const icons: Record<string, string> = {
-    home: '\u2302',
-    search: '\u26B2',
-    library: '\u25A6',
-    movies: '\u25B6',
-    shows: '\u25A4',
-    music: '\u266B',
-    books: '\u25AF',
-    downloads: '\u2193',
-    requests: '\u2606',
-    admin: '\u2318',
-    settings: '\u2699',
-  };
-
+// Memoized TabIcon component to prevent unnecessary re-renders
+const TabIcon = memo(function TabIcon({ name, focused, accentColor, isLandingPage }: TabIconProps) {
   return (
-    <View style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center' }}>
+    <View style={styles.tabIconContainer}>
       <Text
-        style={{
-          fontSize: 20,
-          color: focused ? accentColor : colors.text.tertiary,
-          opacity: focused ? 1 : 0.6,
-          textAlign: 'center',
-        }}
+        style={[
+          styles.tabIconText,
+          { color: focused ? accentColor : colors.text.tertiary },
+          { opacity: focused ? 1 : 0.6 },
+        ]}
       >
-        {icons[name] ?? '?'}
+        {TAB_ICONS[name] ?? '?'}
       </Text>
       {isLandingPage && !focused && (
-        <View
-          style={{
-            position: 'absolute',
-            bottom: 0,
-            width: 4,
-            height: 4,
-            borderRadius: 2,
-            backgroundColor: accentColor,
-          }}
-        />
+        <View style={[styles.landingIndicator, { backgroundColor: accentColor }]} />
       )}
     </View>
   );
-}
+});
 
 interface TabConfig {
   name: string;
@@ -78,17 +71,33 @@ function getLibraryScreenName(collectionType: Library['CollectionType']): string
   }
 }
 
+// Screen options configured statically to avoid recreation
+const SCREEN_OPTIONS = {
+  headerShown: false,
+  lazy: true,
+  tabBarStyle: { display: 'none' } as const,
+  animation: 'fade' as const,
+  animationDuration: 150,
+  freezeOnBlur: true,
+} as const;
+
+const TV_SCREEN_OPTIONS = {
+  ...SCREEN_OPTIONS,
+} as const;
+
+// All possible screen names for consistent tab ordering
+const ALL_SCREEN_NAMES = ['home', 'search', 'library', 'movies', 'shows', 'music', 'books', 'livetv', 'downloads', 'requests', 'admin', 'settings'];
+
 export default function TabLayout() {
-  const insets = useSafeAreaInsets();
   const bottomBarConfig = useSettingsStore((s) => s.bottomBarConfig);
-  const accentColor = useSettingsStore((s) => s.accentColor);
   const offlineMode = useSettingsStore((s) => s.offlineMode);
   const hasJellyseerr = useSettingsStore(selectHasJellyseerr);
   const currentUser = useAuthStore((s) => s.currentUser);
   const userId = currentUser?.Id ?? '';
-  const isAdmin = (currentUser as { Policy?: { IsAdministrator?: boolean } })?.Policy?.IsAdministrator ?? false;
-  const baseTabBarHeight = platformSelect({ mobile: 56, tablet: 52, tv: 0 });
-  const tabBarHeight = baseTabBarHeight + insets.bottom;
+  const isAdmin = useMemo(
+    () => (currentUser as { Policy?: { IsAdministrator?: boolean } })?.Policy?.IsAdministrator ?? false,
+    [currentUser]
+  );
 
   const { data: libraries } = useQuery({
     queryKey: ['libraries', userId],
@@ -98,23 +107,22 @@ export default function TabLayout() {
     refetchOnMount: false,
   });
 
-  const selectedLibraries = libraries?.filter((lib) =>
-    bottomBarConfig.selectedLibraryIds.includes(lib.Id)
-  ) ?? [];
+  // Memoize selected libraries computation
+  const selectedLibraries = useMemo(
+    () => libraries?.filter((lib) => bottomBarConfig.selectedLibraryIds.includes(lib.Id)) ?? [],
+    [libraries, bottomBarConfig.selectedLibraryIds]
+  );
 
-  const hasSelectedType = (type: string) =>
-    selectedLibraries.some((lib) => lib.CollectionType === type);
-
-  const getLibraryTitle = (type: string, defaultTitle: string) => {
-    const lib = selectedLibraries.find((l) => l.CollectionType === type);
-    return lib?.Name ?? defaultTitle;
-  };
-
-  const tabOrder = bottomBarConfig.tabOrder?.length > 0 ? bottomBarConfig.tabOrder : DEFAULT_TAB_ORDER;
+  // Memoize tab order
+  const tabOrder = useMemo(
+    () => bottomBarConfig.tabOrder?.length > 0 ? bottomBarConfig.tabOrder : DEFAULT_TAB_ORDER,
+    [bottomBarConfig.tabOrder]
+  );
 
   const landingPage = bottomBarConfig.landingPage ?? 'home';
 
-  const getTabConfig = (tabId: TabId): TabConfig | null => {
+  // Memoize getTabConfig to prevent recreation on every render
+  const getTabConfig = useCallback((tabId: TabId): TabConfig | null => {
     // In offline mode, only show downloads and settings
     if (offlineMode) {
       if (tabId === 'downloads') {
@@ -202,6 +210,15 @@ export default function TabLayout() {
         isLandingPage: landingPage === 'settings',
       };
     }
+    if (tabId === 'livetv') {
+      return {
+        name: 'livetv',
+        title: 'Live TV',
+        iconName: 'livetv',
+        href: undefined,
+        isLandingPage: landingPage === 'livetv',
+      };
+    }
 
     const library = libraries?.find((l) => l.Id === tabId);
     if (library) {
@@ -216,44 +233,41 @@ export default function TabLayout() {
     }
 
     return null;
-  };
+  }, [offlineMode, bottomBarConfig, landingPage, hasJellyseerr, isAdmin, libraries]);
 
-  const orderedTabs: TabConfig[] = [];
-  const usedScreenNames = new Set<string>();
+  // Memoize the entire orderedTabs computation to prevent recalculation on every render
+  const orderedTabs = useMemo(() => {
+    const tabs: TabConfig[] = [];
+    const usedScreenNames = new Set<string>();
 
-  for (const tabId of tabOrder) {
-    const config = getTabConfig(tabId);
-    if (config && !usedScreenNames.has(config.name)) {
-      orderedTabs.push(config);
-      usedScreenNames.add(config.name);
+    for (const tabId of tabOrder) {
+      const config = getTabConfig(tabId);
+      if (config && !usedScreenNames.has(config.name)) {
+        tabs.push(config);
+        usedScreenNames.add(config.name);
+      }
     }
-  }
 
-  const allScreenNames = ['home', 'search', 'library', 'movies', 'shows', 'music', 'books', 'downloads', 'requests', 'admin', 'settings'];
-  for (const name of allScreenNames) {
-    if (!usedScreenNames.has(name)) {
-      orderedTabs.push({
-        name,
-        title: name.charAt(0).toUpperCase() + name.slice(1),
-        iconName: name,
-        href: null,
-        isLandingPage: landingPage === name,
-      });
-      usedScreenNames.add(name);
+    // Fill in remaining screens that weren't in the tab order
+    for (const name of ALL_SCREEN_NAMES) {
+      if (!usedScreenNames.has(name)) {
+        tabs.push({
+          name,
+          title: name.charAt(0).toUpperCase() + name.slice(1),
+          iconName: name,
+          href: null,
+          isLandingPage: landingPage === name,
+        });
+        usedScreenNames.add(name);
+      }
     }
-  }
+
+    return tabs;
+  }, [tabOrder, getTabConfig, landingPage]);
 
   if (isTV) {
     return (
-      <Tabs
-        screenOptions={{
-          headerShown: false,
-          tabBarStyle: { display: 'none' },
-          lazy: true,
-          // Use fade animation for smooth tab transitions
-          animation: 'fade',
-        }}
-      >
+      <Tabs screenOptions={TV_SCREEN_OPTIONS}>
         <Tabs.Screen name="home" />
         <Tabs.Screen name="search" options={{ href: null }} />
         <Tabs.Screen name="library" />
@@ -265,27 +279,20 @@ export default function TabLayout() {
         <Tabs.Screen name="shows" options={{ href: null }} />
         <Tabs.Screen name="music" options={{ href: null }} />
         <Tabs.Screen name="books" options={{ href: null }} />
+        <Tabs.Screen name="livetv" />
         <Tabs.Screen name="details/[type]/[id]" options={{ href: null }} />
         <Tabs.Screen name="playlist/[id]" options={{ href: null }} />
         <Tabs.Screen name="library/[id]" options={{ href: null }} />
         <Tabs.Screen name="favorites" options={{ href: null }} />
         <Tabs.Screen name="jellyseerr/[type]/[tmdbId]" options={{ href: null }} />
         <Tabs.Screen name="jellyseerr/genre/[type]/[id]" options={{ href: null }} />
+        <Tabs.Screen name="queue" options={{ href: null }} />
       </Tabs>
     );
   }
 
   return (
-    <Tabs
-      screenOptions={{
-        headerShown: false,
-        lazy: true,
-        tabBarStyle: { display: 'none' },
-        // Use fade animation for smooth transitions between tabs and screens
-        // This provides a polished feel when navigating within the tab structure
-        animation: 'fade',
-      }}
-    >
+    <Tabs screenOptions={SCREEN_OPTIONS}>
       {orderedTabs.map((tab) => (
         <Tabs.Screen
           key={tab.name}
@@ -303,6 +310,28 @@ export default function TabLayout() {
       <Tabs.Screen name="favorites" options={{ href: null }} />
       <Tabs.Screen name="jellyseerr/[type]/[tmdbId]" options={{ href: null }} />
       <Tabs.Screen name="jellyseerr/genre/[type]/[id]" options={{ href: null }} />
+      <Tabs.Screen name="queue" options={{ href: null }} />
     </Tabs>
   );
 }
+
+// Styles moved outside component to prevent recreation on each render
+const styles = StyleSheet.create({
+  tabIconContainer: {
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tabIconText: {
+    fontSize: 20,
+    textAlign: 'center',
+  },
+  landingIndicator: {
+    position: 'absolute',
+    bottom: 0,
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+  },
+});

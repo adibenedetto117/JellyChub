@@ -22,6 +22,19 @@ export { usePlayerStore, selectIsPlaying, selectCurrentQueueItem, selectHasNext,
 export { useDownloadStore, selectPendingDownloads, selectActiveDownload, selectCompletedDownloads, selectDownloadsByType, selectStorageUsage } from './downloadStore';
 export { useReadingProgressStore, selectReadingProgress, selectRecentlyReading } from './readingProgressStore';
 export type { ReadingProgress, AudiobookBookmark } from './readingProgressStore';
+export {
+  useLiveTvStore,
+  selectFavoriteChannelIds,
+  selectRecentChannelIds,
+  selectChannelSort,
+  selectChannelFilter,
+  selectEpgViewMode,
+  selectLastWatchedChannelId,
+  selectChannelGroups,
+} from './liveTvStore';
+export type { ChannelSortOption, ChannelFilterOption, EPGViewMode } from './liveTvStore';
+export { useSecurityStore, selectSecuritySettings, selectIsLocked, selectBiometricType } from './securityStore';
+export type { SecuritySettings, AutoLockTimeout } from './securityStore';
 
 // Storage exports - centralized MMKV storage instances
 export {

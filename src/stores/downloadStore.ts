@@ -25,6 +25,8 @@ interface DownloadState {
   removeDownload: (id: string) => void;
   pauseDownload: (id: string) => void;
   resumeDownload: (id: string) => void;
+  pauseAllDownloads: () => void;
+  resumeAllDownloads: () => void;
   cancelAllDownloads: () => void;
 
   setActiveDownload: (id: string | null) => void;
@@ -158,6 +160,25 @@ export const useDownloadStore = create<DownloadState>()(
         set((state) => ({
           downloads: state.downloads.map((d) =>
             d.id === id && d.status === 'paused'
+              ? { ...d, status: 'pending' as const }
+              : d
+          ),
+        })),
+
+      pauseAllDownloads: () =>
+        set((state) => ({
+          downloads: state.downloads.map((d) =>
+            d.status === 'downloading' || d.status === 'pending'
+              ? { ...d, status: 'paused' as const }
+              : d
+          ),
+          activeDownloadId: null,
+        })),
+
+      resumeAllDownloads: () =>
+        set((state) => ({
+          downloads: state.downloads.map((d) =>
+            d.status === 'paused'
               ? { ...d, status: 'pending' as const }
               : d
           ),

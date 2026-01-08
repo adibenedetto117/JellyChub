@@ -43,14 +43,28 @@ export interface EbookBookmark {
   createdAt: string;
 }
 
+export type HighlightColor = 'yellow' | 'green' | 'blue' | 'pink';
+
+export interface EbookHighlight {
+  id: string;
+  itemId: string;
+  cfiRange: string;
+  text: string;
+  color: HighlightColor;
+  note?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 interface ReadingProgressState {
   progress: Record<string, ReadingProgress>;
   bookmarks: AudiobookBookmark[];
   ebookBookmarks: EbookBookmark[];
+  ebookHighlights: EbookHighlight[];
   readerSettings: ReaderSettings;
 
   // Progress Actions
-  updateProgress: (itemId: string, data: Omit<ReadingProgress, 'percent' | 'lastRead'>) => void;
+  updateProgress: (itemId: string, data: Omit<ReadingProgress, 'percent' | 'lastRead'> & { percent?: number }) => void;
   updateProgressPercent: (itemId: string, percent: number) => void;
   getProgress: (itemId: string) => ReadingProgress | null;
   getRecentlyReading: (limit?: number) => ReadingProgress[];
@@ -67,6 +81,12 @@ interface ReadingProgressState {
   removeEbookBookmark: (id: string) => void;
   getEbookBookmarksForItem: (itemId: string) => EbookBookmark[];
 
+  // Ebook Highlight Actions
+  addHighlight: (highlight: Omit<EbookHighlight, 'id' | 'createdAt' | 'updatedAt'>) => string;
+  updateHighlight: (id: string, updates: Partial<Pick<EbookHighlight, 'color' | 'note'>>) => void;
+  removeHighlight: (id: string) => void;
+  getHighlightsForItem: (itemId: string) => EbookHighlight[];
+
   // Reader Settings Actions
   setReaderSettings: (settings: Partial<ReaderSettings>) => void;
 }
@@ -77,22 +97,30 @@ export const useReadingProgressStore = create<ReadingProgressState>()(
       progress: {},
       bookmarks: [],
       ebookBookmarks: [],
+      ebookHighlights: [],
       readerSettings: {
         fontSize: 100,
         theme: 'dark',
       },
 
       updateProgress: (itemId, data) => {
-        // For ebooks with CFI, don't calculate percent from position
+        // If percent is explicitly provided, use it; otherwise calculate from position/total
         const existingProgress = get().progress[itemId];
-        const percent = typeof data.position === 'string'
-          ? (existingProgress?.percent ?? 0)
-          : (data.total > 0 ? Math.round((data.position / data.total) * 100) : 0);
+        let percent: number;
+        if (data.percent !== undefined) {
+          percent = data.percent;
+        } else if (typeof data.position === 'string') {
+          // For ebooks with CFI and no explicit percent, keep existing
+          percent = existingProgress?.percent ?? 0;
+        } else {
+          percent = data.total > 0 ? Math.round((data.position / data.total) * 100) : 0;
+        }
+        const { percent: _, ...dataWithoutPercent } = data;
         set((state) => ({
           progress: {
             ...state.progress,
             [itemId]: {
-              ...data,
+              ...dataWithoutPercent,
               percent,
               lastRead: Date.now(),
             },
@@ -185,6 +213,43 @@ export const useReadingProgressStore = create<ReadingProgressState>()(
 
       getEbookBookmarksForItem: (itemId) => {
         return get().ebookBookmarks.filter((b) => b.itemId === itemId);
+      },
+
+      addHighlight: (highlight) => {
+        const id = `highlight_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const now = new Date().toISOString();
+        set((state) => ({
+          ebookHighlights: [
+            ...state.ebookHighlights,
+            {
+              ...highlight,
+              id,
+              createdAt: now,
+              updatedAt: now,
+            },
+          ],
+        }));
+        return id;
+      },
+
+      updateHighlight: (id, updates) => {
+        set((state) => ({
+          ebookHighlights: state.ebookHighlights.map((h) =>
+            h.id === id
+              ? { ...h, ...updates, updatedAt: new Date().toISOString() }
+              : h
+          ),
+        }));
+      },
+
+      removeHighlight: (id) => {
+        set((state) => ({
+          ebookHighlights: state.ebookHighlights.filter((h) => h.id !== id),
+        }));
+      },
+
+      getHighlightsForItem: (itemId) => {
+        return get().ebookHighlights.filter((h) => h.itemId === itemId);
       },
 
       setReaderSettings: (settings) => {

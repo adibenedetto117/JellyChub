@@ -1,5 +1,5 @@
 import { View, Text, Pressable, StyleSheet } from 'react-native';
-import { memo, useCallback } from 'react';
+import { memo, useCallback, useMemo } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { useSharedValue, useAnimatedStyle, withSpring } from 'react-native-reanimated';
 import { useRouter, usePathname } from 'expo-router';
@@ -8,11 +8,23 @@ import { useQuery } from '@tanstack/react-query';
 import { useSettingsStore, useAuthStore } from '@/stores';
 import { selectHasJellyseerr, DEFAULT_TAB_ORDER, type TabId } from '@/stores/settingsStore';
 import { getLibraries } from '@/api';
-import { colors } from '@/theme';
 import { platformSelect, isTV } from '@/utils/platform';
+import { haptics } from '@/utils/haptics';
 import type { Library } from '@/types/jellyfin';
 
+// Spring config for press animations - defined outside to prevent recreation
+const PRESS_SPRING_CONFIG = { damping: 15, stiffness: 400 };
+
 type IconName = keyof typeof Ionicons.glyphMap;
+
+// Tab configuration interface
+interface TabConfig {
+  id: string;
+  name: string;
+  icon: IconName;
+  iconFilled: IconName;
+  route: string;
+}
 
 interface NavTabProps {
   icon: IconName;
@@ -21,9 +33,10 @@ interface NavTabProps {
   isActive: boolean;
   accentColor: string;
   onPress: () => void;
+  reduceMotion?: boolean;
 }
 
-const NavTab = memo(function NavTab({ icon, iconFilled, name, isActive, accentColor, onPress }: NavTabProps) {
+const NavTab = memo(function NavTab({ icon, iconFilled, name, isActive, accentColor, onPress, reduceMotion }: NavTabProps) {
   const scale = useSharedValue(1);
 
   const animatedStyle = useAnimatedStyle(() => ({
@@ -31,12 +44,16 @@ const NavTab = memo(function NavTab({ icon, iconFilled, name, isActive, accentCo
   }));
 
   const handlePressIn = useCallback(() => {
-    scale.value = withSpring(0.9, { damping: 15, stiffness: 400 });
-  }, [scale]);
+    if (!reduceMotion) {
+      scale.value = withSpring(0.9, PRESS_SPRING_CONFIG);
+    }
+  }, [scale, reduceMotion]);
 
   const handlePressOut = useCallback(() => {
-    scale.value = withSpring(1, { damping: 15, stiffness: 400 });
-  }, [scale]);
+    if (!reduceMotion) {
+      scale.value = withSpring(1, PRESS_SPRING_CONFIG);
+    }
+  }, [scale, reduceMotion]);
 
   return (
     <Pressable
@@ -44,9 +61,14 @@ const NavTab = memo(function NavTab({ icon, iconFilled, name, isActive, accentCo
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
       style={styles.tab}
+      accessible={true}
+      accessibilityRole="tab"
+      accessibilityLabel={name}
+      accessibilityState={{ selected: isActive }}
+      accessibilityHint={`Navigate to ${name}`}
     >
       <Animated.View style={[styles.tabContent, animatedStyle]}>
-        <View style={styles.iconContainer}>
+        <View style={styles.iconContainer} accessible={false}>
           <Ionicons
             name={isActive ? iconFilled : icon}
             size={22}
@@ -61,6 +83,7 @@ const NavTab = memo(function NavTab({ icon, iconFilled, name, isActive, accentCo
             styles.tabLabel,
             { color: isActive ? accentColor : 'rgba(255,255,255,0.5)' }
           ]}
+          accessible={false}
         >
           {name}
         </Text>
@@ -102,17 +125,23 @@ function getLibraryScreenName(collectionType: Library['CollectionType']): string
   }
 }
 
-export function BottomNav() {
+export const BottomNav = memo(function BottomNav() {
   const router = useRouter();
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
   const bottomBarConfig = useSettingsStore((s) => s.bottomBarConfig);
   const accentColor = useSettingsStore((s) => s.accentColor);
   const offlineMode = useSettingsStore((s) => s.offlineMode);
+  const reduceMotion = useSettingsStore((s) => s.reduceMotion);
   const hasJellyseerr = useSettingsStore(selectHasJellyseerr);
   const currentUser = useAuthStore((s) => s.currentUser);
   const userId = currentUser?.Id ?? '';
-  const isAdmin = (currentUser as { Policy?: { IsAdministrator?: boolean } })?.Policy?.IsAdministrator ?? false;
+
+  // Memoize admin check
+  const isAdmin = useMemo(
+    () => (currentUser as { Policy?: { IsAdministrator?: boolean } })?.Policy?.IsAdministrator ?? false,
+    [currentUser]
+  );
 
   const { data: libraries } = useQuery({
     queryKey: ['libraries', userId],
@@ -122,29 +151,23 @@ export function BottomNav() {
     refetchOnMount: false,
   });
 
-  const shouldHide = isTV || !pathname || HIDDEN_PATHS.some(p => pathname.includes(p));
-
-  if (shouldHide) return null;
-
   const baseHeight = platformSelect({ mobile: 56, tablet: 52, tv: 0 });
   const height = baseHeight + insets.bottom;
 
-  const tabOrder = bottomBarConfig.tabOrder?.length > 0 ? bottomBarConfig.tabOrder : DEFAULT_TAB_ORDER;
-  const landingPage = bottomBarConfig.landingPage ?? 'home';
+  // Memoize hide check to avoid repeated string operations
+  const shouldHide = useMemo(
+    () => isTV || !pathname || HIDDEN_PATHS.some(p => pathname.includes(p)),
+    [pathname]
+  );
 
-  const selectedLibraries = libraries?.filter((lib) =>
-    bottomBarConfig.selectedLibraryIds.includes(lib.Id)
-  ) ?? [];
+  // Memoize tab order computation
+  const tabOrder = useMemo(
+    () => bottomBarConfig.tabOrder?.length > 0 ? bottomBarConfig.tabOrder : DEFAULT_TAB_ORDER,
+    [bottomBarConfig.tabOrder]
+  );
 
-  interface TabConfig {
-    id: string;
-    name: string;
-    icon: IconName;
-    iconFilled: IconName;
-    route: string;
-  }
-
-  const getTabConfig = (tabId: TabId): TabConfig | null => {
+  // Memoize getTabConfig to prevent recreation
+  const getTabConfig = useCallback((tabId: TabId): TabConfig | null => {
     const icons = TAB_ICONS;
 
     if (offlineMode) {
@@ -194,47 +217,64 @@ export function BottomNav() {
     }
 
     return null;
-  };
+  }, [offlineMode, bottomBarConfig, hasJellyseerr, isAdmin, libraries]);
 
-  const tabs: TabConfig[] = [];
-  const usedScreenNames = new Set<string>();
+  // Memoize the entire tabs array computation
+  const tabs = useMemo(() => {
+    const result: TabConfig[] = [];
+    const usedScreenNames = new Set<string>();
 
-  for (const tabId of tabOrder) {
-    const config = getTabConfig(tabId);
-    if (config && !usedScreenNames.has(config.id)) {
-      tabs.push(config);
-      usedScreenNames.add(config.id);
+    for (const tabId of tabOrder) {
+      const config = getTabConfig(tabId);
+      if (config && !usedScreenNames.has(config.id)) {
+        result.push(config);
+        usedScreenNames.add(config.id);
+      }
     }
-  }
 
-  const isTabActive = (route: string, tabId: string) => {
+    return result;
+  }, [tabOrder, getTabConfig]);
+
+  // Memoize isTabActive function
+  const isTabActive = useCallback((route: string) => {
     if (!pathname) return false;
     const tabPath = route.replace('/(tabs)/', '');
     return pathname.startsWith(`/(tabs)/${tabPath}`) || pathname === `/${tabPath}`;
-  };
+  }, [pathname]);
+
+  // Memoize navigation handler factory
+  const handleNavigate = useCallback((route: string) => {
+    haptics.light();
+    router.navigate(route as any);
+  }, [router]);
+
+  // Early return after all hooks
+  if (shouldHide) return null;
 
   return (
-    <View style={[styles.container, { height, paddingBottom: insets.bottom }]}>
+    <View
+      style={[styles.container, { height, paddingBottom: insets.bottom }]}
+      accessible={true}
+      accessibilityRole="tablist"
+      accessibilityLabel="Main navigation"
+    >
       <View style={styles.tabsContainer}>
-        {tabs.map((tab) => {
-          const isActive = isTabActive(tab.route, tab.id);
-
-          return (
-            <NavTab
-              key={tab.id}
-              icon={tab.icon}
-              iconFilled={tab.iconFilled}
-              name={tab.name}
-              isActive={isActive}
-              accentColor={accentColor}
-              onPress={() => router.replace(tab.route as any)}
-            />
-          );
-        })}
+        {tabs.map((tab) => (
+          <NavTab
+            key={tab.id}
+            icon={tab.icon}
+            iconFilled={tab.iconFilled}
+            name={tab.name}
+            isActive={isTabActive(tab.route)}
+            accentColor={accentColor}
+            onPress={() => handleNavigate(tab.route)}
+            reduceMotion={reduceMotion}
+          />
+        ))}
       </View>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {

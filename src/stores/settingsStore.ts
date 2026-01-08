@@ -3,6 +3,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import type { AppSettings, PlayerSettings } from '@/types';
 import { isTV } from '@/utils/platform';
 import { appStorage } from './storage';
+import { DEFAULT_EQUALIZER_PRESET } from '@/constants/equalizer';
 
 // Library sort types
 export type LibrarySortBy = 'SortName' | 'DateCreated' | 'PremiereDate' | 'CommunityRating' | 'Runtime';
@@ -20,12 +21,13 @@ export type LibrarySortPreferences = Record<LibraryCategory, LibrarySortPreferen
 export type FixedTabId = 'home' | 'search' | 'library' | 'downloads' | 'settings';
 
 // Tab IDs for ordering
-export type TabId = 'home' | 'search' | 'library' | 'downloads' | 'requests' | 'admin' | 'settings' | string;
+export type TabId = 'home' | 'search' | 'library' | 'downloads' | 'requests' | 'admin' | 'settings' | 'livetv' | string;
 
 // Default tab order (library IDs are appended dynamically)
 export const DEFAULT_TAB_ORDER: TabId[] = [
   'home',
   'library',
+  'livetv',
   'downloads',
   'requests',
   'admin',
@@ -76,8 +78,10 @@ const defaultPlayerSettings: PlayerSettings = {
   subtitleBackgroundOpacity: 0.75,
   subtitleTextColor: '#ffffff',
   subtitleBackgroundColor: '#000000',
+  subtitleOutlineStyle: 'shadow',
   hardwareAcceleration: true,
-  maxStreamingBitrate: 20, // 20 Mbps
+  maxStreamingBitrate: 20,
+  externalPlayerEnabled: true,
 };
 
 const defaultLibrarySortPreferences: LibrarySortPreferences = {
@@ -96,6 +100,7 @@ interface SettingsState extends Omit<AppSettings, 'servers'> {
   theme: 'dark' | 'light' | 'system';
   accentColor: string;
   enableAnimations: boolean;
+  reduceMotion: boolean;
   bottomBarConfig: BottomBarConfig;
 
   // Playback settings
@@ -104,6 +109,7 @@ interface SettingsState extends Omit<AppSettings, 'servers'> {
   // Download settings
   downloadQuality: 'original' | 'high' | 'medium' | 'low';
   downloadOverWifiOnly: boolean;
+  autoRemoveWatchedDownloads: boolean;
   maxDownloadSize: number;
 
   // Jellyseerr
@@ -117,13 +123,45 @@ interface SettingsState extends Omit<AppSettings, 'servers'> {
   // Offline mode
   offlineMode: boolean;
 
+  // Hide media info mode
+  hideMedia: boolean;
+
+  // Haptic feedback
+  hapticsEnabled: boolean;
+
   // Library preferences
   librarySortPreferences: LibrarySortPreferences;
+
+  // Equalizer settings
+  equalizerPreset: string;
+  customEqualizerBands: number[];
+
+  // Crossfade settings
+  crossfadeEnabled: boolean;
+  crossfadeDuration: number; // seconds (0-12)
+
+  // OpenSubtitles
+  openSubtitlesApiKey: string | null;
+
+  // Radarr
+  radarrUrl: string | null;
+  radarrApiKey: string | null;
+
+  // Sonarr
+  sonarrUrl: string | null;
+  sonarrApiKey: string | null;
+
+  // Notification settings
+  notifications: {
+    downloadComplete: boolean;
+    nowPlaying: boolean;
+  };
 
   // Actions
   setTheme: (theme: 'dark' | 'light' | 'system') => void;
   setAccentColor: (color: string) => void;
   setEnableAnimations: (enabled: boolean) => void;
+  setReduceMotion: (enabled: boolean) => void;
   setBottomBarConfig: (config: Partial<BottomBarConfig>) => void;
   toggleLibraryOnBottomBar: (libraryId: string) => void;
   moveTabInOrder: (tabId: TabId, direction: 'up' | 'down') => void;
@@ -133,6 +171,7 @@ interface SettingsState extends Omit<AppSettings, 'servers'> {
 
   setDownloadQuality: (quality: AppSettings['downloadQuality']) => void;
   setDownloadOverWifiOnly: (wifiOnly: boolean) => void;
+  setAutoRemoveWatchedDownloads: (enabled: boolean) => void;
   setMaxDownloadSize: (size: number) => void;
 
   setJellyseerrCredentials: (url: string | null, authToken: string | null, username?: string | null) => void;
@@ -142,11 +181,31 @@ interface SettingsState extends Omit<AppSettings, 'servers'> {
 
   setOfflineMode: (enabled: boolean) => void;
 
+  setHideMedia: (enabled: boolean) => void;
+
+  setHapticsEnabled: (enabled: boolean) => void;
+
   setLibrarySortPreference: (
     category: LibraryCategory,
     sortBy: LibrarySortBy,
     sortOrder: LibrarySortOrder
   ) => void;
+
+  setEqualizerPreset: (presetId: string) => void;
+  setCustomEqualizerBands: (bands: number[]) => void;
+
+  setCrossfadeEnabled: (enabled: boolean) => void;
+  setCrossfadeDuration: (seconds: number) => void;
+
+  setOpenSubtitlesApiKey: (apiKey: string | null) => void;
+
+  setRadarrCredentials: (url: string | null, apiKey: string | null) => void;
+  clearRadarrCredentials: () => void;
+
+  setSonarrCredentials: (url: string | null, apiKey: string | null) => void;
+  clearSonarrCredentials: () => void;
+
+  setNotificationSetting: (key: keyof SettingsState['notifications'], enabled: boolean) => void;
 
   resetToDefaults: () => void;
 }
@@ -156,17 +215,34 @@ const initialState = {
   theme: 'dark' as const,
   accentColor: '#0ea5e9',
   enableAnimations: true,
+  reduceMotion: false,
   bottomBarConfig: DEFAULT_BOTTOM_BAR_CONFIG,
   player: defaultPlayerSettings,
   downloadQuality: 'high' as const,
   downloadOverWifiOnly: true,
+  autoRemoveWatchedDownloads: false,
   maxDownloadSize: 50, // 50 GB
   jellyseerrUrl: null,
   jellyseerrAuthToken: null,
   jellyseerrUsername: null,
   isTVMode: isTV,
   offlineMode: false,
+  hideMedia: false,
+  hapticsEnabled: true,
   librarySortPreferences: defaultLibrarySortPreferences,
+  equalizerPreset: DEFAULT_EQUALIZER_PRESET,
+  customEqualizerBands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  crossfadeEnabled: false,
+  crossfadeDuration: 3,
+  openSubtitlesApiKey: null,
+  radarrUrl: null,
+  radarrApiKey: null,
+  sonarrUrl: null,
+  sonarrApiKey: null,
+  notifications: {
+    downloadComplete: true,
+    nowPlaying: false,
+  },
 };
 
 export const useSettingsStore = create<SettingsState>()(
@@ -181,6 +257,8 @@ export const useSettingsStore = create<SettingsState>()(
       setAccentColor: (accentColor) => set({ accentColor }),
 
       setEnableAnimations: (enableAnimations) => set({ enableAnimations }),
+
+      setReduceMotion: (reduceMotion) => set({ reduceMotion }),
 
       setBottomBarConfig: (config) =>
         set((state) => ({
@@ -264,6 +342,9 @@ export const useSettingsStore = create<SettingsState>()(
       setDownloadOverWifiOnly: (downloadOverWifiOnly) =>
         set({ downloadOverWifiOnly }),
 
+      setAutoRemoveWatchedDownloads: (autoRemoveWatchedDownloads) =>
+        set({ autoRemoveWatchedDownloads }),
+
       setMaxDownloadSize: (maxDownloadSize) => set({ maxDownloadSize }),
 
       setJellyseerrCredentials: (url, authToken, username) =>
@@ -284,11 +365,57 @@ export const useSettingsStore = create<SettingsState>()(
 
       setOfflineMode: (offlineMode) => set({ offlineMode }),
 
+      setHideMedia: (hideMedia) => set({ hideMedia }),
+
+      setHapticsEnabled: (hapticsEnabled) => set({ hapticsEnabled }),
+
       setLibrarySortPreference: (category, sortBy, sortOrder) =>
         set((state) => ({
           librarySortPreferences: {
             ...state.librarySortPreferences,
             [category]: { sortBy, sortOrder },
+          },
+        })),
+
+      setEqualizerPreset: (equalizerPreset) => set({ equalizerPreset }),
+
+      setCustomEqualizerBands: (customEqualizerBands) => set({ customEqualizerBands }),
+
+      setCrossfadeEnabled: (crossfadeEnabled) => set({ crossfadeEnabled }),
+
+      setCrossfadeDuration: (crossfadeDuration) => set({ crossfadeDuration: Math.max(0, Math.min(12, crossfadeDuration)) }),
+
+      setOpenSubtitlesApiKey: (openSubtitlesApiKey) => set({ openSubtitlesApiKey }),
+
+      setRadarrCredentials: (url, apiKey) =>
+        set({
+          radarrUrl: url,
+          radarrApiKey: apiKey,
+        }),
+
+      clearRadarrCredentials: () =>
+        set({
+          radarrUrl: null,
+          radarrApiKey: null,
+        }),
+
+      setSonarrCredentials: (url, apiKey) =>
+        set({
+          sonarrUrl: url,
+          sonarrApiKey: apiKey,
+        }),
+
+      clearSonarrCredentials: () =>
+        set({
+          sonarrUrl: null,
+          sonarrApiKey: null,
+        }),
+
+      setNotificationSetting: (key, enabled) =>
+        set((state) => ({
+          notifications: {
+            ...state.notifications,
+            [key]: enabled,
           },
         })),
 
@@ -314,10 +441,16 @@ export const useSettingsStore = create<SettingsState>()(
           landingPage: persisted.bottomBarConfig?.landingPage ?? 'home',
         };
 
+        const mergedNotifications = {
+          downloadComplete: persisted.notifications?.downloadComplete ?? true,
+          nowPlaying: persisted.notifications?.nowPlaying ?? false,
+        };
+
         return {
           ...currentState,
           ...persisted,
           bottomBarConfig: mergedBottomBarConfig,
+          notifications: mergedNotifications,
         };
       },
     }
@@ -337,3 +470,16 @@ export const selectTabOrder = (state: SettingsState) => state.bottomBarConfig.ta
 export const selectLibrarySortPreferences = (state: SettingsState) =>
   state.librarySortPreferences;
 export const selectOfflineMode = (state: SettingsState) => state.offlineMode;
+export const selectHideMedia = (state: SettingsState) => state.hideMedia;
+export const selectReduceMotion = (state: SettingsState) => state.reduceMotion;
+export const selectEqualizerPreset = (state: SettingsState) => state.equalizerPreset;
+export const selectCustomEqualizerBands = (state: SettingsState) => state.customEqualizerBands;
+export const selectOpenSubtitlesApiKey = (state: SettingsState) => state.openSubtitlesApiKey;
+export const selectHasOpenSubtitles = (state: SettingsState) =>
+  !!state.openSubtitlesApiKey && state.openSubtitlesApiKey.length > 0;
+export const selectHapticsEnabled = (state: SettingsState) => state.hapticsEnabled;
+export const selectNotifications = (state: SettingsState) => state.notifications;
+export const selectHasRadarr = (state: SettingsState) =>
+  !!state.radarrUrl && !!state.radarrApiKey;
+export const selectHasSonarr = (state: SettingsState) =>
+  !!state.sonarrUrl && !!state.sonarrApiKey;
