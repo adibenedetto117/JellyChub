@@ -1,8 +1,7 @@
 import { View, Text, Pressable, StyleSheet, Modal } from 'react-native';
 import { memo, useCallback, useMemo, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
-import Animated, { useSharedValue, useAnimatedStyle, withSpring, withTiming, runOnJS } from 'react-native-reanimated';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Animated, { useSharedValue, useAnimatedStyle, withSpring } from 'react-native-reanimated';
 import { useRouter, usePathname } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
@@ -170,7 +169,6 @@ const MoreMenu = memo(function MoreMenu({
   hasLiveTV,
   libraries,
 }: MoreMenuProps) {
-  const translateY = useSharedValue(0);
   const insets = useSafeAreaInsets();
 
   const visibleItems = useMemo(() => {
@@ -217,34 +215,6 @@ const MoreMenu = memo(function MoreMenu({
     };
   }, [libraries]);
 
-  const panGesture = Gesture.Pan()
-    .onUpdate((e) => {
-      // Only allow dragging down
-      if (e.translationY > 0) {
-        translateY.value = e.translationY;
-      }
-    })
-    .onEnd((e) => {
-      // Dismiss if dragged down enough or with enough velocity
-      if (e.translationY > 100 || e.velocityY > 800) {
-        translateY.value = withTiming(500, { duration: 200 }, () => {
-          runOnJS(onClose)();
-        });
-      } else {
-        // Spring back to original position
-        translateY.value = withSpring(0, { damping: 25, stiffness: 400 });
-      }
-    });
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: translateY.value }],
-  }));
-
-  // Reset translateY when modal opens
-  if (visible && translateY.value !== 0) {
-    translateY.value = 0;
-  }
-
   if (!visible || visibleItems.length === 0) return null;
 
   return (
@@ -252,47 +222,46 @@ const MoreMenu = memo(function MoreMenu({
       <View style={moreStyles.overlay}>
         <Pressable style={moreStyles.overlayPress} onPress={onClose} />
 
-        <GestureDetector gesture={panGesture}>
-          <Animated.View style={[moreStyles.sheet, { paddingBottom: insets.bottom + 20 }, animatedStyle]}>
-            {/* Drag Handle */}
-            <View style={moreStyles.handleContainer}>
-              <View style={moreStyles.handle} />
-            </View>
+        <View style={[moreStyles.sheet, { paddingBottom: insets.bottom + 20 }]}>
+          {/* Drag Handle */}
+          <View style={moreStyles.handleContainer}>
+            <View style={moreStyles.handle} />
+          </View>
 
-            {/* Title */}
-            <Text style={moreStyles.title}>More</Text>
+          {/* Title */}
+          <Text style={moreStyles.title}>More</Text>
 
-            {/* Menu Items */}
-            <View style={moreStyles.itemsContainer}>
-              {visibleItems.map((tabId) => {
+          {/* Menu Items */}
+          <View style={moreStyles.itemsContainer}>
+              {visibleItems.map((tabId, index) => {
                 const itemInfo = getItemInfo(tabId);
-
                 if (!itemInfo) return null;
+                const isLast = index === visibleItems.length - 1;
 
                 return (
-                  <Pressable
-                    key={tabId}
-                    style={({ pressed }) => [
-                      moreStyles.menuItem,
-                      pressed && moreStyles.menuItemPressed,
-                    ]}
-                    onPress={() => {
-                      haptics.light();
-                      onClose();
-                      setTimeout(() => onNavigate(itemInfo.route), 100);
-                    }}
-                  >
-                    <Ionicons name={itemInfo.icon} size={22} color="rgba(255,255,255,0.6)" />
-                    <Text style={moreStyles.itemName}>{itemInfo.name}</Text>
-                    <View style={moreStyles.chevronContainer}>
-                      <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.3)" />
-                    </View>
-                  </Pressable>
+                  <View key={tabId}>
+                    <Pressable
+                      style={({ pressed }) => [
+                        moreStyles.menuItem,
+                        pressed && moreStyles.menuItemPressed,
+                      ]}
+                      onPress={() => {
+                        haptics.light();
+                        onClose();
+                        setTimeout(() => onNavigate(itemInfo.route), 100);
+                      }}
+                    >
+                      <View style={moreStyles.menuItemContent}>
+                        <Ionicons name={itemInfo.icon} size={28} color="#fff" />
+                        <Text style={moreStyles.itemName}>{itemInfo.name}</Text>
+                      </View>
+                    </Pressable>
+                    {!isLast && <View style={moreStyles.separator} />}
+                  </View>
                 );
               })}
             </View>
-          </Animated.View>
-        </GestureDetector>
+        </View>
       </View>
     </Modal>
   );
@@ -579,59 +548,63 @@ const styles = StyleSheet.create({
 const moreStyles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0,0,0,0.6)',
     justifyContent: 'flex-end',
   },
   overlayPress: {
     flex: 1,
   },
   sheet: {
-    backgroundColor: '#1c1c1e',
-    borderTopLeftRadius: 12,
-    borderTopRightRadius: 12,
+    backgroundColor: '#1a1a1a',
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
   },
   handleContainer: {
-    paddingTop: 8,
-    paddingBottom: 4,
+    paddingTop: 16,
+    paddingBottom: 16,
     alignItems: 'center',
+    width: '100%',
   },
   handle: {
-    width: 36,
+    width: 44,
     height: 5,
-    backgroundColor: 'rgba(255,255,255,0.3)',
+    backgroundColor: 'rgba(255,255,255,0.5)',
     borderRadius: 2.5,
   },
   title: {
-    fontSize: 17,
+    fontSize: 18,
     fontWeight: '600',
     color: '#fff',
     textAlign: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(255,255,255,0.1)',
-    marginBottom: 4,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.15)',
   },
   itemsContainer: {
-    paddingTop: 4,
+    paddingHorizontal: 16,
+    paddingTop: 8,
     paddingBottom: 8,
   },
   menuItem: {
+    paddingVertical: 22,
+  },
+  menuItemContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    gap: 14,
+    gap: 18,
   },
+  menuItemLast: {},
   menuItemPressed: {
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    opacity: 0.6,
   },
   itemName: {
-    flex: 1,
     fontSize: 17,
-    fontWeight: '400',
-    color: '#fff',
+    fontWeight: '500',
+    color: '#ffffff',
   },
-  chevronContainer: {
-    marginLeft: 'auto',
+  separator: {
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    marginHorizontal: 0,
   },
 });
