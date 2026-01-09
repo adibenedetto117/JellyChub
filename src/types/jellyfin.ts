@@ -7,6 +7,7 @@ export interface JellyfinServer {
   userId?: string;
   accessToken?: string;
   isDefault: boolean;
+  customHeaders?: Record<string, string>;
 }
 
 export interface JellyfinUser {
@@ -130,7 +131,11 @@ export interface Episode extends BaseItem {
   IndexNumber?: number;
   ParentIndexNumber?: number;
   ParentBackdropImageTags?: string[];
+  ParentBackdropItemId?: string;
   SeriesPrimaryImageTag?: string;
+  SeasonPrimaryImageTag?: string;
+  ParentThumbImageTag?: string;
+  ParentThumbItemId?: string;
 }
 
 export interface MusicAlbum extends BaseItem {

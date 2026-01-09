@@ -101,7 +101,7 @@ export function FocusableCard({
           uri={imageUrl}
           style={{ width: dimensions.width, height: dimensions.height }}
           borderRadius={12}
-          fallbackText={item.Name.charAt(0).toUpperCase()}
+          fallbackText={item.Name?.charAt(0)?.toUpperCase() || '?'}
           priority="high"
         />
 

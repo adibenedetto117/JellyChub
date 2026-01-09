@@ -126,7 +126,7 @@ export function CastRemoteControl({
   }
 
   const imageUrl = mediaInfo?.imageUrl || (itemId && activeServer
-    ? `${activeServer.url}/Items/${itemId}/Images/Primary?maxHeight=400`
+    ? `${activeServer.url}/Items/${itemId}/Images/Primary?maxHeight=400${activeServer.accessToken ? `&api_key=${activeServer.accessToken}` : ''}`
     : null);
 
   const displayPosition = isSeeking ? seekPosition : currentPosition;

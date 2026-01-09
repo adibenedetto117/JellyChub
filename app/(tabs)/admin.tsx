@@ -1,7 +1,7 @@
 import { View, Text, ScrollView, Pressable, RefreshControl, Alert, ActivityIndicator, TextInput, Modal, Image } from 'react-native';
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView } from '@/providers';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore, useSettingsStore } from '@/stores';
@@ -458,7 +458,7 @@ export default function AdminScreen() {
           />
         )}
 
-        <View style={{ height: 32 }} />
+        <View style={{ height: 100 }} />
       </ScrollView>
 
       <Modal visible={!!editingUser} transparent animationType="fade">

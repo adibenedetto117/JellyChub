@@ -1,8 +1,18 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { ReactNode } from 'react';
+import { QueryClient, QueryClientProvider, focusManager } from '@tanstack/react-query';
+import { ReactNode, useEffect } from 'react';
+import { AppState, Platform } from 'react-native';
+import type { AppStateStatus } from 'react-native';
 import { createSyncStoragePersister } from '@tanstack/query-sync-storage-persister';
 import { persistQueryClient } from '@tanstack/react-query-persist-client';
 import { queryCacheStorage } from '@/stores/storage';
+
+// Connect React Query's focus manager to React Native's AppState
+// This enables refetchOnWindowFocus to work on mobile
+function onAppStateChange(status: AppStateStatus) {
+  if (Platform.OS !== 'web') {
+    focusManager.setFocused(status === 'active');
+  }
+}
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -10,7 +20,7 @@ const queryClient = new QueryClient({
       staleTime: 1000 * 60 * 5, // 5 minutes - balanced caching
       gcTime: 1000 * 60 * 60 * 24, // 24 hour cache
       retry: 0, // No retries - fail fast
-      refetchOnWindowFocus: false,
+      refetchOnWindowFocus: true, // Refetch when app comes to foreground
       refetchOnMount: true, // Refetch stale data on mount
       refetchOnReconnect: true, // Sync when network reconnects
     },
@@ -81,6 +91,12 @@ interface Props {
 }
 
 export function QueryProvider({ children }: Props) {
+  // Subscribe to AppState changes to trigger refetches when app comes to foreground
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', onAppStateChange);
+    return () => subscription.remove();
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   );

@@ -206,11 +206,36 @@ class DownloadManager {
       await encryptionService.encryptFile(result.uri, encryptedPath);
       await FileSystem.deleteAsync(result.uri, { idempotent: true });
 
+      // Get file size from the encrypted file
+      const fileInfo = await FileSystem.getInfoAsync(encryptedPath);
+      const actualFileSize = fileInfo.exists && 'size' in fileInfo ? fileInfo.size : download.totalBytes;
+
       store.completeDownload(downloadId, encryptedPath);
-      notificationService.showDownloadComplete(
-        item.Name || 'Download',
-        item.Type || 'Media'
-      );
+
+      // Build rich notification info
+      const itemType = item.Type || 'Media';
+      let seasonInfo: string | undefined;
+      let artistName: string | undefined;
+
+      if (itemType === 'Episode') {
+        const seasonNum = item.ParentIndexNumber;
+        const episodeNum = item.IndexNumber;
+        if (seasonNum !== undefined && episodeNum !== undefined) {
+          seasonInfo = `S${seasonNum} E${episodeNum}`;
+        }
+      } else if (itemType === 'Audio' || itemType === 'AudioBook') {
+        artistName = (item as any).Artists?.join(', ') || (item as any).AlbumArtist;
+      }
+
+      notificationService.showDownloadComplete({
+        itemName: item.Name || 'Download',
+        itemType,
+        quality: download.quality,
+        fileSize: actualFileSize,
+        seriesName: item.SeriesName,
+        artistName,
+        seasonInfo,
+      });
     } else {
       throw new Error('Download failed - no result');
     }

@@ -2,7 +2,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { useSettingsStore } from '@/stores';
 
 const API_BASE_URL = 'https://api.opensubtitles.com/api/v1';
-const APP_NAME = 'JellyChub';
+const APP_NAME = 'JellyChub v1.0.0';
 
 export interface OpenSubtitlesSearchResult {
   id: string;

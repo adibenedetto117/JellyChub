@@ -1,6 +1,6 @@
 import { Image, ImageStyle, ImageContentFit, ImageProps } from 'expo-image';
 import { StyleProp, ViewStyle, View, Text } from 'react-native';
-import { memo, useState, useCallback } from 'react';
+import { memo, useState, useCallback, useEffect } from 'react';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { Skeleton } from './Skeleton';
 
@@ -32,6 +32,11 @@ export const CachedImage = memo(function CachedImage({
   cachePolicy = 'memory-disk',
 }: Props) {
   const [loadState, setLoadState] = useState<LoadState>('loading');
+
+  // Reset load state when URI changes
+  useEffect(() => {
+    setLoadState('loading');
+  }, [uri]);
 
   const handleLoad = useCallback(() => {
     setLoadState('loaded');

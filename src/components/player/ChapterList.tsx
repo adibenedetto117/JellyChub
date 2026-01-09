@@ -59,7 +59,8 @@ export const ChapterList = memo(function ChapterList({
 
   const getChapterImageUrl = (chapter: ChapterInfo, index: number) => {
     if (!serverUrl || !itemId || !chapter.ImageTag) return null;
-    return `${serverUrl}/Items/${itemId}/Images/Chapter/${index}?tag=${chapter.ImageTag}&maxWidth=200`;
+    const apiKey = activeServer?.accessToken;
+    return `${serverUrl}/Items/${itemId}/Images/Chapter/${index}?tag=${chapter.ImageTag}&maxWidth=200${apiKey ? `&api_key=${apiKey}` : ''}`;
   };
 
   if (!visible) return null;

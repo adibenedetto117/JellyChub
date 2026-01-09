@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, memo } from 'react';
 import { View, Text, FlatList, Pressable, Alert, StyleSheet, RefreshControl, ScrollView } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView } from '@/providers';
 import { router } from 'expo-router';
 import Animated, { FadeIn, FadeOut, Layout, useSharedValue, useAnimatedStyle, withSpring } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
@@ -824,7 +824,7 @@ export default function DownloadsScreen() {
   const handlePlay = (item: DownloadItem) => {
     const type = item.item.Type;
     if (type === 'Movie' || type === 'Episode') {
-      router.push(`/player/video?itemId=${item.itemId}`);
+      router.push(`/player/video?itemId=${item.itemId}&from=${encodeURIComponent('/(tabs)/downloads')}`);
     } else if (type === 'Audio') {
       router.push(`/player/music?itemId=${item.itemId}`);
     } else if (type === 'AudioBook') {

@@ -4,15 +4,6 @@ import { Image } from 'expo-image';
 import Animated, {
   FadeIn,
   FadeOut,
-  SlideInRight,
-  SlideInLeft,
-  SlideOutRight,
-  SlideOutLeft,
-  useSharedValue,
-  useAnimatedStyle,
-  withTiming,
-  interpolate,
-  Extrapolation,
 } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -43,7 +34,8 @@ export const HeroSpotlight = memo(function HeroSpotlight({ items, onItemPress, o
   const heroHeight = isTV ? 500 : isTablet ? 420 : 340;
   const horizontalPadding = isTV ? 48 : isTablet ? 24 : 16;
 
-  const displayItems = items.slice(0, 5);
+  // Filter out items without valid Id or Type - these would cause navigation failures
+  const displayItems = items.filter(item => item?.Id && item?.Type).slice(0, 5);
 
   const startAutoScroll = useCallback(() => {
     if (autoScrollTimer.current) {
@@ -126,6 +118,24 @@ export const HeroSpotlight = memo(function HeroSpotlight({ items, onItemPress, o
   if (!displayItems.length) return null;
 
   const currentItem = displayItems[activeIndex];
+
+  // Guard: ensure currentItem has valid data before allowing press
+  const handlePress = useCallback(() => {
+    if (!currentItem?.Id || !currentItem?.Type) {
+      console.warn('[HeroSpotlight] Attempted to press item with missing Id or Type:', {
+        id: currentItem?.Id,
+        type: currentItem?.Type,
+        name: currentItem?.Name,
+      });
+      return;
+    }
+    onItemPress(currentItem);
+  }, [currentItem, onItemPress]);
+
+  const handlePlayPress = useCallback(() => {
+    if (!currentItem?.Id || !currentItem?.Type || !onPlayPress) return;
+    onPlayPress(currentItem);
+  }, [currentItem, onPlayPress]);
   const backdropTag = currentItem.BackdropImageTags?.[0];
   const rawImageUrl = backdropTag
     ? getImageUrl(currentItem.Id, 'Backdrop', {
@@ -149,7 +159,11 @@ export const HeroSpotlight = memo(function HeroSpotlight({ items, onItemPress, o
   const exitingAnimation = FadeOut.duration(300);
 
   return (
-    <View style={[styles.container, { height: heroHeight }]} {...panResponder.panHandlers}>
+    <Pressable
+      style={[styles.container, { height: heroHeight }]}
+      onPress={handlePress}
+      {...panResponder.panHandlers}
+    >
       <Animated.View
         key={currentItem.Id}
         entering={enteringAnimation}
@@ -170,7 +184,7 @@ export const HeroSpotlight = memo(function HeroSpotlight({ items, onItemPress, o
         style={StyleSheet.absoluteFill}
       />
 
-      <View style={[styles.content, { paddingHorizontal: horizontalPadding }]}>
+      <View style={[styles.content, { paddingHorizontal: horizontalPadding }]} pointerEvents="box-none">
         <View style={styles.metaRow}>
           {currentItem.Type === 'Movie' && (
             <View style={styles.typeBadge}>
@@ -210,24 +224,17 @@ export const HeroSpotlight = memo(function HeroSpotlight({ items, onItemPress, o
           </Text>
         )}
 
-        <View style={styles.buttonRow}>
-          {onPlayPress && (
+        {onPlayPress && (
+          <View style={styles.buttonRow}>
             <Pressable
               style={[styles.playButton, { backgroundColor: accentColor }]}
-              onPress={() => onPlayPress(currentItem)}
+              onPress={handlePlayPress}
             >
-              <Ionicons name="play" size={20} color="#fff" />
-              <Text style={[styles.playButtonText, { fontSize: fontSize.base }]}>Play</Text>
+              <Ionicons name="play" size={18} color="#fff" style={{ marginLeft: 2 }} />
+              <Text style={styles.playButtonText}>Play</Text>
             </Pressable>
-          )}
-          <Pressable
-            style={styles.infoButton}
-            onPress={() => onItemPress(currentItem)}
-          >
-            <Ionicons name="information-circle-outline" size={20} color="#fff" />
-            <Text style={[styles.infoButtonText, { fontSize: fontSize.base }]}>More Info</Text>
-          </Pressable>
-        </View>
+          </View>
+        )}
 
         {displayItems.length > 1 && (
           <View style={styles.dotsContainer}>
@@ -248,7 +255,7 @@ export const HeroSpotlight = memo(function HeroSpotlight({ items, onItemPress, o
           </View>
         )}
       </View>
-    </View>
+    </Pressable>
   );
 });
 
@@ -310,7 +317,7 @@ const styles = StyleSheet.create({
   overview: {
     color: 'rgba(255,255,255,0.7)',
     lineHeight: 20,
-    marginBottom: 16,
+    marginBottom: 12,
   },
   buttonRow: {
     flexDirection: 'row',
@@ -324,24 +331,12 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingHorizontal: 20,
     paddingVertical: 10,
-    borderRadius: 8,
+    borderRadius: 24,
   },
   playButtonText: {
     color: '#fff',
+    fontSize: 15,
     fontWeight: '600',
-  },
-  infoButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 8,
-  },
-  infoButtonText: {
-    color: '#fff',
-    fontWeight: '500',
   },
   dotsContainer: {
     flexDirection: 'row',

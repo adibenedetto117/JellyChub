@@ -2,6 +2,7 @@ import { View, ScrollView, Text, StyleSheet, RefreshControl } from 'react-native
 import { useState, useCallback, useMemo } from 'react';
 import { useQuery, useQueries } from '@tanstack/react-query';
 import { router } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 import { useAuthStore, useSettingsStore } from '@/stores';
 import {
   getResumeItems,
@@ -22,6 +23,7 @@ import type { GroupedLibraries } from '@/api';
 const EXCLUDED_COLLECTION_TYPES = ['playlists'];
 
 export function TVHomeScreen() {
+  const { t } = useTranslation();
   const [refreshing, setRefreshing] = useState(false);
   const [focusedRowIndex, setFocusedRowIndex] = useState(0);
   const currentUser = useAuthStore((state) => state.currentUser);
@@ -214,7 +216,7 @@ export function TVHomeScreen() {
 
         {(nextUp?.Items?.length ?? 0) > 0 && (
           <TVMediaRow
-            title="Next Up"
+            title={t('home.nextUp')}
             items={nextUp?.Items ?? []}
             onItemPress={handleItemPress}
             variant="backdrop"

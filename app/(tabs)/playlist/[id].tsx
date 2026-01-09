@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { View, Text, FlatList, Pressable, ActivityIndicator, StyleSheet } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView } from '@/providers';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
@@ -148,6 +148,65 @@ export default function PlaylistScreen() {
   };
 
   const isLoading = isLoadingPlaylist || isLoadingTracks;
+
+  if (isLoading) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <Stack.Screen options={{ title: 'Loading...' }} />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={accentColor} />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!playlist) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <Stack.Screen options={{ title: 'Playlist' }} />
+        <View style={styles.header}>
+          <Pressable onPress={handleGoBack} style={styles.backButton}>
+            <Ionicons name="chevron-back" size={28} color="#fff" />
+          </Pressable>
+          <Text style={styles.headerTitle}>Playlist</Text>
+        </View>
+        <View style={styles.emptyContainer}>
+          <View style={[styles.emptyIcon, { backgroundColor: accentColor + '20' }]}>
+            <Ionicons name="play-circle-outline" size={48} color={accentColor} />
+          </View>
+          <Text style={styles.emptyTitle}>Playlist not found</Text>
+          <Text style={styles.emptySubtitle}>This playlist may have been deleted</Text>
+          <Pressable
+            style={[styles.emptyButton, { backgroundColor: accentColor }]}
+            onPress={handleGoBack}
+          >
+            <Text style={styles.emptyButtonText}>Go back</Text>
+          </Pressable>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (tracks.length === 0) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <Stack.Screen options={{ title: playlist.Name }} />
+        <View style={styles.header}>
+          <Pressable onPress={handleGoBack} style={styles.backButton}>
+            <Ionicons name="chevron-back" size={28} color="#fff" />
+          </Pressable>
+          <Text style={styles.headerTitle} numberOfLines={1}>{playlist.Name}</Text>
+        </View>
+        <View style={styles.emptyContainer}>
+          <View style={[styles.emptyIcon, { backgroundColor: accentColor + '20' }]}>
+            <Ionicons name="musical-notes-outline" size={48} color={accentColor} />
+          </View>
+          <Text style={styles.emptyTitle}>Empty playlist</Text>
+          <Text style={styles.emptySubtitle}>Add tracks to get started</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   // Get playlist image
   const rawPlaylistImageUrl = playlist?.ImageTags?.Primary
@@ -385,16 +444,42 @@ const styles = StyleSheet.create({
     paddingVertical: 80,
     paddingHorizontal: 32,
   },
+  emptyIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
   emptyTitle: {
-    color: 'rgba(255,255,255,0.6)',
-    fontSize: 18,
+    color: '#fff',
+    fontSize: 20,
     fontWeight: '600',
-    marginTop: 16,
+    marginBottom: 8,
   },
   emptySubtitle: {
-    color: 'rgba(255,255,255,0.4)',
+    color: 'rgba(255,255,255,0.5)',
     fontSize: 14,
     textAlign: 'center',
-    marginTop: 8,
+    marginBottom: 24,
+    lineHeight: 20,
+  },
+  emptyButton: {
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 24,
+  },
+  emptyButtonText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  backButton: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 'auto',
   },
 });

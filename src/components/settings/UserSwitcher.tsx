@@ -59,7 +59,12 @@ export function UserSwitcher({ onClose }: Props) {
 
   const getImageUrl = (user: JellyfinUser) => {
     if (!activeServer?.url || !user.PrimaryImageTag) return null;
-    return `${activeServer.url}/Users/${user.Id}/Images/Primary?tag=${user.PrimaryImageTag}`;
+    const params = new URLSearchParams();
+    params.set('tag', user.PrimaryImageTag);
+    if (activeServer.accessToken) {
+      params.set('api_key', activeServer.accessToken);
+    }
+    return `${activeServer.url}/Users/${user.Id}/Images/Primary?${params.toString()}`;
   };
 
   if (selectedUser) {

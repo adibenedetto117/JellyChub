@@ -3,7 +3,7 @@ import { Image } from 'expo-image';
 import { useState, useCallback, useMemo, useRef, memo } from 'react';
 import Animated, { useSharedValue, useAnimatedStyle, withSpring, FadeIn } from 'react-native-reanimated';
 import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView } from '@/providers';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useAuthStore, useSettingsStore, usePlayerStore } from '@/stores';
@@ -805,7 +805,6 @@ export default function MusicScreen() {
             </View>
           )
         }
-        getItemLayout={(data, index) => ({ length: 64, offset: 64 * index, index })}
       />
       <AlphabetScroller
         availableLetters={albumAvailableLetters}
@@ -850,7 +849,6 @@ export default function MusicScreen() {
             </View>
           )
         }
-        getItemLayout={(data, index) => ({ length: 56, offset: 56 * index, index })}
       />
       <AlphabetScroller
         availableLetters={artistAvailableLetters}
@@ -894,7 +892,6 @@ export default function MusicScreen() {
           )
         }
         ListFooterComponent={<View style={styles.bottomSpacer} />}
-        getItemLayout={(data, index) => ({ length: 56, offset: 56 * index, index })}
       />
       {playlistSections.length > 0 && (
         <AlphabetScroller
@@ -941,7 +938,6 @@ export default function MusicScreen() {
             </View>
           )
         }
-        getItemLayout={(data, index) => ({ length: 64, offset: 64 * index, index })}
       />
       <AlphabetScroller
         availableLetters={songAvailableLetters}

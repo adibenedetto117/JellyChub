@@ -2,6 +2,39 @@ import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import { useSettingsStore } from '@/stores/settingsStore';
 
+export interface DownloadCompleteInfo {
+  itemName: string;
+  itemType: string;
+  quality?: 'original' | 'high' | 'medium' | 'low';
+  fileSize?: number; // in bytes
+  seriesName?: string; // for episodes
+  artistName?: string; // for audio/audiobooks
+  seasonInfo?: string; // e.g., "S1 E5"
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes === 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(1024));
+  const size = bytes / Math.pow(1024, i);
+  return `${size.toFixed(size >= 10 ? 0 : 1)} ${units[i]}`;
+}
+
+function formatQuality(quality?: string): string {
+  switch (quality) {
+    case 'original':
+      return 'Original';
+    case 'high':
+      return 'High (15 Mbps)';
+    case 'medium':
+      return 'Medium (8 Mbps)';
+    case 'low':
+      return 'Low (4 Mbps)';
+    default:
+      return '';
+  }
+}
+
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
@@ -73,17 +106,48 @@ class NotificationService {
     }
   }
 
-  async showDownloadComplete(itemName: string, itemType: string): Promise<void> {
+  async showDownloadComplete(info: DownloadCompleteInfo): Promise<void> {
     if (!this.hasPermission || !this.isNotificationEnabled('downloadComplete')) {
       return;
     }
 
     try {
+      // Build notification title with context
+      let title = 'Download Complete';
+      if (info.itemType === 'Episode' && info.seriesName) {
+        title = `${info.seriesName}`;
+      } else if ((info.itemType === 'Audio' || info.itemType === 'AudioBook') && info.artistName) {
+        title = `${info.artistName}`;
+      }
+
+      // Build notification body with details
+      const bodyParts: string[] = [];
+
+      // Main item name with optional season/episode info
+      if (info.itemType === 'Episode' && info.seasonInfo) {
+        bodyParts.push(`${info.seasonInfo}: ${info.itemName}`);
+      } else {
+        bodyParts.push(info.itemName);
+      }
+
+      // Add quality and file size info
+      const detailParts: string[] = [];
+      if (info.quality) {
+        detailParts.push(formatQuality(info.quality));
+      }
+      if (info.fileSize && info.fileSize > 0) {
+        detailParts.push(formatFileSize(info.fileSize));
+      }
+
+      if (detailParts.length > 0) {
+        bodyParts.push(detailParts.join(' | '));
+      }
+
       await Notifications.scheduleNotificationAsync({
         content: {
-          title: 'Download Complete',
-          body: `${itemName} is ready to play offline`,
-          data: { type: 'downloadComplete', itemType },
+          title,
+          body: bodyParts.join('\n'),
+          data: { type: 'downloadComplete', itemType: info.itemType },
         },
         trigger: null,
         ...(Platform.OS === 'android' && {

@@ -17,6 +17,7 @@ import Animated, {
   useAnimatedStyle,
   withTiming,
   runOnJS,
+  Easing,
 } from 'react-native-reanimated';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -28,10 +29,17 @@ import { useTranslation } from 'react-i18next';
 import { useAuthStore, useSettingsStore, useLiveTvStore } from '@/stores';
 import { getChannel, getChannels, getLiveHlsStreamUrl, getLiveDirectStreamUrl, getLiveStreamUrl, getLiveTvPlaybackInfo, jellyfinClient } from '@/api';
 import { colors } from '@/theme';
+import { dismissModal } from '@/utils';
 import type { LiveTvChannel } from '@/types/livetv';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const CONTROLS_TIMEOUT = 5000;
+
+// Buffering UI constants to prevent flickering while maintaining responsiveness
+// Show buffering overlay after sustained buffering (filters out micro-buffers)
+const BUFFERING_SHOW_DELAY_MS = 400;
+// Minimum time to show buffering overlay once displayed (prevents rapid on/off)
+const BUFFERING_MIN_DISPLAY_MS = 800;
 
 // Stream URL generators to try in order (fallbacks)
 const STREAM_URL_GENERATORS = [
@@ -53,7 +61,10 @@ export default function LiveTvPlayerScreen() {
   const favoriteChannelIds = useLiveTvStore((s) => s.favoriteChannelIds);
 
   const [showControls, setShowControls] = useState(true);
-  const [isBuffering, setIsBuffering] = useState(true);
+  // Internal buffering state (true when player reports buffering)
+  const [isPlayerBuffering, setIsPlayerBuffering] = useState(true);
+  // Visual buffering state (debounced to prevent flickering)
+  const [showBufferingOverlay, setShowBufferingOverlay] = useState(true);
   const [showChannelList, setShowChannelList] = useState(false);
   const [currentChannelId, setCurrentChannelId] = useState(channelId);
   const [streamUrl, setStreamUrl] = useState<string | null>(null);
@@ -62,7 +73,13 @@ export default function LiveTvPlayerScreen() {
   const [isOrientationLocked, setIsOrientationLocked] = useState(true);
 
   const controlsOpacity = useSharedValue(1);
+  const bufferingOverlayOpacity = useSharedValue(1);
   const controlsTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  // Buffering debounce refs to prevent flickering
+  const bufferingShowTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const bufferingHideTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const bufferingShownAtRef = useRef<number>(0);
 
   const { data: currentChannel, isLoading: channelLoading } = useQuery({
     queryKey: ['liveTvChannel', currentChannelId, userId],
@@ -95,7 +112,9 @@ export default function LiveTvPlayerScreen() {
     const nextIndex = streamUrlIndex + 1;
     if (nextIndex < STREAM_URL_GENERATORS.length) {
       setStreamUrlIndex(nextIndex);
-      setIsBuffering(true);
+      setIsPlayerBuffering(true);
+      setShowBufferingOverlay(true);
+      bufferingOverlayOpacity.value = 1;
       const url = generateStreamUrl(currentChannelId, nextIndex);
       console.log(`[LiveTV] Trying stream URL format ${nextIndex}:`, url);
       if (url) {
@@ -108,13 +127,16 @@ export default function LiveTvPlayerScreen() {
       console.log('[LiveTV] All stream formats exhausted');
       setStreamError('Stream playback failed. Check that Live TV is properly configured on your server.');
     }
-  }, [streamUrlIndex, currentChannelId, generateStreamUrl]);
+  }, [streamUrlIndex, currentChannelId, generateStreamUrl, bufferingOverlayOpacity]);
 
   useEffect(() => {
     if (currentChannelId && userId) {
       setStreamError(null);
       setStreamUrlIndex(0);
-      setIsBuffering(true);
+      // Show buffering immediately when loading a new channel
+      setIsPlayerBuffering(true);
+      setShowBufferingOverlay(true);
+      bufferingOverlayOpacity.value = 1;
 
       // Try PlaybackInfo approach first
       const fetchStreamUrl = async () => {
@@ -154,7 +176,7 @@ export default function LiveTvPlayerScreen() {
             addRecentChannel(currentChannelId);
           } else {
             setStreamError('Failed to generate stream URL');
-            setIsBuffering(false);
+            setIsPlayerBuffering(false);
           }
         } catch (error) {
           console.error('[LiveTV] PlaybackInfo failed:', error);
@@ -166,14 +188,14 @@ export default function LiveTvPlayerScreen() {
             addRecentChannel(currentChannelId);
           } else {
             setStreamError('Failed to load stream');
-            setIsBuffering(false);
+            setIsPlayerBuffering(false);
           }
         }
       };
 
       fetchStreamUrl();
     }
-  }, [currentChannelId, userId, addRecentChannel, generateStreamUrl]);
+  }, [currentChannelId, userId, addRecentChannel, generateStreamUrl, bufferingOverlayOpacity]);
 
   useEffect(() => {
     const setup = async () => {
@@ -193,6 +215,12 @@ export default function LiveTvPlayerScreen() {
 
   const player = useVideoPlayer(streamUrl ?? '', (p) => {
     p.loop = false;
+    // Configure buffer settings for live TV (more aggressive buffering)
+    p.bufferOptions = {
+      preferredForwardBufferDuration: 15, // Buffer 15 seconds ahead for live
+      minBufferForPlayback: 3, // Start playing after 3 seconds buffered (Android)
+      waitsToMinimizeStalling: true, // Auto-pause to buffer if needed (iOS)
+    };
     p.play();
   });
 
@@ -202,13 +230,16 @@ export default function LiveTvPlayerScreen() {
     const statusSub = player.addListener('statusChange', (event) => {
       console.log('[LiveTV] Player status:', event.status, event);
       if (event.status === 'readyToPlay') {
-        setIsBuffering(false);
+        // Player is ready - update internal state immediately
+        setIsPlayerBuffering(false);
         setStreamError(null);
       } else if (event.status === 'loading') {
-        setIsBuffering(true);
+        // Player is buffering - update internal state immediately
+        // The visual overlay will be debounced in the separate effect
+        setIsPlayerBuffering(true);
       } else if (event.status === 'error') {
         console.error('[LiveTV] Player error:', event);
-        setIsBuffering(false);
+        setIsPlayerBuffering(false);
         // Try next stream format automatically
         if (streamUrlIndex < STREAM_URL_GENERATORS.length - 1) {
           console.log(`Stream format ${streamUrlIndex} failed, trying next...`);
@@ -222,6 +253,10 @@ export default function LiveTvPlayerScreen() {
     // Also listen for playback errors
     const errorSub = player.addListener('playingChange', (event) => {
       console.log('[LiveTV] Playing state:', event.isPlaying);
+      // If playing resumed, ensure we mark as not buffering
+      if (event.isPlaying) {
+        setIsPlayerBuffering(false);
+      }
     });
 
     return () => {
@@ -229,6 +264,67 @@ export default function LiveTvPlayerScreen() {
       errorSub.remove();
     };
   }, [player, streamUrlIndex, tryNextStreamUrl]);
+
+  // Debounced buffering overlay effect - prevents rapid flickering
+  // Shows overlay only after sustained buffering, hides with smooth fade
+  useEffect(() => {
+    // Clear any pending timeouts when state changes
+    if (bufferingShowTimeoutRef.current) {
+      clearTimeout(bufferingShowTimeoutRef.current);
+      bufferingShowTimeoutRef.current = undefined;
+    }
+    if (bufferingHideTimeoutRef.current) {
+      clearTimeout(bufferingHideTimeoutRef.current);
+      bufferingHideTimeoutRef.current = undefined;
+    }
+
+    if (isPlayerBuffering) {
+      // Delay showing the buffering overlay to prevent flickering on brief buffers
+      bufferingShowTimeoutRef.current = setTimeout(() => {
+        // Only show if still buffering after delay
+        if (isPlayerBuffering) {
+          bufferingShownAtRef.current = Date.now();
+          setShowBufferingOverlay(true);
+          // Animate opacity in smoothly
+          bufferingOverlayOpacity.value = withTiming(1, {
+            duration: 200,
+            easing: Easing.out(Easing.ease),
+          });
+        }
+      }, BUFFERING_SHOW_DELAY_MS);
+    } else {
+      // Calculate how long overlay has been shown
+      const shownDuration = Date.now() - bufferingShownAtRef.current;
+      const remainingMinDisplay = Math.max(0, BUFFERING_MIN_DISPLAY_MS - shownDuration);
+
+      // Ensure minimum display time before hiding
+      bufferingHideTimeoutRef.current = setTimeout(() => {
+        // Animate out smoothly
+        bufferingOverlayOpacity.value = withTiming(0, {
+          duration: 300,
+          easing: Easing.in(Easing.ease),
+        });
+        // Hide after animation completes
+        setTimeout(() => {
+          setShowBufferingOverlay(false);
+        }, 300);
+      }, remainingMinDisplay);
+    }
+
+    return () => {
+      if (bufferingShowTimeoutRef.current) {
+        clearTimeout(bufferingShowTimeoutRef.current);
+      }
+      if (bufferingHideTimeoutRef.current) {
+        clearTimeout(bufferingHideTimeoutRef.current);
+      }
+    };
+  }, [isPlayerBuffering, bufferingOverlayOpacity]);
+
+  // Animated style for buffering overlay
+  const bufferingOverlayStyle = useAnimatedStyle(() => ({
+    opacity: bufferingOverlayOpacity.value,
+  }));
 
   const hideControls = useCallback(() => {
     controlsOpacity.value = withTiming(0, { duration: 300 });
@@ -259,14 +355,17 @@ export default function LiveTvPlayerScreen() {
   }, [showControls, hideControls, showControlsWithTimeout]);
 
   const handleBack = useCallback(() => {
-    router.back();
+    dismissModal();
   }, []);
 
   const handleChannelChange = useCallback((channel: LiveTvChannel) => {
     setCurrentChannelId(channel.Id);
     setShowChannelList(false);
-    setIsBuffering(true);
-  }, []);
+    // Show buffering immediately when changing channels
+    setIsPlayerBuffering(true);
+    setShowBufferingOverlay(true);
+    bufferingOverlayOpacity.value = 1;
+  }, [bufferingOverlayOpacity]);
 
   const handleToggleFavorite = useCallback(() => {
     if (currentChannelId) {
@@ -353,6 +452,8 @@ export default function LiveTvPlayerScreen() {
               style={styles.video}
               nativeControls={false}
               contentFit="contain"
+              allowsPictureInPicture={true}
+              startsPictureInPictureAutomatically={true}
             />
           )}
 
@@ -365,7 +466,9 @@ export default function LiveTvPlayerScreen() {
                 onPress={() => {
                   // Reset and try from the beginning
                   setStreamError(null);
-                  setIsBuffering(true);
+                  setIsPlayerBuffering(true);
+                  setShowBufferingOverlay(true);
+                  bufferingOverlayOpacity.value = 1;
                   setStreamUrlIndex(0);
                   setStreamUrl(null);
                   setTimeout(() => {
@@ -377,12 +480,15 @@ export default function LiveTvPlayerScreen() {
                 <Text style={styles.retryButtonText}>{t('common.retry')}</Text>
               </Pressable>
             </View>
-          ) : isBuffering ? (
-            <View style={styles.bufferingOverlay}>
+          ) : null}
+
+          {/* Buffering overlay with smooth animated opacity to prevent seizure-inducing flickering */}
+          {showBufferingOverlay && !streamError && (
+            <Animated.View style={[styles.bufferingOverlay, bufferingOverlayStyle]}>
               <ActivityIndicator size="large" color={accentColor} />
               <Text style={styles.bufferingText}>{t('player.loadingStream')}</Text>
-            </View>
-          ) : null}
+            </Animated.View>
+          )}
         </View>
       </GestureDetector>
 

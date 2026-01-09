@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import type { AppSettings, PlayerSettings } from '@/types';
+import type { AppSettings, PlayerSettings, PlayerControlsConfig, PlayerControlId } from '@/types';
+import { DEFAULT_PLAYER_CONTROLS_CONFIG, DEFAULT_PLAYER_CONTROLS_ORDER } from '@/types/player';
 import { isTV } from '@/utils/platform';
 import { appStorage } from './storage';
 import { DEFAULT_EQUALIZER_PRESET } from '@/constants/equalizer';
@@ -54,14 +55,14 @@ export const DEFAULT_BOTTOM_BAR_CONFIG: BottomBarConfig = {
   showHome: true,
   showLibrary: true,
   showDownloads: true,
-  showAdmin: true,
-  showJellyseerr: true,
+  showAdmin: false,
+  showJellyseerr: false,
   showRadarr: false,
   showSonarr: false,
   showFavorites: false,
   showLiveTV: false,
   showMore: true,
-  moreMenuTabs: ['radarr', 'sonarr', 'favorites', 'livetv'],
+  moreMenuTabs: ['jellyseerr', 'admin', 'radarr', 'sonarr', 'favorites', 'livetv'],
   selectedLibraryIds: [],
   tabOrder: DEFAULT_TAB_ORDER,
   landingPage: 'home',
@@ -94,6 +95,9 @@ const defaultPlayerSettings: PlayerSettings = {
   hardwareAcceleration: true,
   maxStreamingBitrate: 20,
   externalPlayerEnabled: true,
+  // Player controls configuration
+  controlsConfig: DEFAULT_PLAYER_CONTROLS_CONFIG,
+  controlsOrder: DEFAULT_PLAYER_CONTROLS_ORDER,
 };
 
 const defaultLibrarySortPreferences: LibrarySortPreferences = {
@@ -128,10 +132,13 @@ interface SettingsState extends Omit<AppSettings, 'servers'> {
   jellyseerrUrl: string | null;
   jellyseerrAuthToken: string | null;
   jellyseerrUsername: string | null;
-  // Jellyfin auth credentials for Jellyseerr re-authentication
+  // Jellyfin auth info (for display purposes - not used for re-authentication)
+  // Note: Jellyseerr requires password for Jellyfin auth, not token.
+  // Session cookies handle persistence; if they expire, user must re-authenticate.
   jellyseerrJellyfinServerUrl: string | null;
   jellyseerrJellyfinUserId: string | null;
-  jellyseerrJellyfinToken: string | null;
+  jellyseerrJellyfinToken: string | null; // Legacy field, not actively used
+  jellyseerrSessionCookie: string | null; // Session cookie for Jellyfin auth
 
   // TV mode
   isTVMode: boolean;
@@ -158,10 +165,18 @@ interface SettingsState extends Omit<AppSettings, 'servers'> {
   // Radarr
   radarrUrl: string | null;
   radarrApiKey: string | null;
+  radarrConnectionStatus: 'unknown' | 'connected' | 'error';
+  radarrUseCustomHeaders: boolean;
 
   // Sonarr
   sonarrUrl: string | null;
   sonarrApiKey: string | null;
+  sonarrConnectionStatus: 'unknown' | 'connected' | 'error';
+  sonarrUseCustomHeaders: boolean;
+
+  // Jellyseerr
+  jellyseerrConnectionStatus: 'unknown' | 'connected' | 'error';
+  jellyseerrUseCustomHeaders: boolean;
 
   // Notification settings
   notifications: {
@@ -193,7 +208,7 @@ interface SettingsState extends Omit<AppSettings, 'servers'> {
     url: string | null,
     authToken: string | null,
     username?: string | null,
-    jellyfinAuth?: { serverUrl: string; userId: string; token: string } | null
+    jellyfinAuth?: { serverUrl: string; userId: string; token: string; sessionCookie?: string } | null
   ) => void;
   clearJellyseerrCredentials: () => void;
 
@@ -218,9 +233,16 @@ interface SettingsState extends Omit<AppSettings, 'servers'> {
 
   setRadarrCredentials: (url: string | null, apiKey: string | null) => void;
   clearRadarrCredentials: () => void;
+  setRadarrConnectionStatus: (status: 'unknown' | 'connected' | 'error') => void;
+  setRadarrUseCustomHeaders: (enabled: boolean) => void;
 
   setSonarrCredentials: (url: string | null, apiKey: string | null) => void;
   clearSonarrCredentials: () => void;
+  setSonarrConnectionStatus: (status: 'unknown' | 'connected' | 'error') => void;
+  setSonarrUseCustomHeaders: (enabled: boolean) => void;
+
+  setJellyseerrConnectionStatus: (status: 'unknown' | 'connected' | 'error') => void;
+  setJellyseerrUseCustomHeaders: (enabled: boolean) => void;
 
   setNotificationSetting: (key: keyof SettingsState['notifications'], enabled: boolean) => void;
 
@@ -254,6 +276,7 @@ const initialState = {
   jellyseerrJellyfinServerUrl: null,
   jellyseerrJellyfinUserId: null,
   jellyseerrJellyfinToken: null,
+  jellyseerrSessionCookie: null,
   isTVMode: isTV,
   offlineMode: false,
   hideMedia: false,
@@ -264,8 +287,14 @@ const initialState = {
   openSubtitlesApiKey: null,
   radarrUrl: null,
   radarrApiKey: null,
+  radarrConnectionStatus: 'unknown' as const,
+  radarrUseCustomHeaders: false,
   sonarrUrl: null,
   sonarrApiKey: null,
+  sonarrConnectionStatus: 'unknown' as const,
+  sonarrUseCustomHeaders: false,
+  jellyseerrConnectionStatus: 'unknown' as const,
+  jellyseerrUseCustomHeaders: false,
   notifications: {
     downloadComplete: true,
     nowPlaying: false,
@@ -383,6 +412,8 @@ export const useSettingsStore = create<SettingsState>()(
           jellyseerrJellyfinServerUrl: jellyfinAuth?.serverUrl ?? null,
           jellyseerrJellyfinUserId: jellyfinAuth?.userId ?? null,
           jellyseerrJellyfinToken: jellyfinAuth?.token ?? null,
+          jellyseerrSessionCookie: jellyfinAuth?.sessionCookie ?? null,
+          jellyseerrConnectionStatus: 'unknown',
         }),
 
       clearJellyseerrCredentials: () =>
@@ -392,7 +423,9 @@ export const useSettingsStore = create<SettingsState>()(
           jellyseerrJellyfinServerUrl: null,
           jellyseerrJellyfinUserId: null,
           jellyseerrJellyfinToken: null,
+          jellyseerrSessionCookie: null,
           jellyseerrUsername: null,
+          jellyseerrConnectionStatus: 'unknown',
         }),
 
       setTVMode: (isTVMode) => set({ isTVMode }),
@@ -421,25 +454,38 @@ export const useSettingsStore = create<SettingsState>()(
         set({
           radarrUrl: url,
           radarrApiKey: apiKey,
+          radarrConnectionStatus: 'unknown',
         }),
 
       clearRadarrCredentials: () =>
         set({
           radarrUrl: null,
           radarrApiKey: null,
+          radarrConnectionStatus: 'unknown',
         }),
 
       setSonarrCredentials: (url, apiKey) =>
         set({
           sonarrUrl: url,
           sonarrApiKey: apiKey,
+          sonarrConnectionStatus: 'unknown',
         }),
 
       clearSonarrCredentials: () =>
         set({
           sonarrUrl: null,
           sonarrApiKey: null,
+          sonarrConnectionStatus: 'unknown',
         }),
+
+      setRadarrConnectionStatus: (status) => set({ radarrConnectionStatus: status }),
+      setRadarrUseCustomHeaders: (enabled) => set({ radarrUseCustomHeaders: enabled }),
+
+      setSonarrConnectionStatus: (status) => set({ sonarrConnectionStatus: status }),
+      setSonarrUseCustomHeaders: (enabled) => set({ sonarrUseCustomHeaders: enabled }),
+
+      setJellyseerrConnectionStatus: (status) => set({ jellyseerrConnectionStatus: status }),
+      setJellyseerrUseCustomHeaders: (enabled) => set({ jellyseerrUseCustomHeaders: enabled }),
 
       setNotificationSetting: (key, enabled) =>
         set((state) => ({
@@ -484,7 +530,22 @@ export const useSettingsStore = create<SettingsState>()(
 
         // Migrate showRequests to showJellyseerr
         const persistedConfig = persisted.bottomBarConfig as any;
-        const showJellyseerr = persistedConfig?.showJellyseerr ?? persistedConfig?.showRequests ?? true;
+        const showJellyseerr = persistedConfig?.showJellyseerr ?? persistedConfig?.showRequests ?? false;
+
+        // Get persisted moreMenuTabs or default
+        let moreMenuTabs = persisted.bottomBarConfig?.moreMenuTabs ?? DEFAULT_BOTTOM_BAR_CONFIG.moreMenuTabs;
+
+        // Migration: Ensure integration tabs that were "enabled" but not in tabOrder
+        // are added to moreMenuTabs so they appear somewhere
+        const integrationTabs = ['jellyseerr', 'admin', 'radarr', 'sonarr', 'favorites', 'livetv'] as const;
+        for (const tabId of integrationTabs) {
+          const isInTabOrder = tabOrder.includes(tabId);
+          const isInMoreMenu = moreMenuTabs.includes(tabId);
+          // If tab is not in either place, add to moreMenuTabs by default
+          if (!isInTabOrder && !isInMoreMenu) {
+            moreMenuTabs = [...moreMenuTabs, tabId];
+          }
+        }
 
         // Merge bottomBarConfig with defaults to handle missing fields
         const mergedBottomBarConfig: BottomBarConfig = {
@@ -493,7 +554,7 @@ export const useSettingsStore = create<SettingsState>()(
           showJellyseerr,
           // Ensure arrays are never undefined
           selectedLibraryIds: persisted.bottomBarConfig?.selectedLibraryIds ?? [],
-          moreMenuTabs: persisted.bottomBarConfig?.moreMenuTabs ?? DEFAULT_BOTTOM_BAR_CONFIG.moreMenuTabs,
+          moreMenuTabs,
           tabOrder,
           landingPage: persisted.bottomBarConfig?.landingPage ?? 'home',
         };
@@ -503,11 +564,40 @@ export const useSettingsStore = create<SettingsState>()(
           nowPlaying: persisted.notifications?.nowPlaying ?? false,
         };
 
+        // Migrate legacy player control settings to new controlsConfig
+        const persistedPlayer = persisted.player as any;
+        let controlsConfig = persistedPlayer?.controlsConfig ?? { ...DEFAULT_PLAYER_CONTROLS_CONFIG };
+        let controlsOrder = persistedPlayer?.controlsOrder ?? [...DEFAULT_PLAYER_CONTROLS_ORDER];
+
+        // Migrate legacy settings if present
+        if (persistedPlayer) {
+          if ('showPiPButton' in persistedPlayer && !persistedPlayer.controlsConfig) {
+            controlsConfig.pip = persistedPlayer.showPiPButton === false ? 'hidden' : 'visible';
+          }
+          if ('showCastButton' in persistedPlayer && !persistedPlayer.controlsConfig) {
+            controlsConfig.cast = persistedPlayer.showCastButton === false ? 'hidden' : 'visible';
+          }
+          if ('showSpeedInMenu' in persistedPlayer && !persistedPlayer.controlsConfig) {
+            controlsConfig.speed = persistedPlayer.showSpeedInMenu === false ? 'visible' : 'menu';
+          }
+          if ('showEpisodeList' in persistedPlayer && !persistedPlayer.controlsConfig) {
+            controlsConfig.episodes = persistedPlayer.showEpisodeList === false ? 'hidden' : 'visible';
+          }
+        }
+
+        const mergedPlayer: PlayerSettings = {
+          ...defaultPlayerSettings,
+          ...persisted.player,
+          controlsConfig,
+          controlsOrder,
+        };
+
         return {
           ...currentState,
           ...persisted,
           bottomBarConfig: mergedBottomBarConfig,
           notifications: mergedNotifications,
+          player: mergedPlayer,
         };
       },
     }
@@ -540,6 +630,12 @@ export const selectHasRadarr = (state: SettingsState) =>
   !!state.radarrUrl && !!state.radarrApiKey;
 export const selectHasSonarr = (state: SettingsState) =>
   !!state.sonarrUrl && !!state.sonarrApiKey;
+export const selectRadarrConnectionStatus = (state: SettingsState) =>
+  state.radarrConnectionStatus;
+export const selectSonarrConnectionStatus = (state: SettingsState) =>
+  state.sonarrConnectionStatus;
+export const selectJellyseerrConnectionStatus = (state: SettingsState) =>
+  state.jellyseerrConnectionStatus;
 
 // Compound selectors to reduce re-renders by combining related state
 export const selectBottomNavSettings = (state: SettingsState) => ({
@@ -561,3 +657,9 @@ export const selectPosterCardSettings = (state: SettingsState) => ({
   accentColor: state.accentColor,
   hideMedia: state.hideMedia,
 });
+
+// Player controls selectors
+export const selectPlayerControlsConfig = (state: SettingsState) =>
+  state.player.controlsConfig ?? DEFAULT_PLAYER_CONTROLS_CONFIG;
+export const selectPlayerControlsOrder = (state: SettingsState) =>
+  state.player.controlsOrder ?? DEFAULT_PLAYER_CONTROLS_ORDER;

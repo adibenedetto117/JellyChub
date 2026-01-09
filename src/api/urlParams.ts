@@ -137,6 +137,7 @@ export function buildAudioStreamParams(options: AudioStreamParams = {}): URLSear
 
 /**
  * Build image params
+ * Includes api_key for authenticated access to images
  */
 export function buildImageParams(options: {
   maxWidth?: number;
@@ -144,7 +145,7 @@ export function buildImageParams(options: {
   quality?: number;
   tag?: string;
 }): URLSearchParams {
-  const params = new URLSearchParams();
+  const params = getAuthParams();
   const { maxWidth, maxHeight, quality = 90, tag } = options;
 
   if (maxWidth) params.set('maxWidth', maxWidth.toString());

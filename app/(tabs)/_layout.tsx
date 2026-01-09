@@ -185,7 +185,7 @@ export default function TabLayout() {
     if (tabId === 'jellyseerr' || tabId === 'requests') {
       return {
         name: 'requests',
-        title: 'Jellyseerr',
+        title: 'Requests',
         iconName: 'requests',
         href: hasJellyseerr && bottomBarConfig.showJellyseerr ? undefined : null,
         isLandingPage: landingPage === 'requests' || landingPage === 'jellyseerr',
@@ -273,7 +273,7 @@ export default function TabLayout() {
         <Tabs.Screen name="downloads" />
         <Tabs.Screen name="requests" options={{ href: hasJellyseerr ? undefined : null }} />
         <Tabs.Screen name="admin" options={{ href: isAdmin ? undefined : null }} />
-        <Tabs.Screen name="settings" />
+        <Tabs.Screen name="settings" options={{ freezeOnBlur: false }} />
         <Tabs.Screen name="movies" options={{ href: null }} />
         <Tabs.Screen name="shows" options={{ href: null }} />
         <Tabs.Screen name="music" options={{ href: null }} />
@@ -299,6 +299,8 @@ export default function TabLayout() {
           options={{
             title: tab.title,
             href: tab.href,
+            // Settings screen needs freezeOnBlur disabled to receive store updates
+            ...(tab.name === 'settings' && { freezeOnBlur: false }),
           }}
         />
       ))}

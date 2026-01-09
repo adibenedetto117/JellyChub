@@ -24,7 +24,8 @@ export function useDeepLinking() {
       } else if (path.startsWith('player/video')) {
         const itemId = params?.itemId;
         if (typeof itemId === 'string') {
-          router.push(`/player/video?itemId=${itemId}`);
+          // Default to home screen when launched via deep link
+          router.push(`/player/video?itemId=${itemId}&from=${encodeURIComponent('/(tabs)/home')}`);
         }
       } else if (path.startsWith('player/music')) {
         const itemId = params?.itemId;

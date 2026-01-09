@@ -1,4 +1,4 @@
-import axios, { AxiosInstance, AxiosError } from 'axios';
+import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig } from 'axios';
 import type {
   JellyseerrUser,
   JellyseerrMediaRequest,
@@ -11,6 +11,7 @@ import type {
   JellyseerrRequestsResponse,
 } from '@/types/jellyseerr';
 import { apiCache } from '@/utils';
+import { useSettingsStore, useAuthStore } from '@/stores';
 
 // Cache TTLs
 const CACHE_TTL = {
@@ -28,14 +29,34 @@ interface JellyseerrConfig {
   authMethod: JellyseerrAuthMethod;
   apiKey?: string;
   jellyfinUserId?: string;
-  jellyfinAuthToken?: string;
   jellyfinServerUrl?: string;
+  sessionCookie?: string;
 }
 
 class JellyseerrClient {
   private api: AxiosInstance | null = null;
   private config: JellyseerrConfig | null = null;
   private isAuthenticated = false;
+
+  /** Add custom headers interceptor to the axios instance */
+  private addCustomHeadersInterceptor(): void {
+    if (!this.api) return;
+    this.api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
+      const useCustomHeaders = useSettingsStore.getState().jellyseerrUseCustomHeaders;
+      if (useCustomHeaders) {
+        const authState = useAuthStore.getState();
+        const server = authState.servers.find((s) => s.id === authState.activeServerId);
+        if (server?.customHeaders) {
+          Object.entries(server.customHeaders).forEach(([name, value]) => {
+            if (name && value && config.headers) {
+              config.headers[name] = value;
+            }
+          });
+        }
+      }
+      return config;
+    });
+  }
 
   /**
    * Initialize the client with server URL and optional API key
@@ -69,61 +90,269 @@ class JellyseerrClient {
       }
     );
 
+    // Add request interceptor for custom headers
+    this.addCustomHeadersInterceptor();
+
     if (apiKey) {
       this.isAuthenticated = true;
     }
   }
 
   /**
-   * Initialize with Jellyfin credentials for seamless auth
+   * Initialize with Jellyfin credentials for auth
+   * Note: Jellyseerr requires username + password for Jellyfin auth.
+   * It does NOT support token-based auth like Plex does.
+   *
+   * IMPORTANT: Jellyseerr has two modes for /auth/jellyfin:
+   * 1. Initial setup: hostname is required to link the Jellyfin server
+   * 2. Authentication on already-configured server: hostname must NOT be sent
+   *    (sending hostname when server is already configured causes
+   *    "Jellyfin hostname already configured" error)
+   *
+   * This method tries authentication without hostname first, and if that fails
+   * with "No hostname provided", it retries with hostname for initial setup.
    */
   async initializeWithJellyfin(
     jellyseerrUrl: string,
     jellyfinServerUrl: string,
     jellyfinUsername: string,
-    jellyfinAuthToken: string
+    jellyfinPassword: string
   ): Promise<JellyseerrAuthResponse> {
     const cleanUrl = jellyseerrUrl.replace(/\/$/, '');
     const cleanJellyfinUrl = jellyfinServerUrl.replace(/\/$/, '');
+
+    // Comprehensive debug logging
+    console.log('='.repeat(60));
+    console.log('[Jellyseerr] JELLYFIN AUTH ATTEMPT - DEBUG INFO');
+    console.log('='.repeat(60));
+    console.log('[Jellyseerr] Jellyseerr URL:', cleanUrl);
+    console.log('[Jellyseerr] Jellyfin server URL (hostname param):', cleanJellyfinUrl);
+    console.log('[Jellyseerr] Username:', jellyfinUsername);
+    console.log('[Jellyseerr] Password provided:', jellyfinPassword ? `yes (${jellyfinPassword.length} chars)` : 'NO PASSWORD');
 
     this.config = {
       serverUrl: cleanUrl,
       authMethod: 'jellyfin',
       jellyfinUserId: jellyfinUsername,
-      jellyfinAuthToken,
       jellyfinServerUrl: cleanJellyfinUrl,
     };
 
+    const fullEndpoint = `${cleanUrl}/api/v1/auth/jellyfin`;
+
+    // Helper function to make the auth request
+    const makeAuthRequest = async (includeHostname: boolean): Promise<{ response: Response; responseText: string }> => {
+      // Build request payload - only include hostname if needed for initial setup
+      const requestPayload: { username: string; password: string; hostname?: string } = {
+        username: jellyfinUsername,
+        password: jellyfinPassword,
+      };
+
+      if (includeHostname) {
+        requestPayload.hostname = cleanJellyfinUrl;
+      }
+
+      console.log('[Jellyseerr] Full endpoint URL:', fullEndpoint);
+      console.log('[Jellyseerr] Request payload:', JSON.stringify({
+        username: requestPayload.username,
+        password: '***REDACTED***',
+        ...(includeHostname ? { hostname: requestPayload.hostname } : {}),
+      }, null, 2));
+      console.log('[Jellyseerr] Making fetch request (includeHostname:', includeHostname, ')...');
+
+      const response = await fetch(fullEndpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify(requestPayload),
+        credentials: 'include', // Include cookies
+      });
+
+      console.log('[Jellyseerr] Response status:', response.status, response.statusText);
+      const responseText = await response.text();
+      console.log('[Jellyseerr] Raw response body:', responseText);
+
+      return { response, responseText };
+    };
+
+    let response: Response;
+    let responseData: any;
+
+    try {
+      // First try WITHOUT hostname - this works when Jellyfin is already configured in Jellyseerr
+      let result = await makeAuthRequest(false);
+      response = result.response;
+      let responseText = result.responseText;
+
+      // Check if we got "No hostname provided" error - this means server isn't configured yet
+      if (!response.ok) {
+        let errorData: any = null;
+        try {
+          errorData = JSON.parse(responseText);
+        } catch {
+          // Not JSON
+        }
+
+        const errorMessage = errorData?.message || responseText || '';
+
+        // If server isn't configured, retry WITH hostname for initial setup
+        if (errorMessage.toLowerCase().includes('no hostname provided')) {
+          console.log('[Jellyseerr] Server not configured yet, retrying with hostname for initial setup...');
+          result = await makeAuthRequest(true);
+          response = result.response;
+          responseText = result.responseText;
+        }
+      }
+
+      console.log('[Jellyseerr] Response headers:');
+      response.headers.forEach((value, key) => {
+        console.log(`[Jellyseerr]   ${key}: ${value}`);
+      });
+
+      if (!response.ok) {
+        let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+        try {
+          const errorData = JSON.parse(responseText);
+          errorMessage = errorData.message || errorData.error || errorMessage;
+          console.log('[Jellyseerr] Parsed error:', errorData);
+        } catch {
+          // Response wasn't JSON
+          errorMessage = responseText || errorMessage;
+        }
+        throw new Error(errorMessage);
+      }
+
+      try {
+        responseData = JSON.parse(responseText);
+        console.log('[Jellyseerr] Parsed response data:', JSON.stringify(responseData, null, 2));
+      } catch (parseError) {
+        console.error('[Jellyseerr] Failed to parse response as JSON:', parseError);
+        throw new Error('Invalid JSON response from server');
+      }
+    } catch (fetchError: any) {
+      console.error('[Jellyseerr] Fetch error:', fetchError);
+      console.error('[Jellyseerr] Error name:', fetchError?.name);
+      console.error('[Jellyseerr] Error message:', fetchError?.message);
+      console.error('[Jellyseerr] Error stack:', fetchError?.stack);
+      throw fetchError;
+    }
+
+    // Now set up axios for subsequent API calls
     this.api = axios.create({
       baseURL: `${cleanUrl}/api/v1`,
       timeout: 30000,
-      withCredentials: true, // Enable cookie persistence for session auth
+      withCredentials: true,
       headers: {
         'Content-Type': 'application/json',
       },
     });
 
-    // Authenticate with Jellyfin credentials - Jellyseerr expects username, not user ID
-    const response = await this.api.post<JellyseerrAuthResponse>('/auth/jellyfin', {
-      username: jellyfinUsername,
-      password: '',
-      hostname: cleanJellyfinUrl,
-      authToken: jellyfinAuthToken,
-    });
+    // Add response interceptor for error handling
+    this.api.interceptors.response.use(
+      (r) => r,
+      (error: AxiosError) => {
+        if (error.response?.status === 401) {
+          this.isAuthenticated = false;
+        }
+        return Promise.reject(error);
+      }
+    );
 
-    // Store the auth cookie from response if available
-    const setCookie = response.headers['set-cookie'];
+    // Add request interceptor for custom headers
+    this.addCustomHeadersInterceptor();
+
+    // Try to extract session cookie from response
+    const setCookie = response.headers.get('set-cookie');
+    console.log('[Jellyseerr] set-cookie header:', setCookie);
+
     if (setCookie) {
-      // Extract and store the connect.sid cookie for future requests
-      const sessionCookie = setCookie.find((c: string) => c.startsWith('connect.sid'));
+      // Handle cookie - look for connect.sid
+      const cookies = setCookie.split(',').map(c => c.trim());
+      console.log('[Jellyseerr] Parsed cookies:', cookies);
+      const sessionCookie = cookies.find((c: string) => c.includes('connect.sid'));
       if (sessionCookie) {
         const cookieValue = sessionCookie.split(';')[0];
+        console.log('[Jellyseerr] Found session cookie:', cookieValue);
         this.api.defaults.headers.Cookie = cookieValue;
+        if (this.config) {
+          this.config.sessionCookie = cookieValue;
+        }
+      } else {
+        console.log('[Jellyseerr] No connect.sid cookie found in response');
       }
+    } else {
+      console.log('[Jellyseerr] No set-cookie header - cookies may be handled by native HTTP stack');
+    }
+
+    // Verify authentication worked by checking current user
+    console.log('[Jellyseerr] Verifying auth with /auth/me...');
+    try {
+      const userCheck = await this.api.get<JellyseerrAuthResponse>('/auth/me');
+      console.log('[Jellyseerr] /auth/me success:', JSON.stringify(userCheck.data, null, 2));
+    } catch (verifyError: any) {
+      console.error('[Jellyseerr] /auth/me verification failed:', verifyError?.message);
+      console.error('[Jellyseerr] This may be normal if cookies are handled differently');
     }
 
     this.isAuthenticated = true;
-    return response.data;
+    console.log('[Jellyseerr] Authentication successful!');
+    console.log('='.repeat(60));
+
+    // Return the response data along with session cookie for storage
+    const result: JellyseerrAuthResponse = {
+      ...responseData,
+      sessionCookie: this.config?.sessionCookie,
+    };
+    return result;
+  }
+
+  /**
+   * Initialize with a stored session cookie (for restoring previous session)
+   */
+  initializeWithSession(serverUrl: string, sessionCookie: string): void {
+    const cleanUrl = serverUrl.replace(/\/$/, '');
+
+    console.log('[Jellyseerr] Restoring session with cookie');
+
+    this.config = {
+      serverUrl: cleanUrl,
+      authMethod: 'jellyfin',
+      sessionCookie,
+    };
+
+    this.api = axios.create({
+      baseURL: `${cleanUrl}/api/v1`,
+      timeout: 30000,
+      withCredentials: true,
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: sessionCookie,
+      },
+    });
+
+    // Add response interceptor for error handling
+    this.api.interceptors.response.use(
+      (response) => response,
+      (error: AxiosError) => {
+        if (error.response?.status === 401) {
+          this.isAuthenticated = false;
+        }
+        return Promise.reject(error);
+      }
+    );
+
+    // Add request interceptor for custom headers
+    this.addCustomHeadersInterceptor();
+
+    this.isAuthenticated = true;
+  }
+
+  /**
+   * Get the current session cookie (for storage)
+   */
+  getSessionCookie(): string | undefined {
+    return this.config?.sessionCookie;
   }
 
   /**

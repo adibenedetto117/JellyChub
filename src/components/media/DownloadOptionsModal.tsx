@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { View, Text, Pressable, ScrollView, ActivityIndicator, StyleSheet, Modal, Switch } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { useSettingsStore } from '@/stores';
 import { getPlaybackInfo } from '@/api';
 import { getAudioStreams, getSubtitleStreams, formatBytes } from '@/utils';
@@ -121,14 +122,16 @@ function Dropdown<T>({ label, options, selectedValue, onSelect, accentColor }: D
   );
 }
 
-const QUALITY_OPTIONS: DropdownOption<DownloadQuality>[] = [
-  { value: 'original', label: 'Original', subtitle: 'Direct stream • No transcoding' },
-  { value: 'high', label: 'High', subtitle: '~15 Mbps • ~1.5 GB/hour' },
-  { value: 'medium', label: 'Medium', subtitle: '~8 Mbps • ~1 GB/hour' },
-  { value: 'low', label: 'Low', subtitle: '~4 Mbps • ~500 MB/hour' },
+// Quality options with bitrate and estimated storage per hour
+const getQualityOptions = (t: (key: string) => string): DropdownOption<DownloadQuality>[] => [
+  { value: 'original', label: t('downloads.qualityOriginal'), subtitle: t('downloads.qualityOriginalDesc') },
+  { value: 'high', label: t('downloads.qualityHigh'), subtitle: t('downloads.qualityHighDesc') },
+  { value: 'medium', label: t('downloads.qualityMedium'), subtitle: t('downloads.qualityMediumDesc') },
+  { value: 'low', label: t('downloads.qualityLow'), subtitle: t('downloads.qualityLowDesc') },
 ];
 
 export function DownloadOptionsModal({ item, userId, visible, onClose, onConfirm }: DownloadOptionsModalProps) {
+  const { t } = useTranslation();
   const accentColor = useSettingsStore((s) => s.accentColor);
   const downloadQuality = useSettingsStore((s) => s.downloadQuality);
   const downloadOverWifiOnly = useSettingsStore((s) => s.downloadOverWifiOnly);
@@ -255,8 +258,8 @@ export function DownloadOptionsModal({ item, userId, visible, onClose, onConfirm
             {/* Quality Dropdown */}
             <View style={styles.dropdownContainer}>
               <Dropdown<DownloadQuality>
-                label="Download Quality"
-                options={QUALITY_OPTIONS}
+                label={t('downloads.downloadQuality')}
+                options={getQualityOptions(t)}
                 selectedValue={selectedQuality}
                 onSelect={setSelectedQuality}
                 accentColor={accentColor}

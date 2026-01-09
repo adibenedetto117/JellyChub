@@ -341,9 +341,12 @@ export function getLiveHlsStreamUrl(channelId: string): string {
   params.set('TranscodingProtocol', 'hls');
   params.set('TranscodingContainer', 'ts');
   params.set('SegmentContainer', 'ts');
+  // MinSegments=1 allows playback to start after just one segment is ready (faster initial playback)
   params.set('MinSegments', '1');
   params.set('BreakOnNonKeyFrames', 'True');
   params.set('MaxStreamingBitrate', '20000000');
+  // Segment length of 3 seconds is standard for HLS - balances latency vs HTTP overhead
+  params.set('SegmentLength', '3');
 
   return `${jellyfinClient.url}/LiveTv/Channels/${channelId}/stream.m3u8?${params.toString()}`;
 }
@@ -429,8 +432,11 @@ export async function getLiveTvPlaybackInfo(channelId: string, userId: string): 
           Protocol: 'hls',
           Context: 'Streaming',
           MaxAudioChannels: '6',
+          // MinSegments=1 allows faster initial playback
           MinSegments: 1,
           BreakOnNonKeyFrames: true,
+          // Standard HLS segment length for good latency/overhead balance
+          SegmentLength: 3,
         },
       ],
       ContainerProfiles: [],

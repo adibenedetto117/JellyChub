@@ -1,6 +1,6 @@
 import { View, Text, ScrollView, RefreshControl, TextInput, FlatList, Pressable, StyleSheet, ActivityIndicator, Dimensions } from 'react-native';
 import { useState, useCallback, useMemo } from 'react';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView } from '@/providers';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -265,11 +265,11 @@ export default function RequestsScreen() {
   }, [refetchUser, refetchTrending, refetchPopularMovies, refetchPopularTv, refetchUpcoming, refetchMyRequests, refetchAllRequests]);
 
   const handleItemPress = (item: JellyseerrDiscoverItem) => {
-    router.push(`/jellyseerr/${item.mediaType}/${item.id}`);
+    router.push(`/(tabs)/jellyseerr/${item.mediaType}/${item.id}?from=${encodeURIComponent('/(tabs)/requests')}`);
   };
 
   const handleRequestPress = (request: JellyseerrMediaRequest) => {
-    router.push(`/jellyseerr/${request.type}/${request.media.tmdbId}`);
+    router.push(`/(tabs)/jellyseerr/${request.type}/${request.media.tmdbId}?from=${encodeURIComponent('/(tabs)/requests')}`);
   };
 
   const handleApprove = (requestId: number) => {
@@ -413,7 +413,7 @@ export default function RequestsScreen() {
         </>
       )}
 
-      <View style={{ height: 32 }} />
+      <View style={{ height: 100 }} />
     </ScrollView>
   );
 
@@ -828,7 +828,7 @@ const styles = StyleSheet.create({
   listContent: {
     paddingHorizontal: 16,
     paddingTop: 8,
-    paddingBottom: 16,
+    paddingBottom: 100,
     flexGrow: 1,
   },
   loadingFooter: {

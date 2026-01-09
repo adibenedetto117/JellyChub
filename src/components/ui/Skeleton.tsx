@@ -1,5 +1,7 @@
-import { View, ViewStyle, StyleProp } from 'react-native';
+import { View, ViewStyle, StyleProp, Dimensions } from 'react-native';
 import { memo } from 'react';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useResponsive } from '@/hooks';
 
 // Static skeleton - no animations for maximum performance
 
@@ -182,6 +184,56 @@ export const SkeletonSearchResults = memo(function SkeletonSearchResults({
           </View>
         </View>
       ))}
+    </View>
+  );
+});
+
+// Skeleton for the hero carousel on home screen
+export const SkeletonHero = memo(function SkeletonHero() {
+  const { isTablet, isTV } = useResponsive();
+  const heroHeight = isTV ? 500 : isTablet ? 420 : 340;
+  const horizontalPadding = isTV ? 48 : isTablet ? 24 : 16;
+
+  return (
+    <View style={{ width: '100%', height: heroHeight, marginBottom: 8, backgroundColor: '#1a1a1a' }}>
+      {/* Gradient overlay matching real hero */}
+      <LinearGradient
+        colors={['transparent', 'rgba(10,10,10,0.6)', 'rgba(10,10,10,0.95)', '#0a0a0a']}
+        locations={[0, 0.4, 0.7, 1]}
+        style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+      />
+
+      {/* Content at bottom matching real hero layout */}
+      <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, paddingBottom: 16, paddingHorizontal: horizontalPadding }}>
+        {/* Meta row (type badge, rating, year, runtime) */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+          <Skeleton width={60} height={22} borderRadius={4} />
+          <Skeleton width={40} height={16} borderRadius={4} />
+          <Skeleton width={35} height={16} borderRadius={4} />
+        </View>
+
+        {/* Title */}
+        <Skeleton width="70%" height={28} borderRadius={4} style={{ marginBottom: 6 }} />
+
+        {/* Genres */}
+        <Skeleton width="50%" height={14} borderRadius={4} style={{ marginBottom: 8 }} />
+
+        {/* Overview */}
+        <Skeleton width="90%" height={14} borderRadius={4} style={{ marginBottom: 4 }} />
+        <Skeleton width="75%" height={14} borderRadius={4} style={{ marginBottom: 12 }} />
+
+        {/* Play button */}
+        <View style={{ marginBottom: 16 }}>
+          <Skeleton width={100} height={40} borderRadius={24} />
+        </View>
+
+        {/* Dots */}
+        <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 8 }}>
+          <Skeleton width={24} height={8} borderRadius={4} />
+          <Skeleton width={8} height={8} borderRadius={4} />
+          <Skeleton width={8} height={8} borderRadius={4} />
+        </View>
+      </View>
     </View>
   );
 });

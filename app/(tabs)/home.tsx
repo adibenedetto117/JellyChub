@@ -1,8 +1,9 @@
 import { View, Text, ScrollView, Pressable, RefreshControl, StyleSheet } from 'react-native';
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useQuery, useQueries } from '@tanstack/react-query';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView } from '@/providers';
 import { router } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore, useSettingsStore } from '@/stores';
@@ -19,13 +20,14 @@ import {
   groupLibrariesByType,
   getLatestMediaFromMultipleLibraries,
   COLLECTION_TYPE_CONFIG,
+  jellyfinClient,
 } from '@/api';
 import { MediaRow } from '@/components/media/MediaRow';
 import { ContinueWatching } from '@/components/media/ContinueWatching';
 import { NextUpRow } from '@/components/media/NextUpRow';
 import { HeroSpotlight } from '@/components/media/HeroSpotlight';
-import { SearchButton, AnimatedGradient } from '@/components/ui';
-import { SkeletonContinueWatching, SkeletonRow } from '@/components/ui/Skeleton';
+import { AnimatedGradient } from '@/components/ui';
+import { SkeletonContinueWatching, SkeletonRow, SkeletonHero } from '@/components/ui/Skeleton';
 import { TVHomeScreen } from '@/components/tv';
 import type { BaseItem, Library, Episode, CollectionType } from '@/types/jellyfin';
 import type { GroupedLibraries } from '@/api';
@@ -53,7 +55,7 @@ export default function HomeScreen() {
 
   const { t } = useTranslation();
   const [refreshing, setRefreshing] = useState(false);
-  const { isTablet, isTV: isResponsiveTV, fontSize } = useResponsive();
+  const { isTablet, isTV: isResponsiveTV } = useResponsive();
   const currentUser = useAuthStore((state) => state.currentUser);
   const accentColor = useSettingsStore((s) => s.accentColor);
   const userId = currentUser?.Id ?? '';
@@ -65,6 +67,7 @@ export default function HomeScreen() {
     queryFn: () => getLibraries(userId),
     enabled: !!userId,
     staleTime: 1000 * 60 * 60, // 1 hour - libraries rarely change
+    refetchOnMount: 'always', // Always fetch on mount to ensure fresh data
   });
 
   const { data: resumeItems, refetch: refetchResume, isLoading: isLoadingResume } = useQuery({
@@ -72,29 +75,30 @@ export default function HomeScreen() {
     queryFn: () => getResumeItems(userId, 12),
     enabled: !!userId,
     staleTime: 1000 * 30, // 30 seconds - continue watching changes frequently
+    refetchOnMount: 'always', // Always fetch on mount to show latest continue watching
   });
 
-  // Priority 2: Next Up - loads after resume items are fetched or cached
+  // Priority 2: Next Up - critical for TV show users
   const { data: nextUp, refetch: refetchNextUp, isLoading: isLoadingNextUp } = useQuery({
     queryKey: ['nextUp', userId],
     queryFn: () => getNextUp(userId),
-    enabled: !!userId && resumeItems !== undefined, // Wait for resume to complete
+    enabled: !!userId,
     staleTime: 1000 * 30, // 30 seconds - next up changes as you watch
   });
 
-  // Priority 3: Secondary content - loads after critical data is ready
+  // Priority 3: Suggestions - personalized recommendations
   const { data: suggestions, refetch: refetchSuggestions, isLoading: isLoadingSuggestions } = useQuery({
     queryKey: ['suggestions', userId],
     queryFn: () => getSuggestions(userId, 12),
-    enabled: !!userId && nextUp !== undefined, // Wait for nextUp
+    enabled: !!userId,
     staleTime: 1000 * 60 * 10, // 10 minutes - suggestions don't change often
   });
 
-  // Priority 4: Favorites - loads last as it's lower in the page
+  // Priority 4: Favorites - user's favorite content
   const { data: allFavorites, refetch: refetchFavorites } = useQuery({
     queryKey: ['favorites', userId],
     queryFn: () => getFavorites(userId, ['Movie', 'Series'], 24),
-    enabled: !!userId && suggestions !== undefined, // Wait for suggestions
+    enabled: !!userId,
     staleTime: 1000 * 60 * 5, // 5 minutes - favorites change occasionally
   });
 
@@ -119,8 +123,8 @@ export default function HomeScreen() {
     return groupLibrariesByType(filteredLibraries);
   }, [libraries]);
 
-  // Priority 5: Latest media queries - only start after favorites are loaded
-  // This prevents 5+ queries firing simultaneously on mount
+  // Priority 5: Latest media queries - fetch latest items from each library group
+  // Depends on libraries being loaded first (groupedLibraries derived from libraries query)
   const latestMediaQueriesConfig = useMemo(() =>
     groupedLibraries.map((group) => ({
       queryKey: ['latestMediaGrouped', userId, group.collectionType, group.libraries.map(l => l.Id).join(',')],
@@ -129,10 +133,10 @@ export default function HomeScreen() {
         group.libraries.map(l => l.Id),
         12
       ),
-      enabled: !!userId && group.libraries.length > 0 && allFavorites !== undefined,
+      enabled: !!userId && group.libraries.length > 0,
       staleTime: 1000 * 60 * 5, // 5 minutes - latest media changes with new additions
       })),
-  [groupedLibraries, userId, allFavorites]);
+  [groupedLibraries, userId]);
 
   // Create queries for each grouped collection type
   const latestMediaQueries = useQueries({
@@ -149,6 +153,27 @@ export default function HomeScreen() {
     }));
   }, [groupedLibraries, latestMediaQueries]);
 
+  // Store refetch functions in refs to avoid dependency instability in useFocusEffect
+  // This prevents the effect from re-running due to function reference changes
+  const refetchResumeRef = useRef(refetchResume);
+  const refetchNextUpRef = useRef(refetchNextUp);
+  useEffect(() => {
+    refetchResumeRef.current = refetchResume;
+    refetchNextUpRef.current = refetchNextUp;
+  }, [refetchResume, refetchNextUp]);
+
+  // Refetch critical data when screen comes into focus (e.g., navigating back from other tabs)
+  // This ensures continue watching and next up are always current
+  useFocusEffect(
+    useCallback(() => {
+      // Only refetch if we have a userId - data might be stale after viewing content
+      if (userId) {
+        refetchResumeRef.current();
+        refetchNextUpRef.current();
+      }
+    }, [userId])
+  );
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await Promise.all([
@@ -163,7 +188,19 @@ export default function HomeScreen() {
   }, [refetchLibraries, refetchResume, refetchNextUp, refetchSuggestions, refetchFavorites, latestMediaQueries]);
 
   const handleItemPress = useCallback((item: BaseItem) => {
-    const type = item.Type?.toLowerCase();
+    // Guard: validate item has required fields before navigation
+    if (!item?.Id || !item?.Type) {
+      console.warn('[Home] handleItemPress called with invalid item:', {
+        id: item?.Id,
+        type: item?.Type,
+        name: item?.Name,
+      });
+      return;
+    }
+
+    const type = item.Type.toLowerCase();
+    console.log('[Home] Navigating to details:', { type, id: item.Id, name: item.Name });
+
     if (type === 'movie') {
       navigateToDetails('movie', item.Id, '/(tabs)/home');
     } else if (type === 'series') {
@@ -190,12 +227,14 @@ export default function HomeScreen() {
     }
   }, []);
 
+  // Play content from HeroSpotlight - for movies go directly to player, for series use autoplay
   const handlePlayPress = useCallback((item: BaseItem) => {
     const type = item.Type?.toLowerCase();
     if (type === 'movie') {
-      router.push(`/player/video?itemId=${item.Id}`);
+      router.push(`/player/video?itemId=${item.Id}&from=${encodeURIComponent('/(tabs)/home')}`);
     } else if (type === 'series') {
-      navigateToDetails('series', item.Id, '/(tabs)/home');
+      // Navigate to series details with autoplay flag to start playback
+      router.push(`/(tabs)/details/series/${item.Id}?from=/(tabs)/home&autoplay=true`);
     }
   }, []);
 
@@ -203,7 +242,7 @@ export default function HomeScreen() {
   const handleResumePress = useCallback((item: BaseItem) => {
     const type = item.Type?.toLowerCase();
     if (type === 'movie' || type === 'episode') {
-      router.push(`/player/video?itemId=${item.Id}`);
+      router.push(`/player/video?itemId=${item.Id}&from=${encodeURIComponent('/(tabs)/home')}`);
     } else if (type === 'audio') {
       router.push(`/player/music?itemId=${item.Id}`);
     } else if (type === 'audiobook') {
@@ -216,7 +255,7 @@ export default function HomeScreen() {
 
   // Play next episode - goes directly to player
   const handleNextEpisodePlay = useCallback((item: Episode) => {
-    router.push(`/player/video?itemId=${item.Id}`);
+    router.push(`/player/video?itemId=${item.Id}&from=${encodeURIComponent('/(tabs)/home')}`);
   }, []);
 
   const heroItems = useMemo(() => {
@@ -230,7 +269,11 @@ export default function HomeScreen() {
       .flatMap(({ data }) => data)
       .slice(0, 2);
 
-    return [...movieItems, ...tvItems].filter(item => item.BackdropImageTags?.length);
+    // Filter to ensure all items have valid Id, Type, and backdrop images
+    // This prevents navigation failures when clicking carousel items
+    return [...movieItems, ...tvItems].filter(item =>
+      item?.Id && item?.Type && item.BackdropImageTags?.length
+    );
   }, [libraryLatestMedia]);
 
   const getLatestSectionTitle = useCallback((group: GroupedLibraries): string => {
@@ -264,20 +307,24 @@ export default function HomeScreen() {
   }, [t]);
 
   const showHero = heroItems.length > 0 && !isLoadingResume;
+  // Show skeleton while hero data is loading (movie/TV queries still in progress)
+  const isHeroLoading = heroItems.length === 0 && latestMediaQueries.some(q => q.isLoading);
+  const showHeroOrSkeleton = showHero || isHeroLoading;
 
   return (
-    <SafeAreaView style={styles.container} edges={showHero ? [] : ['top']}>
+    // Always use edges={[]} to prevent layout shift when showHero changes
+    // Safe area is handled internally by each header variant
+    <SafeAreaView style={styles.container} edges={[]}>
       <AnimatedGradient intensity="subtle" />
-      {showHero && (
+      {showHeroOrSkeleton && (
         <View style={styles.floatingHeader}>
           <SafeAreaView edges={['top']} style={styles.floatingHeaderInner}>
             <View style={styles.floatingHeaderContent}>
-              <View style={{ flex: 1 }} />
               <Pressable
                 style={styles.floatingSearchButton}
                 onPress={() => router.push('/(tabs)/search')}
               >
-                <Ionicons name="search" size={22} color="#fff" />
+                <Ionicons name="search" size={22} color="rgba(255,255,255,0.9)" />
               </Pressable>
             </View>
           </SafeAreaView>
@@ -299,24 +346,24 @@ export default function HomeScreen() {
             onItemPress={handleItemPress}
             onPlayPress={handlePlayPress}
           />
+        ) : isHeroLoading ? (
+          <SkeletonHero />
         ) : (
-          <View style={[styles.header, { paddingHorizontal: horizontalPadding, paddingTop: isTablet ? 20 : 16 }]}>
-            <View style={styles.headerLeft}>
-              <Text style={[styles.headerTitle, { fontSize: fontSize['2xl'] }]}>{t('nav.home')}</Text>
+          // Wrap non-hero header in SafeAreaView to handle top inset consistently
+          <SafeAreaView edges={['top']}>
+            <View style={[styles.header, { paddingHorizontal: horizontalPadding, paddingTop: isTablet ? 20 : 16 }]}>
+              <Pressable
+                style={styles.searchButton}
+                onPress={() => router.push('/(tabs)/search')}
+              >
+                <Ionicons name="search" size={24} color="rgba(255,255,255,0.8)" />
+              </Pressable>
             </View>
-            <SearchButton />
-          </View>
+          </SafeAreaView>
         )}
 
         {showHero && (
           <View style={[styles.quickActions, { paddingHorizontal: horizontalPadding }]}>
-            <Pressable
-              style={[styles.quickActionButton, { backgroundColor: accentColor + '20' }]}
-              onPress={() => router.push('/(tabs)/search')}
-            >
-              <Ionicons name="search" size={18} color={accentColor} />
-              <Text style={[styles.quickActionText, { color: accentColor }]}>{t('nav.search')}</Text>
-            </Pressable>
             <Pressable
               style={styles.quickActionButton}
               onPress={() => router.push('/(tabs)/library')}
@@ -435,7 +482,7 @@ const styles = StyleSheet.create({
   floatingHeaderContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-end',
     paddingHorizontal: 16,
     paddingVertical: 8,
   },
@@ -443,24 +490,20 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: 'rgba(0,0,0,0.5)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-end',
     paddingBottom: 8,
   },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  headerTitle: {
-    color: '#fff',
-    fontWeight: 'bold',
+  searchButton: {
+    padding: 12,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.1)',
   },
   quickActions: {
     flexDirection: 'row',

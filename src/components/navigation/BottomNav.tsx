@@ -10,7 +10,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useRouter, usePathname } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets, initialWindowMetrics } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useShallow } from 'zustand/react/shallow';
@@ -320,7 +320,7 @@ const MoreMenu = memo(function MoreMenu({
 
       {/* Bottom Sheet */}
       <GestureDetector gesture={panGesture}>
-        <Animated.View style={[moreStyles.sheet, { paddingBottom: insets.bottom + 16 }, sheetStyle]}>
+        <Animated.View style={[moreStyles.sheet, { paddingBottom: (initialWindowMetrics?.insets.bottom ?? insets.bottom) + 16 }, sheetStyle]}>
           {/* Drag Handle */}
           <View style={moreStyles.handleContainer}>
             <View style={moreStyles.handle} />
@@ -430,7 +430,10 @@ export const BottomNav = memo(function BottomNav() {
   );
 
   const baseHeight = platformSelect({ mobile: 56, tablet: 52, tv: 0 });
-  const height = baseHeight + insets.bottom;
+  // Use initialWindowMetrics for stable bottom inset to prevent layout shifts
+  // when dynamic insets are calculated asynchronously
+  const stableBottomInset = initialWindowMetrics?.insets.bottom ?? insets.bottom;
+  const height = baseHeight + stableBottomInset;
 
   // Memoize hide check to avoid repeated string operations
   const shouldHide = useMemo(

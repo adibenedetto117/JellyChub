@@ -421,28 +421,42 @@ export function LibrarySelector() {
     const isInMore = bottomBarConfig.moreMenuTabs.includes(tabId);
     if (isInMore) return 'more';
     const showValue = (bottomBarConfig as Record<string, unknown>)[showKey];
-    if (showValue) return 'bottomBar';
+    const isInTabOrder = bottomBarConfig.tabOrder.includes(tabId);
+    // Tab is on bottom bar only if both the show flag is true AND it's in tabOrder
+    if (showValue && isInTabOrder) return 'bottomBar';
     return 'hidden';
   };
 
   // Helper to set tab placement
   const setTabPlacement = (tabId: string, showKey: string, placement: TabPlacement) => {
     const currentMoreTabs = bottomBarConfig.moreMenuTabs.filter((t) => t !== tabId);
+    const currentTabOrder = bottomBarConfig.tabOrder.filter((t) => t !== tabId);
 
     if (placement === 'more') {
       setBottomBarConfig({
         [showKey]: false,
         moreMenuTabs: [...currentMoreTabs, tabId],
+        tabOrder: currentTabOrder,
       });
     } else if (placement === 'bottomBar') {
+      // Add tab to tabOrder before 'settings' (or at end if settings not found)
+      const settingsIndex = currentTabOrder.indexOf('settings');
+      const newTabOrder = [...currentTabOrder];
+      if (settingsIndex !== -1) {
+        newTabOrder.splice(settingsIndex, 0, tabId);
+      } else {
+        newTabOrder.push(tabId);
+      }
       setBottomBarConfig({
         [showKey]: true,
         moreMenuTabs: currentMoreTabs,
+        tabOrder: newTabOrder,
       });
     } else {
       setBottomBarConfig({
         [showKey]: false,
         moreMenuTabs: currentMoreTabs,
+        tabOrder: currentTabOrder,
       });
     }
   };

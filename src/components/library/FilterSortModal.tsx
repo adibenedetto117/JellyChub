@@ -1,6 +1,8 @@
-import { View, Text, Pressable, ScrollView, Modal, StyleSheet, Dimensions } from 'react-native';
-import { memo, useState, useCallback, useMemo } from 'react';
+import { View, Text, Pressable, Modal, StyleSheet, Dimensions } from 'react-native';
+import { memo, useState, useCallback, useMemo, useRef } from 'react';
 import { Ionicons } from '@expo/vector-icons';
+import { GestureHandlerRootView, GestureDetector, Gesture, ScrollView } from 'react-native-gesture-handler';
+import Animated, { useSharedValue, useAnimatedStyle, withSpring, withTiming, runOnJS } from 'react-native-reanimated';
 import { colors } from '@/theme';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -109,10 +111,48 @@ export const FilterSortModal = memo(function FilterSortModal({
   showRuntimeSort = true,
 }: FilterSortModalProps) {
   const [localFilters, setLocalFilters] = useState<FilterOptions>(filters);
+  const translateY = useSharedValue(0);
+  const scrollOffset = useSharedValue(0);
+  const scrollRef = useRef<ScrollView>(null);
 
   const handleOpen = useCallback(() => {
     setLocalFilters(filters);
+    translateY.value = 0;
+    scrollOffset.value = 0;
   }, [filters]);
+
+  const handleClose = useCallback(() => {
+    onClose();
+  }, [onClose]);
+
+  const panGesture = Gesture.Pan()
+    .onUpdate((e) => {
+      // Only allow dragging down when scroll is at top
+      if (scrollOffset.value <= 0 && e.translationY > 0) {
+        translateY.value = e.translationY;
+      }
+    })
+    .onEnd((e) => {
+      // Close if dragged down more than 100px or with high velocity, but only when scroll is at top
+      if (scrollOffset.value <= 0 && (e.translationY > 100 || e.velocityY > 500)) {
+        translateY.value = withTiming(SCREEN_HEIGHT, { duration: 200 });
+        runOnJS(handleClose)();
+      } else {
+        translateY.value = withSpring(0, { damping: 20, stiffness: 300 });
+      }
+    });
+
+  const scrollGesture = Gesture.Native();
+
+  const composedGesture = Gesture.Simultaneous(panGesture, scrollGesture);
+
+  const sheetStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: translateY.value }],
+  }));
+
+  const handleScroll = useCallback((event: { nativeEvent: { contentOffset: { y: number } } }) => {
+    scrollOffset.value = event.nativeEvent.contentOffset.y;
+  }, []);
 
   const sortOptions = useMemo(() => {
     if (showRuntimeSort) return SORT_OPTIONS;
@@ -187,128 +227,136 @@ export const FilterSortModal = memo(function FilterSortModal({
     <Modal
       visible={visible}
       transparent
-      animationType="slide"
+      animationType="fade"
       onShow={handleOpen}
-      onRequestClose={onClose}
+      onRequestClose={handleClose}
     >
-      <View style={styles.overlay}>
-        <Pressable style={styles.backdrop} onPress={onClose} />
-        <View style={styles.container}>
-          <View style={styles.content}>
-            <View style={styles.handle} />
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <View style={styles.overlay}>
+          <Pressable style={styles.backdrop} onPress={handleClose} />
+          <GestureDetector gesture={composedGesture}>
+            <Animated.View style={[styles.container, sheetStyle]}>
+              <View style={styles.content}>
+                <View style={styles.handle} />
 
-            <View style={styles.header}>
-              <Text style={styles.title}>Sort & Filter</Text>
-              {hasActiveFilters && (
-                <Pressable onPress={handleReset} style={styles.resetButton}>
-                  <Text style={[styles.resetText, { color: accentColor }]}>Reset</Text>
-                </Pressable>
-              )}
-            </View>
+                <View style={styles.header}>
+                  <Text style={styles.title}>Sort & Filter</Text>
+                  {hasActiveFilters && (
+                    <Pressable onPress={handleReset} style={styles.resetButton}>
+                      <Text style={[styles.resetText, { color: accentColor }]}>Reset</Text>
+                    </Pressable>
+                  )}
+                </View>
 
-            <ScrollView
-              style={styles.scrollView}
-              contentContainerStyle={styles.scrollContent}
-              showsVerticalScrollIndicator={false}
-            >
-              <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Sort By</Text>
-                <View style={styles.sortOptions}>
-                  {sortOptions.map((option) => (
-                    <Chip
-                      key={option.value}
-                      label={option.label}
-                      selected={localFilters.sortBy === option.value}
-                      onPress={() => handleSortChange(option.value)}
+                <ScrollView
+                  ref={scrollRef}
+                  style={styles.scrollView}
+                  contentContainerStyle={styles.scrollContent}
+                  showsVerticalScrollIndicator={false}
+                  onScroll={handleScroll}
+                  scrollEventThrottle={16}
+                  bounces={false}
+                >
+                  <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>Sort By</Text>
+                    <View style={styles.sortOptions}>
+                      {sortOptions.map((option) => (
+                        <Chip
+                          key={option.value}
+                          label={option.label}
+                          selected={localFilters.sortBy === option.value}
+                          onPress={() => handleSortChange(option.value)}
+                          accentColor={accentColor}
+                        />
+                      ))}
+                    </View>
+                    {localFilters.sortBy !== 'Random' && (
+                      <Pressable onPress={toggleSortOrder} style={styles.sortOrderRow}>
+                        <Text style={styles.sortOrderLabel}>
+                          {localFilters.sortOrder === 'Ascending' ? 'Ascending' : 'Descending'}
+                        </Text>
+                        <Ionicons
+                          name={localFilters.sortOrder === 'Ascending' ? 'arrow-up' : 'arrow-down'}
+                          size={18}
+                          color={accentColor}
+                        />
+                      </Pressable>
+                    )}
+                  </View>
+
+                  <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>Quick Filters</Text>
+                    <ToggleSwitch
+                      label="Unplayed Only"
+                      value={localFilters.unplayedOnly}
+                      onToggle={toggleUnplayed}
                       accentColor={accentColor}
                     />
-                  ))}
-                </View>
-                {localFilters.sortBy !== 'Random' && (
-                  <Pressable onPress={toggleSortOrder} style={styles.sortOrderRow}>
-                    <Text style={styles.sortOrderLabel}>
-                      {localFilters.sortOrder === 'Ascending' ? 'Ascending' : 'Descending'}
-                    </Text>
-                    <Ionicons
-                      name={localFilters.sortOrder === 'Ascending' ? 'arrow-up' : 'arrow-down'}
-                      size={18}
-                      color={accentColor}
+                    <ToggleSwitch
+                      label="Favorites Only"
+                      value={localFilters.favoritesOnly}
+                      onToggle={toggleFavorites}
+                      accentColor={accentColor}
                     />
-                  </Pressable>
-                )}
-              </View>
+                  </View>
 
-              <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Quick Filters</Text>
-                <ToggleSwitch
-                  label="Unplayed Only"
-                  value={localFilters.unplayedOnly}
-                  onToggle={toggleUnplayed}
-                  accentColor={accentColor}
-                />
-                <ToggleSwitch
-                  label="Favorites Only"
-                  value={localFilters.favoritesOnly}
-                  onToggle={toggleFavorites}
-                  accentColor={accentColor}
-                />
-              </View>
+                  {availableGenres.length > 0 && (
+                    <View style={styles.section}>
+                      <Text style={styles.sectionTitle}>
+                        Genre{localFilters.genres.length > 0 ? ` (${localFilters.genres.length})` : ''}
+                      </Text>
+                      <View style={styles.chipContainer}>
+                        {availableGenres.map((genre) => (
+                          <Chip
+                            key={genre}
+                            label={genre}
+                            selected={localFilters.genres.includes(genre)}
+                            onPress={() => toggleGenre(genre)}
+                            accentColor={accentColor}
+                          />
+                        ))}
+                      </View>
+                    </View>
+                  )}
 
-              {availableGenres.length > 0 && (
-                <View style={styles.section}>
-                  <Text style={styles.sectionTitle}>
-                    Genre{localFilters.genres.length > 0 ? ` (${localFilters.genres.length})` : ''}
-                  </Text>
-                  <View style={styles.chipContainer}>
-                    {availableGenres.map((genre) => (
+                  <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>Decade</Text>
+                    <View style={styles.chipContainer}>
                       <Chip
-                        key={genre}
-                        label={genre}
-                        selected={localFilters.genres.includes(genre)}
-                        onPress={() => toggleGenre(genre)}
+                        label="All"
+                        selected={localFilters.decade === null}
+                        onPress={() => selectDecade(null)}
                         accentColor={accentColor}
                       />
-                    ))}
+                      {DECADES.map((decade) => (
+                        <Chip
+                          key={decade}
+                          label={`${decade}s`}
+                          selected={localFilters.decade === decade}
+                          onPress={() => selectDecade(decade)}
+                          accentColor={accentColor}
+                        />
+                      ))}
+                    </View>
                   </View>
-                </View>
-              )}
+                </ScrollView>
 
-              <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Decade</Text>
-                <View style={styles.chipContainer}>
-                  <Chip
-                    label="All"
-                    selected={localFilters.decade === null}
-                    onPress={() => selectDecade(null)}
-                    accentColor={accentColor}
-                  />
-                  {DECADES.map((decade) => (
-                    <Chip
-                      key={decade}
-                      label={`${decade}s`}
-                      selected={localFilters.decade === decade}
-                      onPress={() => selectDecade(decade)}
-                      accentColor={accentColor}
-                    />
-                  ))}
+                <View style={styles.footer}>
+                  <Pressable onPress={handleClose} style={styles.cancelButton}>
+                    <Text style={styles.cancelText}>Cancel</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={handleApply}
+                    style={[styles.applyButton, { backgroundColor: accentColor }]}
+                  >
+                    <Text style={styles.applyText}>Apply</Text>
+                  </Pressable>
                 </View>
               </View>
-            </ScrollView>
-
-            <View style={styles.footer}>
-              <Pressable onPress={onClose} style={styles.cancelButton}>
-                <Text style={styles.cancelText}>Cancel</Text>
-              </Pressable>
-              <Pressable
-                onPress={handleApply}
-                style={[styles.applyButton, { backgroundColor: accentColor }]}
-              >
-                <Text style={styles.applyText}>Apply</Text>
-              </Pressable>
-            </View>
-          </View>
+            </Animated.View>
+          </GestureDetector>
         </View>
-      </View>
+      </GestureHandlerRootView>
     </Modal>
   );
 });

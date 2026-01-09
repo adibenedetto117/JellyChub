@@ -1,4 +1,4 @@
-import { memo, useMemo, useCallback, useRef, useState, useEffect } from 'react';
+import { memo, useMemo, useCallback, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,12 +6,11 @@ import {
   Pressable,
   StyleSheet,
   Dimensions,
-  FlatList,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { colors } from '@/theme';
 import { getChannelImageUrl } from '@/api';
-import type { LiveTvChannel, LiveTvProgram, EPGRow } from '@/types/livetv';
+import type { LiveTvChannel, LiveTvProgram } from '@/types/livetv';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CHANNEL_COLUMN_WIDTH = 80;
@@ -70,115 +69,6 @@ function getProgramOffset(program: LiveTvProgram, startTime: Date): number {
   return (offsetMinutes / 60) * HOUR_WIDTH;
 }
 
-const TimeHeader = memo(function TimeHeader({ timeSlots }: { timeSlots: TimeSlot[] }) {
-  return (
-    <View style={styles.header}>
-      <View style={styles.channelColumnHeader} />
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} scrollEnabled={false}>
-        <View style={styles.timeSlotContainer}>
-          {timeSlots.map((slot, index) => (
-            <View key={index} style={styles.timeSlot}>
-              <Text style={styles.timeSlotText}>{slot.label}</Text>
-            </View>
-          ))}
-        </View>
-      </ScrollView>
-    </View>
-  );
-});
-
-interface ChannelRowProps {
-  channel: LiveTvChannel;
-  programs: LiveTvProgram[];
-  startTime: Date;
-  endTime: Date;
-  onChannelPress: () => void;
-  onProgramPress: (program: LiveTvProgram) => void;
-  accentColor: string;
-  isFavorite?: boolean;
-  scrollX: number;
-}
-
-const ChannelRow = memo(function ChannelRow({
-  channel,
-  programs,
-  startTime,
-  endTime,
-  onChannelPress,
-  onProgramPress,
-  accentColor,
-  isFavorite,
-}: ChannelRowProps) {
-  const imageUrl = channel.ImageTags?.Primary
-    ? getChannelImageUrl(channel.Id, { maxWidth: 80, tag: channel.ImageTags.Primary })
-    : null;
-
-  const now = new Date();
-
-  return (
-    <View style={styles.channelRow}>
-      <Pressable onPress={onChannelPress} style={styles.channelColumn}>
-        {imageUrl ? (
-          <Image
-            source={{ uri: imageUrl }}
-            style={styles.channelLogo}
-            contentFit="contain"
-            cachePolicy="memory-disk"
-          />
-        ) : (
-          <View style={styles.channelLogoPlaceholder}>
-            <Text style={styles.channelLogoText}>
-              {channel.Number ?? channel.Name.charAt(0)}
-            </Text>
-          </View>
-        )}
-        {isFavorite && (
-          <View style={styles.favoriteIndicator}>
-            <Text style={styles.favoriteIcon}>★</Text>
-          </View>
-        )}
-      </Pressable>
-
-      <View style={styles.programsContainer}>
-        {programs.map((program) => {
-          const width = getProgramWidth(program, startTime, endTime);
-          const offset = getProgramOffset(program, startTime);
-          const isLive =
-            new Date(program.StartDate) <= now && new Date(program.EndDate) > now;
-
-          if (width <= 0) return null;
-
-          return (
-            <Pressable
-              key={program.Id}
-              onPress={() => onProgramPress(program)}
-              style={[
-                styles.programBlock,
-                {
-                  width,
-                  left: offset,
-                  backgroundColor: isLive ? accentColor + '30' : colors.surface.elevated,
-                  borderLeftColor: isLive ? accentColor : 'transparent',
-                },
-              ]}
-            >
-              <Text style={styles.programTitle} numberOfLines={1}>
-                {program.Name}
-              </Text>
-              <Text style={styles.programTime} numberOfLines={1}>
-                {new Date(program.StartDate).toLocaleTimeString([], {
-                  hour: '2-digit',
-                  minute: '2-digit',
-                })}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
-    </View>
-  );
-});
-
 export const EPGGrid = memo(function EPGGrid({
   channels,
   programs,
@@ -190,7 +80,8 @@ export const EPGGrid = memo(function EPGGrid({
   favoriteChannelIds = [],
 }: EPGGridProps) {
   const horizontalScrollRef = useRef<ScrollView>(null);
-  const [scrollX, setScrollX] = useState(0);
+  const timeHeaderScrollRef = useRef<ScrollView>(null);
+  const verticalScrollRef = useRef<ScrollView>(null);
 
   const timeSlots = useMemo(() => generateTimeSlots(startTime, endTime), [startTime, endTime]);
 
@@ -214,10 +105,15 @@ export const EPGGrid = memo(function EPGGrid({
     return map;
   }, [channels, programs]);
 
+  const totalWidth = useMemo(() =>
+    ((endTime.getTime() - startTime.getTime()) / (1000 * 60 * 60)) * HOUR_WIDTH,
+    [startTime, endTime]
+  );
+
   const scrollToNow = useCallback(() => {
     const now = new Date();
     const offsetMinutes = (now.getTime() - startTime.getTime()) / (1000 * 60);
-    const offset = Math.max(0, (offsetMinutes / 60) * HOUR_WIDTH - SCREEN_WIDTH / 3);
+    const offset = Math.max(0, (offsetMinutes / 60) * HOUR_WIDTH - (SCREEN_WIDTH - CHANNEL_COLUMN_WIDTH) / 3);
     horizontalScrollRef.current?.scrollTo({ x: offset, animated: true });
   }, [startTime]);
 
@@ -226,67 +122,142 @@ export const EPGGrid = memo(function EPGGrid({
     return () => clearTimeout(timer);
   }, [scrollToNow]);
 
-  const totalWidth = ((endTime.getTime() - startTime.getTime()) / (1000 * 60 * 60)) * HOUR_WIDTH;
-
-  const handleScroll = useCallback((event: any) => {
-    setScrollX(event.nativeEvent.contentOffset.x);
+  // Sync horizontal scroll between time header and content
+  const handleHorizontalScroll = useCallback((event: any) => {
+    const x = event.nativeEvent.contentOffset.x;
+    timeHeaderScrollRef.current?.scrollTo({ x, animated: false });
   }, []);
-
-  const renderChannel = useCallback(
-    ({ item: channel }: { item: LiveTvChannel }) => (
-      <ChannelRow
-        channel={channel}
-        programs={programsByChannel.get(channel.Id) ?? []}
-        startTime={startTime}
-        endTime={endTime}
-        onChannelPress={() => onChannelPress(channel)}
-        onProgramPress={onProgramPress}
-        accentColor={accentColor}
-        isFavorite={favoriteChannelIds.includes(channel.Id)}
-        scrollX={scrollX}
-      />
-    ),
-    [programsByChannel, startTime, endTime, onChannelPress, onProgramPress, accentColor, favoriteChannelIds, scrollX]
-  );
 
   return (
     <View style={styles.container}>
+      {/* Fixed header row with time slots */}
       <View style={styles.header}>
         <View style={styles.channelColumnHeader} />
-        <View style={styles.timeHeaderRow}>
-          {timeSlots.map((slot, index) => (
-            <View key={index} style={styles.timeSlot}>
-              <Text style={styles.timeSlotText}>{slot.label}</Text>
-            </View>
-          ))}
-        </View>
+        <ScrollView
+          ref={timeHeaderScrollRef}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          scrollEnabled={false}
+          contentContainerStyle={{ width: totalWidth }}
+        >
+          <View style={styles.timeHeaderRow}>
+            {timeSlots.map((slot, index) => (
+              <View key={index} style={styles.timeSlot}>
+                <Text style={styles.timeSlotText}>{slot.label}</Text>
+              </View>
+            ))}
+          </View>
+        </ScrollView>
       </View>
 
-      <ScrollView
-        ref={horizontalScrollRef}
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        onScroll={handleScroll}
-        scrollEventThrottle={16}
-        contentContainerStyle={{ width: totalWidth + CHANNEL_COLUMN_WIDTH }}
-      >
-        <View style={{ flexDirection: 'row' }}>
-          <FlatList
-            data={channels}
-            renderItem={renderChannel}
-            keyExtractor={(item) => item.Id}
+      {/* Scrollable content area */}
+      <View style={styles.contentArea}>
+        {/* Fixed channel column */}
+        <ScrollView
+          ref={verticalScrollRef}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.channelListContent}
+        >
+          {channels.map((channel) => {
+            const imageUrl = channel.ImageTags?.Primary
+              ? getChannelImageUrl(channel.Id, { maxWidth: 80, tag: channel.ImageTags.Primary })
+              : null;
+            const isFavorite = favoriteChannelIds.includes(channel.Id);
+
+            return (
+              <Pressable
+                key={channel.Id}
+                onPress={() => onChannelPress(channel)}
+                style={styles.channelColumn}
+              >
+                {imageUrl ? (
+                  <Image
+                    source={{ uri: imageUrl }}
+                    style={styles.channelLogo}
+                    contentFit="contain"
+                    cachePolicy="memory-disk"
+                  />
+                ) : (
+                  <View style={styles.channelLogoPlaceholder}>
+                    <Text style={styles.channelLogoText}>
+                      {channel.Number ?? channel.Name.charAt(0)}
+                    </Text>
+                  </View>
+                )}
+                {isFavorite && (
+                  <View style={styles.favoriteIndicator}>
+                    <Text style={styles.favoriteIcon}>★</Text>
+                  </View>
+                )}
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+
+        {/* Horizontally scrollable programs grid */}
+        <ScrollView
+          ref={horizontalScrollRef}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          onScroll={handleHorizontalScroll}
+          scrollEventThrottle={16}
+          style={styles.programsScrollView}
+        >
+          <ScrollView
             showsVerticalScrollIndicator={false}
-            initialNumToRender={15}
-            maxToRenderPerBatch={10}
-            windowSize={5}
-            getItemLayout={(_, index) => ({
-              length: CHANNEL_ROW_HEIGHT,
-              offset: CHANNEL_ROW_HEIGHT * index,
-              index,
+            onScroll={(event) => {
+              const y = event.nativeEvent.contentOffset.y;
+              verticalScrollRef.current?.scrollTo({ y, animated: false });
+            }}
+            scrollEventThrottle={16}
+            contentContainerStyle={{ width: totalWidth }}
+          >
+            {channels.map((channel) => {
+              const channelPrograms = programsByChannel.get(channel.Id) ?? [];
+              const now = new Date();
+
+              return (
+                <View key={channel.Id} style={[styles.programRow, { width: totalWidth }]}>
+                  {channelPrograms.map((program) => {
+                    const width = getProgramWidth(program, startTime, endTime);
+                    const offset = getProgramOffset(program, startTime);
+                    const isLive =
+                      new Date(program.StartDate) <= now && new Date(program.EndDate) > now;
+
+                    if (width <= 0) return null;
+
+                    return (
+                      <Pressable
+                        key={program.Id}
+                        onPress={() => onProgramPress(program)}
+                        style={[
+                          styles.programBlock,
+                          {
+                            width,
+                            left: offset,
+                            backgroundColor: isLive ? accentColor + '30' : colors.surface.elevated,
+                            borderLeftColor: isLive ? accentColor : 'transparent',
+                          },
+                        ]}
+                      >
+                        <Text style={styles.programTitle} numberOfLines={1}>
+                          {program.Name}
+                        </Text>
+                        <Text style={styles.programTime} numberOfLines={1}>
+                          {new Date(program.StartDate).toLocaleTimeString([], {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              );
             })}
-          />
-        </View>
-      </ScrollView>
+          </ScrollView>
+        </ScrollView>
+      </View>
 
       <Pressable onPress={scrollToNow} style={[styles.nowButton, { backgroundColor: accentColor }]}>
         <Text style={styles.nowButtonText}>Now</Text>
@@ -309,16 +280,18 @@ const styles = StyleSheet.create({
   channelColumnHeader: {
     width: CHANNEL_COLUMN_WIDTH,
     backgroundColor: colors.background.secondary,
+    borderRightWidth: 1,
+    borderRightColor: colors.border.default,
   },
   timeHeaderRow: {
     flexDirection: 'row',
-    flex: 1,
   },
   timeSlotContainer: {
     flexDirection: 'row',
   },
   timeSlot: {
     width: HOUR_WIDTH / 2,
+    height: TIME_HEADER_HEIGHT,
     justifyContent: 'center',
     paddingLeft: 8,
     borderLeftWidth: 1,
@@ -329,6 +302,13 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500',
   },
+  contentArea: {
+    flex: 1,
+    flexDirection: 'row',
+  },
+  channelListContent: {
+    // Content container for channel column
+  },
   channelRow: {
     flexDirection: 'row',
     height: CHANNEL_ROW_HEIGHT,
@@ -337,11 +317,14 @@ const styles = StyleSheet.create({
   },
   channelColumn: {
     width: CHANNEL_COLUMN_WIDTH,
+    height: CHANNEL_ROW_HEIGHT,
     backgroundColor: colors.background.secondary,
     alignItems: 'center',
     justifyContent: 'center',
     borderRightWidth: 1,
     borderRightColor: colors.border.default,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border.subtle,
   },
   channelLogo: {
     width: 48,
@@ -369,6 +352,15 @@ const styles = StyleSheet.create({
   favoriteIcon: {
     color: '#FFD700',
     fontSize: 10,
+  },
+  programsScrollView: {
+    flex: 1,
+  },
+  programRow: {
+    height: CHANNEL_ROW_HEIGHT,
+    position: 'relative',
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border.subtle,
   },
   programsContainer: {
     flex: 1,

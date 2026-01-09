@@ -1,4 +1,4 @@
-import { useSettingsStore } from '@/stores';
+import { useSettingsStore, useAuthStore } from '@/stores';
 import { apiCache } from '@/utils';
 
 // Cache TTLs
@@ -263,6 +263,18 @@ class SonarrService {
       'Content-Type': 'application/json',
       ...(options.headers as Record<string, string>),
     };
+
+    // Add custom headers from Jellyfin if enabled
+    const useCustomHeaders = useSettingsStore.getState().sonarrUseCustomHeaders;
+    if (useCustomHeaders) {
+      const authState = useAuthStore.getState();
+      const server = authState.servers.find((s) => s.id === authState.activeServerId);
+      if (server?.customHeaders) {
+        Object.entries(server.customHeaders).forEach(([name, value]) => {
+          if (name && value) headers[name] = value;
+        });
+      }
+    }
 
     const response = await fetch(url, {
       ...options,

@@ -1,4 +1,20 @@
 import type { BaseItem, ImageType, ImageOptions, MediaStream, MediaSource } from '@/types/jellyfin';
+import { useAuthStore } from '@/stores/authStore';
+
+/**
+ * Get authentication params for image URLs
+ */
+function getImageAuthParams(): URLSearchParams {
+  const params = new URLSearchParams();
+  const state = useAuthStore.getState();
+  const server = state.getActiveServer();
+
+  if (server?.accessToken) {
+    params.set('api_key', server.accessToken);
+  }
+
+  return params;
+}
 
 /**
  * Get image URL for a Jellyfin item
@@ -16,7 +32,7 @@ export function getImageUrl(
     tag,
   } = options;
 
-  const params = new URLSearchParams();
+  const params = getImageAuthParams();
   if (maxWidth) params.set('maxWidth', maxWidth.toString());
   if (maxHeight) params.set('maxHeight', maxHeight.toString());
   params.set('quality', quality.toString());

@@ -183,6 +183,7 @@ export interface JellyseerrAuthResponse {
   username: string;
   permissions: number;
   avatar?: string;
+  sessionCookie?: string; // Session cookie for Jellyfin auth (added by client)
 }
 
 export interface JellyseerrRequestBody {

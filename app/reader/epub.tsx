@@ -21,7 +21,7 @@ import { useAuthStore, useSettingsStore, useDownloadStore } from '@/stores';
 import { useReadingProgressStore, HighlightColor, EbookHighlight } from '@/stores/readingProgressStore';
 import { downloadManager, encryptionService } from '@/services';
 import { getItem, getBookDownloadUrl, reportPlaybackProgress, generatePlaySessionId } from '@/api';
-import { msToTicks, getDisplayName } from '@/utils';
+import { msToTicks, getDisplayName, dismissModal } from '@/utils';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -1099,7 +1099,7 @@ export default function EpubReaderScreen() {
           <Ionicons name="alert-circle" size={64} color="#ef4444" />
           <Text style={[styles.errorText, { color: themeColors.text }]}>Failed to load book</Text>
           <Text style={[styles.errorSubtext, { color: themeColors.text }]}>{errorMsg}</Text>
-          <Pressable onPress={() => router.back()} style={[styles.button, { backgroundColor: accentColor }]}>
+          <Pressable onPress={() => dismissModal()} style={[styles.button, { backgroundColor: accentColor }]}>
             <Text style={styles.buttonText}>Go Back</Text>
           </Pressable>
         </View>
@@ -1113,7 +1113,7 @@ export default function EpubReaderScreen() {
 
       {/* Header - always visible */}
       <View style={[styles.header, { paddingTop: insets.top, backgroundColor: themeColors.bg }]}>
-          <Pressable onPress={() => router.back()} style={styles.headerBtn}>
+          <Pressable onPress={() => dismissModal()} style={styles.headerBtn}>
             <Ionicons name="arrow-back" size={24} color={themeColors.text} />
           </Pressable>
           <Text style={[styles.headerTitle, { color: themeColors.text }]} numberOfLines={1}>

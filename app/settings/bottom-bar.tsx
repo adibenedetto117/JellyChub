@@ -1,5 +1,5 @@
 import { View, ScrollView } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView } from '@/providers';
 import { Stack } from 'expo-router';
 import { LibrarySelector } from '@/components/settings/LibrarySelector';
 

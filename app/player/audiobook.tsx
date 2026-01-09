@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { View, Text, Pressable, ScrollView, Dimensions, Modal, Image, FlatList, StyleSheet, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView } from '@/providers';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, {
@@ -19,7 +19,7 @@ import { useAuthStore, usePlayerStore, useSettingsStore, useDownloadStore } from
 import { useReadingProgressStore } from '@/stores/readingProgressStore';
 import { downloadManager } from '@/services';
 import { getItem, getImageUrl, generatePlaySessionId, getBookDownloadUrl, reportPlaybackProgress } from '@/api';
-import { formatPlayerTime, ticksToMs, msToTicks, getDisplayName, getDisplayImageUrl, getDisplayArtist } from '@/utils';
+import { formatPlayerTime, ticksToMs, msToTicks, getDisplayName, getDisplayImageUrl, getDisplayArtist, dismissModal } from '@/utils';
 import { audioService, parseM4BChapters } from '@/services';
 import { colors } from '@/theme';
 
@@ -311,12 +311,12 @@ export default function AudiobookPlayerScreen() {
   }, [item]);
 
   const handleMinimize = () => {
-    router.back();
+    dismissModal();
   };
 
   const handleStop = async () => {
     await audioService.stop();
-    router.back();
+    dismissModal();
   };
 
   const handleDownload = useCallback(async () => {

@@ -15,12 +15,26 @@ export interface ServerPublicInfo extends ServerInfo {
   // Extended public info from /System/Info/Public
 }
 
-export async function getServerPublicInfo(serverUrl: string): Promise<ServerInfo | null> {
+export async function getServerPublicInfo(
+  serverUrl: string,
+  customHeaders?: Record<string, string>
+): Promise<ServerInfo | null> {
   try {
     const normalizedUrl = serverUrl.replace(/\/$/, '');
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+
+    // Add custom headers for reverse proxy authentication
+    if (customHeaders) {
+      Object.entries(customHeaders).forEach(([name, value]) => {
+        if (name && value) {
+          headers[name] = value;
+        }
+      });
+    }
+
     const response = await fetch(`${normalizedUrl}/System/Info/Public`, {
       method: 'GET',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
     });
 
     if (!response.ok) return null;
@@ -93,12 +107,26 @@ export async function getCurrentUser(): Promise<JellyfinUser> {
   return response.data;
 }
 
-export async function validateServerUrl(url: string): Promise<ServerInfo | null> {
+export async function validateServerUrl(
+  url: string,
+  customHeaders?: Record<string, string>
+): Promise<ServerInfo | null> {
   try {
     const normalizedUrl = url.replace(/\/$/, '');
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+
+    // Add custom headers for reverse proxy authentication
+    if (customHeaders) {
+      Object.entries(customHeaders).forEach(([name, value]) => {
+        if (name && value) {
+          headers[name] = value;
+        }
+      });
+    }
+
     const response = await fetch(`${normalizedUrl}/System/Info/Public`, {
       method: 'GET',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
     });
 
     if (!response.ok) return null;

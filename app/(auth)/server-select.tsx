@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { View, Text, TextInput, Pressable, ActivityIndicator, ScrollView, Image } from 'react-native';
 import { router } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView } from '@/providers';
 import Animated, {
   FadeIn,
   FadeInDown,
@@ -29,7 +29,7 @@ function ServerCard({
   onRemove,
   index,
 }: {
-  server: { id: string; name: string; url: string };
+  server: { id: string; name: string; url: string; customHeaders?: Record<string, string> };
   status: { isOnline: boolean; serverInfo: ServerInfo | null; isChecking: boolean } | undefined;
   onSelect: () => void;
   onRemove: () => void;
@@ -52,6 +52,7 @@ function ServerCard({
   const isOnline = status?.isOnline ?? false;
   const isChecking = status?.isChecking ?? true;
   const serverVersion = status?.serverInfo?.Version;
+  const hasCustomHeaders = server.customHeaders && Object.keys(server.customHeaders).length > 0;
 
   return (
     <Animated.View
@@ -79,6 +80,9 @@ function ServerCard({
               <Text className="text-white text-lg font-semibold" numberOfLines={1}>
                 {server.name}
               </Text>
+              {hasCustomHeaders && (
+                <Text className="text-text-muted text-xs ml-2">[Headers]</Text>
+              )}
             </View>
             <Text className="text-text-tertiary text-sm" numberOfLines={1}>
               {server.url}
@@ -105,6 +109,12 @@ function ServerCard({
   );
 }
 
+interface CustomHeader {
+  id: string;
+  name: string;
+  value: string;
+}
+
 export default function ServerSelectScreen() {
   const { t } = useTranslation();
   const [serverUrl, setServerUrl] = useState('');
@@ -112,9 +122,41 @@ export default function ServerSelectScreen() {
   const [error, setError] = useState<string | null>(null);
   const [showAddServer, setShowAddServer] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<ServerConnectionStatus>({});
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [customHeaders, setCustomHeaders] = useState<CustomHeader[]>([]);
 
   const { servers, addServer, setActiveServer, removeServer } = useAuthStore();
   const { setOfflineMode } = useSettingsStore();
+
+  // Helper to convert custom headers array to record
+  const getHeadersRecord = (headers: CustomHeader[]): Record<string, string> | undefined => {
+    const validHeaders = headers.filter((h) => h.name.trim() && h.value.trim());
+    if (validHeaders.length === 0) return undefined;
+    return validHeaders.reduce((acc, h) => {
+      acc[h.name.trim()] = h.value.trim();
+      return acc;
+    }, {} as Record<string, string>);
+  };
+
+  // Add a new empty custom header
+  const addCustomHeader = () => {
+    setCustomHeaders((prev) => [
+      ...prev,
+      { id: `header_${Date.now()}`, name: '', value: '' },
+    ]);
+  };
+
+  // Update a custom header
+  const updateCustomHeader = (id: string, field: 'name' | 'value', value: string) => {
+    setCustomHeaders((prev) =>
+      prev.map((h) => (h.id === id ? { ...h, [field]: value } : h))
+    );
+  };
+
+  // Remove a custom header
+  const removeCustomHeader = (id: string) => {
+    setCustomHeaders((prev) => prev.filter((h) => h.id !== id));
+  };
 
   // Check connection status for all saved servers
   const checkServerConnections = useCallback(async () => {
@@ -125,7 +167,8 @@ export default function ServerSelectScreen() {
       }));
 
       try {
-        const serverInfo = await getServerPublicInfo(server.url);
+        // Use saved custom headers for the server when checking connection
+        const serverInfo = await getServerPublicInfo(server.url, server.customHeaders);
         setConnectionStatus((prev) => ({
           ...prev,
           [server.id]: {
@@ -173,22 +216,31 @@ export default function ServerSelectScreen() {
         url = `https://${url}`;
       }
 
-      const serverInfo = await validateServerUrl(url);
+      // Get custom headers record for the connection
+      const headersRecord = getHeadersRecord(customHeaders);
+
+      // Validate server URL with custom headers
+      const serverInfo = await validateServerUrl(url, headersRecord);
 
       if (!serverInfo) {
         setError(t('auth.connectionFailed'));
         return;
       }
 
+      // Add server with custom headers
       const serverId = addServer({
         name: serverInfo.ServerName,
         url: url.replace(/\/$/, ''),
         isDefault: servers.length === 0,
+        customHeaders: headersRecord,
       });
 
-      jellyfinClient.initialize(url);
+      // Initialize client with custom headers
+      jellyfinClient.initialize(url, headersRecord);
       setActiveServer(serverId);
       setServerUrl('');
+      setCustomHeaders([]);
+      setShowAdvanced(false);
       setShowAddServer(false);
       router.replace('/(auth)/login');
     } catch {
@@ -201,7 +253,8 @@ export default function ServerSelectScreen() {
   const handleSelectServer = (id: string) => {
     const server = servers.find((s) => s.id === id);
     if (server) {
-      jellyfinClient.initialize(server.url);
+      // Initialize client with saved custom headers
+      jellyfinClient.initialize(server.url, server.customHeaders);
       setActiveServer(id);
       router.replace('/(auth)/login');
     }
@@ -292,6 +345,70 @@ export default function ServerSelectScreen() {
               />
             </View>
 
+            {/* Advanced Section */}
+            <Pressable
+              className="flex-row items-center mb-4"
+              onPress={() => setShowAdvanced(!showAdvanced)}
+            >
+              <Text className="text-text-secondary text-sm">
+                {showAdvanced ? '[-]' : '[+]'}
+              </Text>
+              <Text className="text-text-secondary text-sm ml-2">
+                {t('auth.advanced', 'Advanced')}
+              </Text>
+            </Pressable>
+
+            {showAdvanced && (
+              <View className="mb-4 bg-background-secondary rounded-xl p-4">
+                <Text className="text-text-tertiary text-xs uppercase tracking-wider mb-2">
+                  {t('auth.customHeaders', 'Custom HTTP Headers')}
+                </Text>
+                <Text className="text-text-muted text-xs mb-3">
+                  {t('auth.customHeadersDesc', 'Add custom HTTP headers to requests')}
+                </Text>
+
+                {customHeaders.map((header) => (
+                  <View key={header.id} className="flex-row items-center mb-2">
+                    <TextInput
+                      className="flex-1 bg-surface text-white px-3 py-2.5 rounded-lg text-sm mr-2"
+                      placeholder={t('auth.headerName', 'Header name')}
+                      placeholderTextColor="rgba(255,255,255,0.25)"
+                      value={header.name}
+                      onChangeText={(text) => updateCustomHeader(header.id, 'name', text)}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                    />
+                    <TextInput
+                      className="flex-1 bg-surface text-white px-3 py-2.5 rounded-lg text-sm mr-2"
+                      placeholder={t('auth.headerValue', 'Value')}
+                      placeholderTextColor="rgba(255,255,255,0.25)"
+                      value={header.value}
+                      onChangeText={(text) => updateCustomHeader(header.id, 'value', text)}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                    />
+                    <Pressable
+                      className="p-2"
+                      onPress={() => removeCustomHeader(header.id)}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    >
+                      <Text className="text-error text-base">x</Text>
+                    </Pressable>
+                  </View>
+                ))}
+
+                <Pressable
+                  className="flex-row items-center justify-center py-2 mt-1"
+                  onPress={addCustomHeader}
+                >
+                  <Text className="text-accent text-sm mr-1">+</Text>
+                  <Text className="text-accent text-sm">
+                    {t('auth.addHeader', 'Add Header')}
+                  </Text>
+                </Pressable>
+              </View>
+            )}
+
             {error && (
               <View className="bg-error/10 rounded-xl px-4 py-3 mb-4">
                 <Text className="text-error text-sm">{error}</Text>
@@ -322,6 +439,8 @@ export default function ServerSelectScreen() {
                   setShowAddServer(false);
                   setError(null);
                   setServerUrl('');
+                  setCustomHeaders([]);
+                  setShowAdvanced(false);
                 }}
               >
                 <Text className="text-text-secondary">{t('common.cancel')}</Text>

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { View, Text, Pressable, ActivityIndicator, ScrollView, Dimensions, Modal, Image, Alert } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView } from '@/providers';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, {
@@ -313,12 +313,12 @@ export default function MusicPlayerScreen() {
   }, [item?.Id]);
 
   const handleClose = () => {
-    router.back();
+    dismissModal();
   };
 
   const handleStopAndClose = async () => {
     await audioService.stop();
-    router.back();
+    dismissModal();
   };
 
   const handlePlayPause = async () => {

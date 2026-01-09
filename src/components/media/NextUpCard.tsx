@@ -51,15 +51,28 @@ export const NextUpCard = memo(function NextUpCard({ item, onPress }: Props) {
   }, [scale]);
 
   const getBackdropUrl = () => {
-    // Prioritize series backdrop (most appropriate for episode cards)
-    if (item.ParentBackdropImageTags?.[0] && item.SeriesId) {
-      return getImageUrl(item.SeriesId, 'Backdrop', {
+    // 1. Parent backdrop - use ParentBackdropItemId if available, fallback to SeriesId
+    if (item.ParentBackdropImageTags?.[0]) {
+      const backdropItemId = item.ParentBackdropItemId ?? item.SeriesId;
+      if (backdropItemId) {
+        return getImageUrl(backdropItemId, 'Backdrop', {
+          maxWidth: dimensions.width * 2,
+          maxHeight: dimensions.height * 2,
+          tag: item.ParentBackdropImageTags[0],
+        });
+      }
+    }
+
+    // 2. Parent thumb image (often available for episodes)
+    if (item.ParentThumbImageTag && item.ParentThumbItemId) {
+      return getImageUrl(item.ParentThumbItemId, 'Thumb', {
         maxWidth: dimensions.width * 2,
         maxHeight: dimensions.height * 2,
-        tag: item.ParentBackdropImageTags[0],
+        tag: item.ParentThumbImageTag,
       });
     }
-    // Fallback to series primary image
+
+    // 3. Series primary image (poster)
     if (item.SeriesPrimaryImageTag && item.SeriesId) {
       return getImageUrl(item.SeriesId, 'Primary', {
         maxWidth: dimensions.width * 2,
@@ -67,7 +80,8 @@ export const NextUpCard = memo(function NextUpCard({ item, onPress }: Props) {
         tag: item.SeriesPrimaryImageTag,
       });
     }
-    // Last resort: episode's own primary image (rarely exists)
+
+    // 4. Episode's own primary image (screenshot - less common)
     if (item.ImageTags?.Primary) {
       return getImageUrl(item.Id, 'Primary', {
         maxWidth: dimensions.width * 2,
@@ -75,6 +89,15 @@ export const NextUpCard = memo(function NextUpCard({ item, onPress }: Props) {
         tag: item.ImageTags.Primary,
       });
     }
+
+    // 5. Last resort: try series backdrop without tag (API may still return image)
+    if (item.SeriesId) {
+      return getImageUrl(item.SeriesId, 'Backdrop', {
+        maxWidth: dimensions.width * 2,
+        maxHeight: dimensions.height * 2,
+      });
+    }
+
     return null;
   };
 

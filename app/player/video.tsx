@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, Pressable, StatusBar, Dimensions, ActivityIndicator, Alert, Platform } from 'react-native';
+import { View, Text, Pressable, StatusBar, Dimensions, ActivityIndicator, Alert, Platform, ScrollView, useWindowDimensions } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
 import { useLocalSearchParams, router } from 'expo-router';
@@ -40,13 +40,14 @@ import {
   getSubtitleUrl,
 } from '@/api';
 import { downloadManager, encryptionService } from '@/services';
-import { formatPlayerTime, ticksToMs, msToTicks, getSubtitleStreams, getAudioStreams, openInExternalPlayer, hasExternalPlayerSupport, getDisplayName, getDisplaySeriesName } from '@/utils';
+import { formatPlayerTime, ticksToMs, msToTicks, getSubtitleStreams, getAudioStreams, openInExternalPlayer, hasExternalPlayerSupport, getDisplayName, getDisplaySeriesName, goBack } from '@/utils';
 import { isTV, tvConstants } from '@/utils/platform';
 import { useTVRemoteHandler, useBackHandler } from '@/hooks';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { AudioTrackSelector } from '@/components/player/AudioTrackSelector';
 import { SubtitleSelector } from '@/components/player/SubtitleSelector';
+import { AudioSubtitleSelector } from '@/components/player/AudioSubtitleSelector';
 import { SubtitleDisplay } from '@/components/player/SubtitleDisplay';
 import { SubtitleStyleModal } from '@/components/player/SubtitleStyleModal';
 import { BrightnessIndicator, VolumeIndicator, SubtitleOffsetControl, SeekIndicator } from '@/components/player/VideoPlayerControls';
@@ -55,8 +56,10 @@ import { SleepTimerSelector } from '@/components/player/SleepTimerSelector';
 import { ChapterList, ChapterMarkers, CurrentChapterDisplay, ChapterNavigation, type ChapterInfo } from '@/components/player/ChapterList';
 import { TrickplayPreview, TimeOnlyPreview } from '@/components/player/TrickplayPreview';
 import { OpenSubtitlesSearch } from '@/components/player/OpenSubtitlesSearch';
+import { EpisodeList } from '@/components/player/EpisodeList';
 import type { MediaSource, TrickplayInfo } from '@/types/jellyfin';
-import type { VideoSleepTimer } from '@/types/player';
+import type { VideoSleepTimer, PlayerControlId } from '@/types/player';
+import { DEFAULT_PLAYER_CONTROLS_CONFIG, DEFAULT_PLAYER_CONTROLS_ORDER } from '@/types/player';
 import { isChromecastSupported, type CastMediaInfo } from '@/utils/casting';
 import { useChromecast } from '@/hooks';
 import { CastRemoteControl } from '@/components/player/CastRemoteControl';
@@ -141,7 +144,7 @@ function SkipIcon({ size = 24, seconds = 10, direction = 'forward', color = '#ff
 
 export default function VideoPlayerScreen() {
   const { t } = useTranslation();
-  const { itemId, resume } = useLocalSearchParams<{ itemId: string; resume?: string }>();
+  const { itemId, resume, from } = useLocalSearchParams<{ itemId: string; resume?: string; from?: string }>();
   const shouldAutoResume = resume === 'true';
   const currentUser = useAuthStore((state) => state.currentUser);
   const accentColor = useSettingsStore((s) => s.accentColor);
@@ -149,9 +152,13 @@ export default function VideoPlayerScreen() {
   const externalPlayerEnabled = useSettingsStore((s) => s.player.externalPlayerEnabled ?? true);
   const hideMedia = useSettingsStore((s) => s.hideMedia);
   const openSubtitlesApiKey = useSettingsStore((s) => s.openSubtitlesApiKey);
+  // Player controls configuration
+  const controlsConfig = useSettingsStore((s) => s.player.controlsConfig);
+  const controlsOrder = useSettingsStore((s) => s.player.controlsOrder);
   const getDownloadedItem = useDownloadStore((s) => s.getDownloadedItem);
   const userId = currentUser?.Id ?? '';
   const insets = useSafeAreaInsets();
+  const { height: screenHeight } = useWindowDimensions();
 
   const downloadedItem = getDownloadedItem(itemId);
   const [localFilePath, setLocalFilePath] = useState<string | null>(null);
@@ -205,6 +212,7 @@ export default function VideoPlayerScreen() {
   const [seekPosition, setSeekPosition] = useState(0);
   const [showAudioSelector, setShowAudioSelector] = useState(false);
   const [showSubtitleSelector, setShowSubtitleSelector] = useState(false);
+  const [showAudioSubtitleSelector, setShowAudioSubtitleSelector] = useState(false);
   const [showSubtitleStyleModal, setShowSubtitleStyleModal] = useState(false);
   const [showSubtitleOffset, setShowSubtitleOffset] = useState(false);
   const [externalSubtitleCues, setExternalSubtitleCues] = useState<Array<{ start: number; end: number; text: string }> | null>(null);
@@ -235,6 +243,8 @@ export default function VideoPlayerScreen() {
   const [subtitlesLoading, setSubtitlesLoading] = useState(false);
   const [subtitleLoadError, setSubtitleLoadError] = useState<string | null>(null);
   const [showChapterList, setShowChapterList] = useState(false);
+  const [showEpisodeList, setShowEpisodeList] = useState(false);
+  const [episodeListSeasonId, setEpisodeListSeasonId] = useState<string | null>(null);
   const [showOpenSubtitlesSearch, setShowOpenSubtitlesSearch] = useState(false);
   const [showMoreOptions, setShowMoreOptions] = useState(false);
   const [showQualitySelector, setShowQualitySelector] = useState(false);
@@ -272,6 +282,7 @@ export default function VideoPlayerScreen() {
   const hasResumedPosition = useRef(false);
   const resumePositionMs = useRef(0);
   const isFrameStepping = useRef(false);
+  const frameStepTimestamp = useRef(0);
   const [seekBarLayoutWidth, setSeekBarLayoutWidth] = useState(500);
 
   const controlsOpacity = useSharedValue(1);
@@ -290,6 +301,12 @@ export default function VideoPlayerScreen() {
 
   const player = useVideoPlayer(streamUrl ?? '', (p) => {
     p.loop = false;
+    // Configure buffer settings to reduce rebuffering
+    p.bufferOptions = {
+      preferredForwardBufferDuration: 30, // Buffer 30 seconds ahead
+      minBufferForPlayback: 5, // Require 5 seconds buffered before playing (Android)
+      waitsToMinimizeStalling: true, // Auto-pause to buffer if needed (iOS)
+    };
     p.play();
   });
 
@@ -350,6 +367,13 @@ export default function VideoPlayerScreen() {
     queryKey: ['nextSeasonEpisodes', seriesId, nextSeasonId, userId],
     queryFn: () => getEpisodes(seriesId!, userId, nextSeasonId!),
     enabled: !!userId && !!seriesId && !!nextSeasonId,
+  });
+
+  // Get episodes for the selected season in episode list (when browsing different seasons)
+  const { data: episodeListEpisodes, isLoading: episodeListLoading } = useQuery({
+    queryKey: ['episodeListEpisodes', seriesId, episodeListSeasonId, userId],
+    queryFn: () => getEpisodes(seriesId!, userId, episodeListSeasonId!),
+    enabled: !!userId && !!seriesId && !!episodeListSeasonId && episodeListSeasonId !== seasonId,
   });
 
   // Get media segments for intro/credits detection (from server)
@@ -965,7 +989,9 @@ export default function VideoPlayerScreen() {
     const playingSub = player.addListener('playingChange', (payload) => {
       if (currentKey !== playerKey.current || !isPlayerValid.current) return;
       // Ignore state changes during frame stepping to prevent control confusion
-      if (isFrameStepping.current) return;
+      // Use both flag and timestamp to handle race conditions reliably
+      const timeSinceFrameStep = Date.now() - frameStepTimestamp.current;
+      if (isFrameStepping.current || timeSinceFrameStep < 300) return;
       if (payload.isPlaying) {
         setIsBuffering(false);
         setPlayerState('playing');
@@ -1193,10 +1219,27 @@ export default function VideoPlayerScreen() {
     // Report current playback stopped
     reportPlaybackStopped(itemId, mediaSource.Id, playSessionId, msToTicks(progress.position)).catch(() => {});
 
-    // Navigate to next episode
+    // Navigate to next episode, preserving the source route
     clearCurrentItem();
-    router.replace(`/player/video?itemId=${nextEpisode.Id}`);
-  }, [nextEpisode, mediaSource, itemId, playSessionId, progress.position, clearCurrentItem]);
+    router.replace(`/player/video?itemId=${nextEpisode.Id}${from ? `&from=${encodeURIComponent(from)}` : ''}`);
+  }, [nextEpisode, mediaSource, itemId, playSessionId, progress.position, clearCurrentItem, from]);
+
+  const handleSelectEpisode = useCallback((episodeId: string) => {
+    if (!mediaSource || episodeId === itemId) return;
+
+    // Haptic feedback when selecting episode
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+    // Mark that we're navigating to prevent orientation unlock
+    isNavigatingRef.current = true;
+
+    // Report current playback stopped
+    reportPlaybackStopped(itemId, mediaSource.Id, playSessionId, msToTicks(progress.position)).catch(() => {});
+
+    // Navigate to selected episode, preserving the source route
+    clearCurrentItem();
+    router.replace(`/player/video?itemId=${episodeId}${from ? `&from=${encodeURIComponent(from)}` : ''}`);
+  }, [mediaSource, itemId, playSessionId, progress.position, clearCurrentItem, from]);
 
   const hideControlsDelayed = useCallback(() => {
     if (controlsTimeout.current) clearTimeout(controlsTimeout.current);
@@ -1238,10 +1281,10 @@ export default function VideoPlayerScreen() {
       });
     }
 
-    // Clear state and exit
+    // Clear state and exit - navigate back to source screen or home
     clearCurrentItem();
-    router.back();
-  }, [player, mediaSource, itemId, playSessionId, progress.position, clearCurrentItem]);
+    goBack(from, '/(tabs)/home');
+  }, [player, mediaSource, itemId, playSessionId, progress.position, clearCurrentItem, from]);
 
   const handleOpenExternalPlayer = useCallback(async () => {
     if (!streamUrl || !item) return;
@@ -1308,16 +1351,25 @@ export default function VideoPlayerScreen() {
     } catch (e) {}
   };
 
-  const handleSeek = useCallback((position: number) => {
+  const handleSeek = useCallback((position: number, keepControlsVisible = false) => {
     if (!player) return;
     try {
       const clampedPosition = Math.max(0, Math.min(progress.duration, position));
       setIsBuffering(true);
       player.seekBy((clampedPosition - progress.position) / 1000);
       setProgress(clampedPosition, progress.duration, progress.buffered);
-      showControlsNow();
+      if (keepControlsVisible) {
+        // Reset the hide timer without re-triggering the show animation
+        if (controlsTimeout.current) clearTimeout(controlsTimeout.current);
+        controlsTimeout.current = setTimeout(() => {
+          controlsOpacity.value = withTiming(0, { duration: 400 });
+          runOnJS(setShowControls)(false);
+        }, 4000);
+      } else {
+        showControlsNow();
+      }
     } catch (e) {}
-  }, [player, progress, showControlsNow]);
+  }, [player, progress, showControlsNow, controlsOpacity]);
 
   const showSkipAnimation = useCallback((direction: 'left' | 'right') => {
     const opacity = direction === 'left' ? skipLeftOpacity : skipRightOpacity;
@@ -1387,17 +1439,26 @@ export default function VideoPlayerScreen() {
 
   const handleFrameStep = useCallback((direction: 'prev' | 'next') => {
     if (!player) return;
+    // Set both flag and timestamp to reliably block playingChange events
     isFrameStepping.current = true;
+    frameStepTimestamp.current = Date.now();
     const frameTime = 1 / 24;
     const step = direction === 'next' ? frameTime : -frameTime;
-    player.currentTime = Math.max(0, player.currentTime + step);
+    const newTime = Math.max(0, player.currentTime + step);
+    player.currentTime = newTime;
+    // Keep player paused and ensure UI stays in paused state
+    try {
+      player.pause();
+    } catch (e) {}
     // Ensure player stays paused and state is correct after frame step
+    // The timestamp check (300ms window) provides additional protection against race conditions
     setTimeout(() => {
       isFrameStepping.current = false;
       setPlayerState('paused');
+      setShowFrameControls(true);
     }, 50);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  }, [player]);
+  }, [player, setPlayerState]);
 
   const toggleControlsLock = useCallback(() => {
     setControlsLocked(prev => !prev);
@@ -1493,6 +1554,9 @@ export default function VideoPlayerScreen() {
   }, []);
 
   const gestureZoneWidth = 100;
+  // Center deadzone - 30% of screen width in the middle (for tap only, no horizontal seek)
+  const centerDeadzoneStart = SCREEN_WIDTH * 0.35;
+  const centerDeadzoneEnd = SCREEN_WIDTH * 0.65;
 
   const handleHorizontalSeekStart = useCallback((startX: number) => {
     gestureStartX.current = startX;
@@ -1518,45 +1582,55 @@ export default function VideoPlayerScreen() {
     }
   }, [isHorizontalSeeking, horizontalSeekPosition, handleSeek]);
 
-  const gestureActiveZone = useRef<'left' | 'right' | 'center' | null>(null);
+  const gestureActiveZone = useRef<'left' | 'right' | 'center' | 'deadzone' | null>(null);
 
   const panGesture = Gesture.Pan()
     .minDistance(10)
     .onStart((e) => {
       const isInLeftZone = e.x < gestureZoneWidth;
       const isInRightZone = e.x > SCREEN_WIDTH - gestureZoneWidth;
+      const isInCenterDeadzone = e.x >= centerDeadzoneStart && e.x <= centerDeadzoneEnd;
 
       if (isInLeftZone && !isPortrait) {
+        // Left side controls volume
         gestureActiveZone.current = 'left';
-        runOnJS(setGestureStartValue)(currentBrightness);
-        runOnJS(showBrightnessIndicatorWithTimeout)();
-        runOnJS(Haptics.impactAsync)(Haptics.ImpactFeedbackStyle.Light);
-      } else if (isInRightZone && !isPortrait) {
-        gestureActiveZone.current = 'right';
         runOnJS(setGestureStartValue)(currentVolume);
         runOnJS(showVolumeIndicatorWithTimeout)();
         runOnJS(Haptics.impactAsync)(Haptics.ImpactFeedbackStyle.Light);
+      } else if (isInRightZone && !isPortrait) {
+        // Right side controls brightness
+        gestureActiveZone.current = 'right';
+        runOnJS(setGestureStartValue)(currentBrightness);
+        runOnJS(showBrightnessIndicatorWithTimeout)();
+        runOnJS(Haptics.impactAsync)(Haptics.ImpactFeedbackStyle.Light);
+      } else if (isInCenterDeadzone) {
+        // Center deadzone - no pan gesture, only taps work here
+        gestureActiveZone.current = 'deadzone';
       } else {
+        // Areas between edge zones and center deadzone - horizontal seeking
         gestureActiveZone.current = 'center';
         runOnJS(handleHorizontalSeekStart)(e.x);
       }
     })
     .onUpdate((e) => {
       if (gestureActiveZone.current === 'left') {
-        const deltaY = -e.translationY;
-        const sensitivity = 0.003;
-        const newValue = gestureStartValue + (deltaY * sensitivity);
-        runOnJS(handleBrightnessChange)(newValue);
-        runOnJS(showBrightnessIndicatorWithTimeout)();
-      } else if (gestureActiveZone.current === 'right') {
+        // Left side controls volume
         const deltaY = -e.translationY;
         const sensitivity = 0.003;
         const newValue = gestureStartValue + (deltaY * sensitivity);
         runOnJS(handleVolumeChange)(newValue);
         runOnJS(showVolumeIndicatorWithTimeout)();
+      } else if (gestureActiveZone.current === 'right') {
+        // Right side controls brightness
+        const deltaY = -e.translationY;
+        const sensitivity = 0.003;
+        const newValue = gestureStartValue + (deltaY * sensitivity);
+        runOnJS(handleBrightnessChange)(newValue);
+        runOnJS(showBrightnessIndicatorWithTimeout)();
       } else if (gestureActiveZone.current === 'center') {
         runOnJS(handleHorizontalSeekUpdate)(e.translationX);
       }
+      // 'deadzone' does nothing on update
     })
     .onEnd(() => {
       if (gestureActiveZone.current === 'center') {
@@ -1569,20 +1643,13 @@ export default function VideoPlayerScreen() {
     runOnJS(toggleControls)();
   });
 
-  const doubleTapLeftGesture = Gesture.Tap()
+  const doubleTapGesture = Gesture.Tap()
     .numberOfTaps(2)
     .maxDuration(300)
     .onEnd((event) => {
-      if (event.x < SCREEN_WIDTH * 0.4) {
+      if (event.x < SCREEN_WIDTH * 0.35) {
         runOnJS(handleDoubleTapSeek)('left');
-      }
-    });
-
-  const doubleTapRightGesture = Gesture.Tap()
-    .numberOfTaps(2)
-    .maxDuration(300)
-    .onEnd((event) => {
-      if (event.x > SCREEN_WIDTH * 0.6) {
+      } else if (event.x > SCREEN_WIDTH * 0.65) {
         runOnJS(handleDoubleTapSeek)('right');
       }
     });
@@ -1590,7 +1657,7 @@ export default function VideoPlayerScreen() {
   const gesture = Gesture.Race(
     panGesture,
     Gesture.Exclusive(
-      Gesture.Simultaneous(doubleTapLeftGesture, doubleTapRightGesture),
+      doubleTapGesture,
       tapGesture
     )
   );
@@ -1717,52 +1784,18 @@ export default function VideoPlayerScreen() {
               contentFit="contain"
               nativeControls={false}
               allowsPictureInPicture={true}
+              startsPictureInPictureAutomatically={true}
             />
           )}
 
-          {/* Subtle edge indicators for brightness/volume (landscape only, when controls visible) */}
+          {/* Subtle edge indicators for volume/brightness (landscape only, when controls visible) */}
           {!isPortrait && showControls && !showBrightnessIndicator && !showVolumeIndicator && (
             <>
-              {/* Left edge indicator (brightness) - shows current level */}
+              {/* Left edge indicator (volume) - shows current level */}
               <View
                 style={{
                   position: 'absolute',
                   left: 60,
-                  top: '30%',
-                  height: '40%',
-                  alignItems: 'center',
-                }}
-                pointerEvents="none"
-              >
-                <Ionicons name="sunny-outline" size={16} color="rgba(255,255,255,0.35)" style={{ marginBottom: 6 }} />
-                <View
-                  style={{
-                    flex: 1,
-                    width: 4,
-                    backgroundColor: 'rgba(255,255,255,0.15)',
-                    borderRadius: 2,
-                    overflow: 'hidden',
-                  }}
-                >
-                  <View
-                    style={{
-                      position: 'absolute',
-                      bottom: 0,
-                      left: 0,
-                      right: 0,
-                      height: `${currentBrightness * 100}%`,
-                      backgroundColor: 'rgba(255,255,255,0.4)',
-                      borderRadius: 2,
-                    }}
-                  />
-                </View>
-              </View>
-
-              {/* Right edge indicator (volume) - shows current level */}
-              <View
-                style={{
-                  position: 'absolute',
-                  right: 60,
                   top: '30%',
                   height: '40%',
                   alignItems: 'center',
@@ -1791,6 +1824,41 @@ export default function VideoPlayerScreen() {
                       left: 0,
                       right: 0,
                       height: `${currentVolume * 100}%`,
+                      backgroundColor: 'rgba(255,255,255,0.4)',
+                      borderRadius: 2,
+                    }}
+                  />
+                </View>
+              </View>
+
+              {/* Right edge indicator (brightness) - shows current level */}
+              <View
+                style={{
+                  position: 'absolute',
+                  right: 60,
+                  top: '30%',
+                  height: '40%',
+                  alignItems: 'center',
+                }}
+                pointerEvents="none"
+              >
+                <Ionicons name="sunny-outline" size={16} color="rgba(255,255,255,0.35)" style={{ marginBottom: 6 }} />
+                <View
+                  style={{
+                    flex: 1,
+                    width: 4,
+                    backgroundColor: 'rgba(255,255,255,0.15)',
+                    borderRadius: 2,
+                    overflow: 'hidden',
+                  }}
+                >
+                  <View
+                    style={{
+                      position: 'absolute',
+                      bottom: 0,
+                      left: 0,
+                      right: 0,
+                      height: `${currentBrightness * 100}%`,
                       backgroundColor: 'rgba(255,255,255,0.4)',
                       borderRadius: 2,
                     }}
@@ -2015,6 +2083,7 @@ export default function VideoPlayerScreen() {
               }}
             >
               <View className="flex-row items-center">
+                {/* Title area - left side */}
                 <View className="flex-1 mr-4">
                   <Text className="text-white text-lg font-bold" numberOfLines={1}>
                     {getDisplayName(item, hideMedia)}
@@ -2026,58 +2095,150 @@ export default function VideoPlayerScreen() {
                   )}
                 </View>
 
-                <Pressable
-                  onPress={handleClose}
-                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                  className="w-11 h-11 rounded-full bg-white/15 items-center justify-center active:bg-white/30"
-                >
-                  <Ionicons name="close" size={22} color="#fff" />
-                </Pressable>
-              </View>
+                {/* Top-right controls - dynamically rendered based on controlsConfig */}
+                <View className="flex-row items-center">
+                  {/* Render visible controls in order */}
+                  {(controlsOrder ?? DEFAULT_PLAYER_CONTROLS_ORDER).map((controlId) => {
+                    const placement = (controlsConfig ?? DEFAULT_PLAYER_CONTROLS_CONFIG)[controlId];
+                    if (placement !== 'visible') return null;
 
-              <View className="flex-row items-center justify-center mt-3">
-                <ControlIconButton
-                  icon="speedometer-outline"
-                  onPress={() => setShowSpeedSelector(true)}
-                  isActive={videoPlaybackSpeed !== 1}
-                  accentColor={accentColor}
-                />
-                <ControlIconButton
-                  icon="musical-notes-outline"
-                  onPress={() => setShowAudioSelector(true)}
-                  accentColor={accentColor}
-                />
-                <ControlIconButton
-                  icon="text-outline"
-                  onPress={() => setShowSubtitleSelector(true)}
-                  isActive={selectedSubtitleIndex !== undefined || externalSubtitleCues !== null}
-                  accentColor={accentColor}
-                />
-                {(item?.Chapters as any[])?.length > 0 && (
+                    switch (controlId) {
+                      case 'audioSubs':
+                        return (
+                          <ControlIconButton
+                            key={controlId}
+                            icon="chatbubble-ellipses-outline"
+                            onPress={() => setShowAudioSubtitleSelector(true)}
+                            isActive={selectedSubtitleIndex !== undefined || externalSubtitleCues !== null}
+                            accentColor={accentColor}
+                          />
+                        );
+                      case 'subtitleSearch':
+                        if (!openSubtitlesApiKey) return null;
+                        return (
+                          <ControlIconButton
+                            key={controlId}
+                            icon="search-outline"
+                            onPress={() => setShowOpenSubtitlesSearch(true)}
+                            isActive={externalSubtitleCues !== null}
+                            accentColor={accentColor}
+                          />
+                        );
+                      case 'episodes':
+                        if (!isEpisode || !seasonEpisodes?.Items || seasonEpisodes.Items.length <= 1) return null;
+                        return (
+                          <ControlIconButton
+                            key={controlId}
+                            icon="list-outline"
+                            onPress={() => setShowEpisodeList(true)}
+                            accentColor={accentColor}
+                          />
+                        );
+                      case 'cast':
+                        if (!isChromecastSupported || !chromecast.isAvailable) return null;
+                        return (
+                          <ControlIconButton
+                            key={controlId}
+                            icon={chromecast.isConnected ? 'tv' : 'tv-outline'}
+                            onPress={() => chromecast.isConnected ? setShowCastRemote(true) : handleStartCasting()}
+                            isActive={chromecast.isConnected}
+                            accentColor={accentColor}
+                          />
+                        );
+                      case 'pip':
+                        return (
+                          <ControlIconButton
+                            key={controlId}
+                            icon="albums-outline"
+                            onPress={handleEnterPiP}
+                            accentColor={accentColor}
+                          />
+                        );
+                      case 'speed':
+                        return (
+                          <ControlIconButton
+                            key={controlId}
+                            icon="speedometer-outline"
+                            onPress={() => setShowSpeedSelector(true)}
+                            isActive={videoPlaybackSpeed !== 1}
+                            accentColor={accentColor}
+                          />
+                        );
+                      case 'quality':
+                        return (
+                          <ControlIconButton
+                            key={controlId}
+                            icon="settings-outline"
+                            onPress={() => setShowQualitySelector(true)}
+                            isActive={streamingQuality !== 'auto'}
+                            accentColor={accentColor}
+                          />
+                        );
+                      case 'chapters':
+                        if (!item?.Chapters || (item.Chapters as any[]).length === 0) return null;
+                        return (
+                          <ControlIconButton
+                            key={controlId}
+                            icon="bookmark-outline"
+                            onPress={() => setShowChapterList(true)}
+                            accentColor={accentColor}
+                          />
+                        );
+                      case 'sleepTimer':
+                        return (
+                          <ControlIconButton
+                            key={controlId}
+                            icon="moon-outline"
+                            onPress={() => setShowSleepTimerSelector(true)}
+                            isActive={!!sleepTimer}
+                            accentColor={accentColor}
+                          />
+                        );
+                      case 'lock':
+                        return (
+                          <ControlIconButton
+                            key={controlId}
+                            icon={controlsLocked ? 'lock-closed' : 'lock-open-outline'}
+                            onPress={toggleControlsLock}
+                            isActive={controlsLocked}
+                            accentColor={accentColor}
+                          />
+                        );
+                      case 'externalPlayer':
+                        if (!externalPlayerAvailable || !externalPlayerEnabled || !streamUrl) return null;
+                        return (
+                          <ControlIconButton
+                            key={controlId}
+                            icon="open-outline"
+                            onPress={handleOpenExternalPlayer}
+                            accentColor={accentColor}
+                          />
+                        );
+                      default:
+                        return null;
+                    }
+                  })}
+                  {/* Always show More Options button (3-dot menu) */}
                   <ControlIconButton
-                    icon="list-outline"
-                    onPress={() => setShowChapterList(true)}
+                    icon="ellipsis-horizontal"
+                    onPress={() => setShowMoreOptions(true)}
                     accentColor={accentColor}
                   />
-                )}
-                <ControlIconButton
-                  icon="moon-outline"
-                  onPress={() => setShowSleepTimerSelector(true)}
-                  isActive={!!sleepTimer}
-                  accentColor={accentColor}
-                />
-                <ControlIconButton
-                  icon="ellipsis-horizontal"
-                  onPress={() => setShowMoreOptions(true)}
-                  accentColor={accentColor}
-                />
+                  <Pressable
+                    onPress={handleClose}
+                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                    className="w-11 h-11 rounded-full bg-white/15 items-center justify-center active:bg-white/30 ml-1"
+                  >
+                    <Ionicons name="close" size={22} color="#fff" />
+                  </Pressable>
+                </View>
               </View>
             </View>
 
             <View className="absolute inset-0 items-center justify-center">
               <View className="flex-row items-center">
                 <Pressable
-                  onPress={() => handleSeek(Math.max(0, progress.position - 10000))}
+                  onPress={() => handleSeek(Math.max(0, progress.position - 10000), true)}
                   className="w-14 h-14 rounded-full bg-white/10 items-center justify-center mx-6 active:bg-white/20"
                 >
                   <SkipIcon size={22} seconds={10} direction="back" color={accentColor} />
@@ -2100,7 +2261,7 @@ export default function VideoPlayerScreen() {
                 </Animated.View>
 
                 <Pressable
-                  onPress={() => handleSeek(Math.min(progress.duration, progress.position + 10000))}
+                  onPress={() => handleSeek(Math.min(progress.duration, progress.position + 10000), true)}
                   className="w-14 h-14 rounded-full bg-white/10 items-center justify-center mx-6 active:bg-white/20"
                 >
                   <SkipIcon size={22} seconds={10} direction="forward" color={accentColor} />
@@ -2358,13 +2519,25 @@ export default function VideoPlayerScreen() {
           onSelectTrack={handleSelectSubtitle}
         />
       )}
+      {showAudioSubtitleSelector && (
+        <AudioSubtitleSelector
+          onClose={() => setShowAudioSubtitleSelector(false)}
+          audioTracks={jellyfinAudioTracks}
+          subtitleTracks={jellyfinSubtitleTracks}
+          selectedAudioIndex={selectedAudioIndex}
+          selectedSubtitleIndex={selectedSubtitleIndex}
+          onSelectAudio={handleSelectAudio}
+          onSelectSubtitle={handleSelectSubtitle}
+        />
+      )}
 
       {/* Playback Speed Selector Modal */}
       {showSpeedSelector && (
-        <Pressable
-          onPress={() => setShowSpeedSelector(false)}
-          className="absolute inset-0 bg-black/60 items-center justify-center"
-        >
+        <View className="absolute inset-0 bg-black/60 items-center justify-center">
+          <Pressable
+            onPress={() => setShowSpeedSelector(false)}
+            className="absolute inset-0"
+          />
           <View
             className="bg-neutral-900 rounded-2xl p-6 mx-8"
             style={{ maxWidth: 400, width: '90%' }}
@@ -2401,7 +2574,7 @@ export default function VideoPlayerScreen() {
               <Text className="text-white font-medium">Cancel</Text>
             </Pressable>
           </View>
-        </Pressable>
+        </View>
       )}
 
       <SleepTimerSelector
@@ -2425,6 +2598,154 @@ export default function VideoPlayerScreen() {
         >
           <View className="bg-zinc-900 rounded-2xl p-6 w-80">
             <Text className="text-white text-lg font-bold mb-4 text-center">More Options</Text>
+
+            {/* Render menu controls in order */}
+            {(controlsOrder ?? DEFAULT_PLAYER_CONTROLS_ORDER).map((controlId) => {
+              const placement = (controlsConfig ?? DEFAULT_PLAYER_CONTROLS_CONFIG)[controlId];
+              if (placement !== 'menu') return null;
+
+              switch (controlId) {
+                case 'audioSubs':
+                  return (
+                    <Pressable
+                      key={controlId}
+                      onPress={() => { setShowMoreOptions(false); setShowAudioSubtitleSelector(true); }}
+                      className="flex-row items-center py-3 border-b border-white/10"
+                    >
+                      <Ionicons name="chatbubble-ellipses-outline" size={20} color={selectedSubtitleIndex !== undefined ? accentColor : '#fff'} />
+                      <Text className="text-white ml-3 flex-1">Audio & Subtitles</Text>
+                    </Pressable>
+                  );
+                case 'subtitleSearch':
+                  if (!openSubtitlesApiKey) return null;
+                  return (
+                    <Pressable
+                      key={controlId}
+                      onPress={() => { setShowMoreOptions(false); setShowOpenSubtitlesSearch(true); }}
+                      className="flex-row items-center py-3 border-b border-white/10"
+                    >
+                      <Ionicons name="search-outline" size={20} color={externalSubtitleCues !== null ? accentColor : '#fff'} />
+                      <Text className="text-white ml-3 flex-1">Search Subtitles</Text>
+                      {externalSubtitleCues && (
+                        <Text className="text-white/60 text-sm">Active</Text>
+                      )}
+                    </Pressable>
+                  );
+                case 'speed':
+                  return (
+                    <Pressable
+                      key={controlId}
+                      onPress={() => { setShowMoreOptions(false); setShowSpeedSelector(true); }}
+                      className="flex-row items-center py-3 border-b border-white/10"
+                    >
+                      <Ionicons name="speedometer-outline" size={20} color={videoPlaybackSpeed !== 1 ? accentColor : '#fff'} />
+                      <Text className="text-white ml-3 flex-1">Playback Speed</Text>
+                      <Text className="text-white/60 text-sm">{videoPlaybackSpeed}x</Text>
+                    </Pressable>
+                  );
+                case 'quality':
+                  return (
+                    <Pressable
+                      key={controlId}
+                      onPress={() => { setShowMoreOptions(false); setShowQualitySelector(true); }}
+                      className="flex-row items-center py-3 border-b border-white/10"
+                    >
+                      <Ionicons name="settings-outline" size={20} color={streamingQuality !== 'auto' ? accentColor : '#fff'} />
+                      <Text className="text-white ml-3 flex-1">Quality</Text>
+                      <Text className="text-white/60 text-sm">{streamingQuality === 'auto' ? 'Auto' : streamingQuality === 'original' ? 'Original' : streamingQuality}</Text>
+                    </Pressable>
+                  );
+                case 'chapters':
+                  if (!item?.Chapters || (item.Chapters as any[]).length === 0) return null;
+                  return (
+                    <Pressable
+                      key={controlId}
+                      onPress={() => { setShowMoreOptions(false); setShowChapterList(true); }}
+                      className="flex-row items-center py-3 border-b border-white/10"
+                    >
+                      <Ionicons name="bookmark-outline" size={20} color="#fff" />
+                      <Text className="text-white ml-3">Chapters</Text>
+                    </Pressable>
+                  );
+                case 'episodes':
+                  if (!isEpisode || !seasonEpisodes?.Items || seasonEpisodes.Items.length <= 1) return null;
+                  return (
+                    <Pressable
+                      key={controlId}
+                      onPress={() => { setShowMoreOptions(false); setShowEpisodeList(true); }}
+                      className="flex-row items-center py-3 border-b border-white/10"
+                    >
+                      <Ionicons name="tv-outline" size={20} color="#fff" />
+                      <Text className="text-white ml-3 flex-1">Episodes</Text>
+                      <Text className="text-white/60 text-sm">S{item?.ParentIndexNumber} E{item?.IndexNumber}</Text>
+                    </Pressable>
+                  );
+                case 'sleepTimer':
+                  return (
+                    <Pressable
+                      key={controlId}
+                      onPress={() => { setShowMoreOptions(false); setShowSleepTimerSelector(true); }}
+                      className="flex-row items-center py-3 border-b border-white/10"
+                    >
+                      <Ionicons name="moon-outline" size={20} color={sleepTimer ? accentColor : '#fff'} />
+                      <Text className="text-white ml-3 flex-1">Sleep Timer</Text>
+                      {sleepTimer && (
+                        <Text className="text-white/60 text-sm">Active</Text>
+                      )}
+                    </Pressable>
+                  );
+                case 'lock':
+                  return (
+                    <Pressable
+                      key={controlId}
+                      onPress={() => { setShowMoreOptions(false); toggleControlsLock(); }}
+                      className="flex-row items-center py-3 border-b border-white/10"
+                    >
+                      <Ionicons name={controlsLocked ? 'lock-closed' : 'lock-open-outline'} size={20} color={controlsLocked ? accentColor : '#fff'} />
+                      <Text className="text-white ml-3">{controlsLocked ? 'Unlock Controls' : 'Lock Controls'}</Text>
+                    </Pressable>
+                  );
+                case 'pip':
+                  return (
+                    <Pressable
+                      key={controlId}
+                      onPress={() => { setShowMoreOptions(false); handleEnterPiP(); }}
+                      className="flex-row items-center py-3 border-b border-white/10"
+                    >
+                      <Ionicons name="albums-outline" size={20} color="#fff" />
+                      <Text className="text-white ml-3">Picture-in-Picture</Text>
+                    </Pressable>
+                  );
+                case 'cast':
+                  if (!isChromecastSupported || !chromecast.isAvailable) return null;
+                  return (
+                    <Pressable
+                      key={controlId}
+                      onPress={() => { setShowMoreOptions(false); chromecast.isConnected ? setShowCastRemote(true) : handleStartCasting(); }}
+                      className="flex-row items-center py-3 border-b border-white/10"
+                    >
+                      <Ionicons name={chromecast.isConnected ? 'tv' : 'tv-outline'} size={20} color={chromecast.isConnected ? accentColor : '#fff'} />
+                      <Text className="text-white ml-3">{chromecast.isConnected ? 'Cast Remote' : 'Cast'}</Text>
+                    </Pressable>
+                  );
+                case 'externalPlayer':
+                  if (!externalPlayerAvailable || !externalPlayerEnabled || !streamUrl) return null;
+                  return (
+                    <Pressable
+                      key={controlId}
+                      onPress={() => { setShowMoreOptions(false); handleOpenExternalPlayer(); }}
+                      className="flex-row items-center py-3 border-b border-white/10"
+                    >
+                      <Ionicons name="open-outline" size={20} color="#fff" />
+                      <Text className="text-white ml-3">External Player</Text>
+                    </Pressable>
+                  );
+                default:
+                  return null;
+              }
+            })}
+
+            {/* Always show OpenSubtitles search if API key is configured */}
             {openSubtitlesApiKey && (
               <Pressable
                 onPress={() => { setShowMoreOptions(false); setShowOpenSubtitlesSearch(true); }}
@@ -2434,6 +2755,8 @@ export default function VideoPlayerScreen() {
                 <Text className="text-white ml-3">Search Subtitles</Text>
               </Pressable>
             )}
+
+            {/* Subtitle options when subtitles are active */}
             {(selectedSubtitleIndex !== undefined || externalSubtitleCues !== null) && (
               <>
                 <Pressable
@@ -2454,46 +2777,16 @@ export default function VideoPlayerScreen() {
                 </Pressable>
               </>
             )}
+
+            {/* Settings link */}
             <Pressable
-              onPress={() => { setShowMoreOptions(false); setShowQualitySelector(true); }}
+              onPress={() => { setShowMoreOptions(false); router.push('/settings/player-controls' as any); }}
               className="flex-row items-center py-3 border-b border-white/10"
             >
-              <Ionicons name="settings-outline" size={20} color={streamingQuality !== 'auto' ? accentColor : '#fff'} />
-              <Text className="text-white ml-3 flex-1">Quality</Text>
-              <Text className="text-white/60 text-sm">{streamingQuality === 'auto' ? 'Auto' : streamingQuality === 'original' ? 'Original' : streamingQuality}</Text>
+              <Ionicons name="options-outline" size={20} color="#fff" />
+              <Text className="text-white ml-3">Customize Controls</Text>
             </Pressable>
-            <Pressable
-              onPress={() => { setShowMoreOptions(false); toggleControlsLock(); }}
-              className="flex-row items-center py-3 border-b border-white/10"
-            >
-              <Ionicons name={controlsLocked ? 'lock-closed' : 'lock-open-outline'} size={20} color={controlsLocked ? accentColor : '#fff'} />
-              <Text className="text-white ml-3">{controlsLocked ? 'Unlock Controls' : 'Lock Controls'}</Text>
-            </Pressable>
-            <Pressable
-              onPress={() => { setShowMoreOptions(false); handleEnterPiP(); }}
-              className="flex-row items-center py-3 border-b border-white/10"
-            >
-              <Ionicons name="albums-outline" size={20} color="#fff" />
-              <Text className="text-white ml-3">Picture in Picture</Text>
-            </Pressable>
-            {externalPlayerAvailable && externalPlayerEnabled && streamUrl && (
-              <Pressable
-                onPress={() => { setShowMoreOptions(false); handleOpenExternalPlayer(); }}
-                className="flex-row items-center py-3 border-b border-white/10"
-              >
-                <Ionicons name="open-outline" size={20} color="#fff" />
-                <Text className="text-white ml-3">External Player</Text>
-              </Pressable>
-            )}
-            {isChromecastSupported && chromecast.isAvailable && (
-              <Pressable
-                onPress={() => { setShowMoreOptions(false); chromecast.isConnected ? setShowCastRemote(true) : handleStartCasting(); }}
-                className="flex-row items-center py-3 border-b border-white/10"
-              >
-                <Ionicons name={chromecast.isConnected ? 'tv' : 'tv-outline'} size={20} color={chromecast.isConnected ? accentColor : '#fff'} />
-                <Text className="text-white ml-3">{chromecast.isConnected ? 'Cast Controls' : 'Cast'}</Text>
-              </Pressable>
-            )}
+
             <Pressable
               onPress={() => setShowMoreOptions(false)}
               className="mt-4 py-3 rounded-lg bg-white/10 items-center"
@@ -2509,36 +2802,45 @@ export default function VideoPlayerScreen() {
           onPress={() => setShowQualitySelector(false)}
           className="absolute inset-0 bg-black/80 items-center justify-center z-50"
         >
-          <View className="bg-zinc-900 rounded-2xl p-6 w-80">
+          <View
+            className="bg-zinc-900 rounded-2xl p-6 w-80"
+            style={{ maxHeight: screenHeight * 0.7 }}
+          >
             <Text className="text-white text-lg font-bold mb-4 text-center">Streaming Quality</Text>
             <Text className="text-white/50 text-xs mb-4 text-center">
               Higher quality uses more data and may buffer on slow connections
             </Text>
-            {[
-              { value: 'auto', label: 'Auto', desc: 'Adapts to connection' },
-              { value: 'original', label: 'Original', desc: 'Direct stream • No transcoding' },
-              { value: '1080p', label: '1080p', desc: '~8 Mbps • High quality' },
-              { value: '720p', label: '720p', desc: '~4 Mbps • Good quality' },
-              { value: '480p', label: '480p', desc: '~2 Mbps • Data saver' },
-            ].map((option) => (
-              <Pressable
-                key={option.value}
-                onPress={() => {
-                  setStreamingQuality(option.value as typeof streamingQuality);
-                  setShowQualitySelector(false);
-                }}
-                className="flex-row items-center py-3 border-b border-white/10"
-                style={{ backgroundColor: streamingQuality === option.value ? accentColor + '20' : 'transparent' }}
-              >
-                <View className="flex-1">
-                  <Text className="text-white">{option.label}</Text>
-                  <Text className="text-white/50 text-xs">{option.desc}</Text>
-                </View>
-                {streamingQuality === option.value && (
-                  <Ionicons name="checkmark" size={20} color={accentColor} />
-                )}
-              </Pressable>
-            ))}
+            <ScrollView
+              showsVerticalScrollIndicator={true}
+              style={{ flexGrow: 0 }}
+              contentContainerStyle={{ paddingBottom: 4 }}
+            >
+              {[
+                { value: 'auto', label: 'Auto', desc: 'Adapts to connection' },
+                { value: 'original', label: 'Original', desc: 'Direct stream • No transcoding' },
+                { value: '1080p', label: '1080p', desc: '~8 Mbps • High quality' },
+                { value: '720p', label: '720p', desc: '~4 Mbps • Good quality' },
+                { value: '480p', label: '480p', desc: '~2 Mbps • Data saver' },
+              ].map((option) => (
+                <Pressable
+                  key={option.value}
+                  onPress={() => {
+                    setStreamingQuality(option.value as typeof streamingQuality);
+                    setShowQualitySelector(false);
+                  }}
+                  className="flex-row items-center py-3 border-b border-white/10"
+                  style={{ backgroundColor: streamingQuality === option.value ? accentColor + '20' : 'transparent' }}
+                >
+                  <View className="flex-1">
+                    <Text className="text-white">{option.label}</Text>
+                    <Text className="text-white/50 text-xs">{option.desc}</Text>
+                  </View>
+                  {streamingQuality === option.value && (
+                    <Ionicons name="checkmark" size={20} color={accentColor} />
+                  )}
+                </Pressable>
+              ))}
+            </ScrollView>
             <Pressable
               onPress={() => setShowQualitySelector(false)}
               className="mt-4 py-3 rounded-lg bg-white/10 items-center"
@@ -2557,6 +2859,28 @@ export default function VideoPlayerScreen() {
         onSelectChapter={handleSeek}
         itemId={item?.Id}
       />
+
+      {isEpisode && (
+        <EpisodeList
+          visible={showEpisodeList}
+          onClose={() => {
+            setShowEpisodeList(false);
+            setEpisodeListSeasonId(null);
+          }}
+          episodes={
+            episodeListSeasonId && episodeListSeasonId !== seasonId
+              ? episodeListEpisodes?.Items || []
+              : seasonEpisodes?.Items || []
+          }
+          seasons={allSeasons?.Items}
+          currentEpisodeId={itemId}
+          currentSeasonId={episodeListSeasonId || seasonId}
+          onSelectEpisode={handleSelectEpisode}
+          onSelectSeason={(newSeasonId) => setEpisodeListSeasonId(newSeasonId)}
+          isLoading={episodeListLoading}
+          seriesName={item?.SeriesName}
+        />
+      )}
 
       <CastRemoteControl
         visible={showCastRemote}

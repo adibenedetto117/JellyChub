@@ -13,6 +13,7 @@ import { CachedImage } from '@/components/ui/CachedImage';
 import { AddToArrModal } from '@/components/media/AddToArrModal';
 import { radarrService, sonarrService } from '@/services';
 import { colors } from '@/theme';
+import { goBack } from '@/utils';
 import { getDisplayImageUrl } from '@/utils';
 import { MEDIA_STATUS } from '@/types/jellyseerr';
 import type { JellyseerrMovieDetails, JellyseerrTvDetails } from '@/types/jellyseerr';
@@ -121,10 +122,14 @@ function CastMember({ name, character, image }: { name: string; character?: stri
 }
 
 export default function JellyseerrDetailsScreen() {
-  const { type, tmdbId } = useLocalSearchParams<{ type: string; tmdbId: string }>();
+  const { type, tmdbId, from } = useLocalSearchParams<{ type: string; tmdbId: string; from?: string }>();
   const [showSeasonSelector, setShowSeasonSelector] = useState(false);
   const [showAddToArr, setShowAddToArr] = useState(false);
   const insets = useSafeAreaInsets();
+
+  const handleGoBack = () => {
+    goBack(from, '/(tabs)/requests');
+  };
 
   const accentColor = useSettingsStore((s) => s.accentColor);
   const hideMedia = useSettingsStore((s) => s.hideMedia);
@@ -265,7 +270,7 @@ export default function JellyseerrDetailsScreen() {
         <Stack.Screen options={{ headerShown: false }} />
         <Ionicons name="alert-circle" size={64} color={colors.text.tertiary} />
         <Text style={styles.errorText}>Details not found</Text>
-        <Pressable onPress={() => router.back()}>
+        <Pressable onPress={handleGoBack}>
           <LinearGradient
             colors={[JELLYSEERR_PURPLE, JELLYSEERR_PURPLE_DARK]}
             style={styles.errorButton}
@@ -283,7 +288,7 @@ export default function JellyseerrDetailsScreen() {
     <View style={styles.container}>
       <Stack.Screen options={{ headerShown: false }} />
 
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false} bounces={false}>
+      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} bounces={false}>
         <View style={styles.backdropContainer}>
           {backdropUrl ? (
             <CachedImage
@@ -306,7 +311,7 @@ export default function JellyseerrDetailsScreen() {
 
           <Pressable
             style={[styles.backButton, { top: insets.top + 8 }]}
-            onPress={() => router.back()}
+            onPress={handleGoBack}
           >
             <View style={styles.backButtonInner}>
               <Ionicons name="chevron-back" size={24} color="#fff" />
@@ -483,7 +488,7 @@ export default function JellyseerrDetailsScreen() {
             </Animated.View>
           )}
 
-          <View style={{ height: 40 }} />
+          <View style={{ height: 100 }} />
         </View>
       </ScrollView>
 
@@ -560,6 +565,9 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
   },
   backdropContainer: {
     height: SCREEN_HEIGHT * 0.45,

@@ -206,7 +206,7 @@ export const VolumeIndicator = memo(function VolumeIndicator({
     <View
       style={{
         position: 'absolute',
-        right: 40,
+        left: 40,
         top: '50%',
         marginTop: -80,
         alignItems: 'center',
@@ -275,7 +275,7 @@ export const BrightnessIndicator = memo(function BrightnessIndicator({
     <View
       style={{
         position: 'absolute',
-        left: 40,
+        right: 40,
         top: '50%',
         marginTop: -80,
         alignItems: 'center',

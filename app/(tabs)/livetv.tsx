@@ -11,7 +11,7 @@ import {
   Alert,
 } from 'react-native';
 import type { FlatList as FlatListType } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView } from '@/providers';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
@@ -37,6 +37,9 @@ import type { LiveTvChannel, LiveTvProgram, RecordingInfo, TimerInfo } from '@/t
 import type { ChannelSortOption, ChannelFilterOption } from '@/stores/liveTvStore';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+// Channel card height for getItemLayout (padding: 12*2 + logoHeight: 40 + marginVertical: 4*2 = 72)
+const CHANNEL_CARD_HEIGHT = 72;
 
 const SORT_OPTIONS: { value: ChannelSortOption; label: string }[] = [
   { value: 'number', label: 'Channel Number' },
@@ -223,32 +226,6 @@ const FilterChip = memo(function FilterChip({
   );
 });
 
-// Alphabet sidebar for quick navigation when sorted by name
-const AlphabetSidebar = memo(function AlphabetSidebar({
-  letters,
-  onLetterPress,
-  accentColor,
-}: {
-  letters: string[];
-  onLetterPress: (letter: string) => void;
-  accentColor: string;
-}) {
-  return (
-    <View style={styles.alphabetSidebar}>
-      {letters.map((letter) => (
-        <Pressable
-          key={letter}
-          onPress={() => onLetterPress(letter)}
-          style={styles.alphabetLetter}
-          hitSlop={{ top: 2, bottom: 2, left: 8, right: 8 }}
-        >
-          <Text style={[styles.alphabetLetterText, { color: accentColor }]}>{letter}</Text>
-        </Pressable>
-      ))}
-    </View>
-  );
-});
-
 export default function LiveTvScreen() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
@@ -308,7 +285,7 @@ export default function LiveTvScreen() {
     if (channelId && channelId !== handledChannelId) {
       setHandledChannelId(channelId);
       // Navigate directly to the player - don't wait for channels to load
-      router.replace(`/player/livetv?channelId=${channelId}`);
+      router.push(`/player/livetv?channelId=${channelId}`);
     }
   }, [channelId, handledChannelId]);
 
@@ -420,7 +397,7 @@ export default function LiveTvScreen() {
 
   // Play recording handler
   const handlePlayRecording = useCallback((recording: RecordingInfo) => {
-    router.push(`/player/video?itemId=${recording.Id}`);
+    router.push(`/player/video?itemId=${recording.Id}&from=${encodeURIComponent('/(tabs)/livetv')}`);
   }, []);
 
   const filteredChannels = useMemo(() => {
@@ -458,34 +435,15 @@ export default function LiveTvScreen() {
     return result;
   }, [channels, channelFilter, channelSort, favoriteChannelIds, recentChannelIds]);
 
-  // Get available letters for alphabet sidebar (only when sorted by name)
-  const availableLetters = useMemo(() => {
-    if (channelSort !== 'name') return [];
-    const letters = new Set<string>();
-    filteredChannels.forEach((ch) => {
-      const firstChar = ch.Name.charAt(0).toUpperCase();
-      if (/[A-Z]/.test(firstChar)) {
-        letters.add(firstChar);
-      } else if (/[0-9]/.test(firstChar)) {
-        letters.add('#');
-      }
-    });
-    return ['#', ...Array.from(letters).filter(l => l !== '#').sort()];
-  }, [filteredChannels, channelSort]);
-
-  // Scroll to letter in channel list
-  const handleLetterPress = useCallback((letter: string) => {
-    const index = filteredChannels.findIndex((ch) => {
-      const firstChar = ch.Name.charAt(0).toUpperCase();
-      if (letter === '#') {
-        return /[0-9]/.test(firstChar);
-      }
-      return firstChar === letter;
-    });
-    if (index !== -1 && channelListRef.current) {
-      channelListRef.current.scrollToIndex({ index, animated: true, viewPosition: 0 });
-    }
-  }, [filteredChannels]);
+  // getItemLayout for efficient scrollToIndex
+  const getChannelItemLayout = useCallback(
+    (_: any, index: number) => ({
+      length: CHANNEL_CARD_HEIGHT,
+      offset: CHANNEL_CARD_HEIGHT * index,
+      index,
+    }),
+    []
+  );
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -683,6 +641,7 @@ export default function LiveTvScreen() {
                 data={filteredChannels}
                 renderItem={renderChannel}
                 keyExtractor={(item) => item.Id}
+                getItemLayout={getChannelItemLayout}
                 contentContainerStyle={styles.listContent}
                 refreshControl={
                   <RefreshControl
@@ -710,13 +669,6 @@ export default function LiveTvScreen() {
                   }, 100);
                 }}
               />
-              {availableLetters.length > 0 && (
-                <AlphabetSidebar
-                  letters={availableLetters}
-                  onLetterPress={handleLetterPress}
-                  accentColor={accentColor}
-                />
-              )}
             </View>
           ) : (
             <View style={styles.guideContainer}>
@@ -918,29 +870,10 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingBottom: 100,
-    paddingRight: 24, // Make room for alphabet sidebar
   },
   channelListContainer: {
     flex: 1,
     flexDirection: 'row',
-  },
-  alphabetSidebar: {
-    position: 'absolute',
-    right: 4,
-    top: 0,
-    bottom: 100,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 8,
-    zIndex: 10,
-  },
-  alphabetLetter: {
-    paddingVertical: 2,
-    paddingHorizontal: 4,
-  },
-  alphabetLetterText: {
-    fontSize: 11,
-    fontWeight: '600',
   },
   guideContainer: {
     flex: 1,

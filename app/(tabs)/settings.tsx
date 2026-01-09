@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { View, Text, ScrollView, Pressable, Switch, Alert, ActivityIndicator, TextInput, Platform } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView } from '@/providers';
 import { router } from 'expo-router';
 import Slider from '@react-native-community/slider';
 import * as LocalAuthentication from 'expo-local-authentication';
@@ -233,7 +233,10 @@ export default function SettingsScreen() {
     notifications,
     setNotificationSetting,
     radarrApiKey,
+    radarrConnectionStatus,
     sonarrApiKey,
+    sonarrConnectionStatus,
+    jellyseerrConnectionStatus,
     language,
     setLanguage,
   } = useSettingsStore();
@@ -363,6 +366,13 @@ export default function SettingsScreen() {
               }
             />
             <SettingsRow
+              title="Custom Headers"
+              onPress={() => router.push('/settings/custom-headers' as '/settings/jellyseerr')}
+              rightElement={
+                <Text className="text-text-tertiary">{'>'}</Text>
+              }
+            />
+            <SettingsRow
               title={t('settings.signOut')}
               onPress={handleLogout}
               rightElement={
@@ -376,30 +386,72 @@ export default function SettingsScreen() {
           <SettingsSection title={t('settings.integrations')}>
             <SettingsRow
               title={t('settings.jellyseerr')}
-              subtitle={jellyseerrAuthToken ? `${t('settings.connected')} (${hideMedia ? 'User' : jellyseerrUsername})` : t('settings.notConfigured')}
+              subtitle={
+                jellyseerrAuthToken
+                  ? jellyseerrConnectionStatus === 'error'
+                    ? t('settings.connectionError')
+                    : `${t('settings.connected')} (${hideMedia ? 'User' : jellyseerrUsername})`
+                  : t('settings.notConfigured')
+              }
               onPress={() => router.push('/settings/jellyseerr')}
               rightElement={
-                <Text style={{ color: jellyseerrAuthToken ? '#22c55e' : 'rgba(255,255,255,0.5)' }}>
+                <Text style={{
+                  color: !jellyseerrAuthToken
+                    ? 'rgba(255,255,255,0.5)'
+                    : jellyseerrConnectionStatus === 'error'
+                      ? '#ef4444'
+                      : jellyseerrConnectionStatus === 'connected'
+                        ? '#22c55e'
+                        : '#f59e0b'
+                }}>
                   {jellyseerrAuthToken ? '●' : '○'}
                 </Text>
               }
             />
             <SettingsRow
               title={t('settings.radarr')}
-              subtitle={radarrApiKey ? t('settings.connected') : t('settings.notConfigured')}
+              subtitle={
+                radarrApiKey
+                  ? radarrConnectionStatus === 'error'
+                    ? t('settings.connectionError')
+                    : t('settings.connected')
+                  : t('settings.notConfigured')
+              }
               onPress={() => router.push('/settings/radarr')}
               rightElement={
-                <Text style={{ color: radarrApiKey ? '#ffc230' : 'rgba(255,255,255,0.5)' }}>
+                <Text style={{
+                  color: !radarrApiKey
+                    ? 'rgba(255,255,255,0.5)'
+                    : radarrConnectionStatus === 'error'
+                      ? '#ef4444'
+                      : radarrConnectionStatus === 'connected'
+                        ? '#22c55e'
+                        : '#f59e0b'
+                }}>
                   {radarrApiKey ? '●' : '○'}
                 </Text>
               }
             />
             <SettingsRow
               title={t('settings.sonarr')}
-              subtitle={sonarrApiKey ? t('settings.connected') : t('settings.notConfigured')}
+              subtitle={
+                sonarrApiKey
+                  ? sonarrConnectionStatus === 'error'
+                    ? t('settings.connectionError')
+                    : t('settings.connected')
+                  : t('settings.notConfigured')
+              }
               onPress={() => router.push('/settings/sonarr')}
               rightElement={
-                <Text style={{ color: sonarrApiKey ? '#35c5f4' : 'rgba(255,255,255,0.5)' }}>
+                <Text style={{
+                  color: !sonarrApiKey
+                    ? 'rgba(255,255,255,0.5)'
+                    : sonarrConnectionStatus === 'error'
+                      ? '#ef4444'
+                      : sonarrConnectionStatus === 'connected'
+                        ? '#22c55e'
+                        : '#f59e0b'
+                }}>
                   {sonarrApiKey ? '●' : '○'}
                 </Text>
               }
@@ -698,6 +750,17 @@ export default function SettingsScreen() {
                 }}
                 trackColor={{ false: '#3a3a3a', true: accentColor }}
               />
+            }
+          />
+        </SettingsSection>
+
+        <SettingsSection title="Player Controls">
+          <SettingsRow
+            title="Customize Controls"
+            subtitle="Choose which buttons appear in the video player"
+            onPress={() => router.push('/settings/player-controls' as any)}
+            rightElement={
+              <Text className="text-text-tertiary">{'>'}</Text>
             }
           />
         </SettingsSection>

@@ -44,7 +44,7 @@ export const NextUpRow = memo(function NextUpRow({ items, onItemPress }: Props) 
       <View style={[styles.header, { paddingHorizontal: horizontalPadding, marginBottom: headerMarginBottom }]}>
         <View style={styles.headerLeft}>
           <Ionicons name="arrow-forward-circle" size={22} color={accentColor} />
-          <Text style={[styles.title, { fontSize: fontSize.lg }]}>{t('home.upNext')}</Text>
+          <Text style={[styles.title, { fontSize: fontSize.lg }]}>{t('home.nextUp')}</Text>
         </View>
         <Text style={[styles.itemCount, { fontSize: fontSize.sm }]}>{t('common.episodeCount', { count: items.length })}</Text>
       </View>

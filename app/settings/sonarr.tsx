@@ -1,26 +1,54 @@
 import { useState, useEffect } from 'react';
-import { View, Text, TextInput, Pressable, Alert, ActivityIndicator, ScrollView, StyleSheet } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { View, Text, TextInput, Pressable, Alert, ActivityIndicator, ScrollView, StyleSheet, Switch } from 'react-native';
+import { SafeAreaView } from '@/providers';
 import { Stack, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { sonarrService } from '@/services';
 import { colors } from '@/theme';
 
+const DEFAULT_PORT = '8989';
+
 export default function SonarrSettingsScreen() {
   const {
     sonarrUrl,
     sonarrApiKey,
     accentColor,
+    sonarrConnectionStatus: storedConnectionStatus,
+    sonarrUseCustomHeaders,
     setSonarrCredentials,
     clearSonarrCredentials,
+    setSonarrConnectionStatus,
+    setSonarrUseCustomHeaders,
   } = useSettingsStore();
 
-  const [url, setUrl] = useState(sonarrUrl ?? '');
+  // Parse existing URL into parts
+  const parseUrl = (urlStr: string | null) => {
+    if (!urlStr) return { protocol: 'http' as const, host: '', port: DEFAULT_PORT };
+    try {
+      const match = urlStr.match(/^(https?):\/\/([^:/]+)(?::(\d+))?/);
+      if (match) {
+        return {
+          protocol: (match[1] as 'http' | 'https') || 'http',
+          host: match[2] || '',
+          port: match[3] || DEFAULT_PORT,
+        };
+      }
+    } catch {}
+    return { protocol: 'http' as const, host: '', port: DEFAULT_PORT };
+  };
+
+  const parsed = parseUrl(sonarrUrl);
+  const [protocol, setProtocol] = useState<'http' | 'https'>(parsed.protocol);
+  const [host, setHost] = useState(parsed.host);
+  const [port, setPort] = useState(parsed.port);
   const [apiKey, setApiKey] = useState(sonarrApiKey ?? '');
   const [isLoading, setIsLoading] = useState(false);
+
+  const buildUrl = () => `${protocol}://${host.trim()}${port ? ':' + port : ''}`;
+
   const [isTesting, setIsTesting] = useState(false);
-  const [connectionStatus, setConnectionStatus] = useState<'unknown' | 'connected' | 'error'>('unknown');
+  const [connectionStatus, setConnectionStatus] = useState<'unknown' | 'connected' | 'error'>(storedConnectionStatus);
   const [version, setVersion] = useState<string | null>(null);
 
   const isConnected = !!sonarrUrl && !!sonarrApiKey;
@@ -37,20 +65,23 @@ export default function SonarrSettingsScreen() {
       const result = await sonarrService.testConnection();
       if (result.ok) {
         setConnectionStatus('connected');
+        setSonarrConnectionStatus('connected');
         setVersion(result.version ?? null);
       } else {
         setConnectionStatus('error');
+        setSonarrConnectionStatus('error');
       }
     } catch {
       setConnectionStatus('error');
+      setSonarrConnectionStatus('error');
     } finally {
       setIsTesting(false);
     }
   };
 
   const handleTestConnection = async () => {
-    if (!url.trim()) {
-      Alert.alert('Error', 'Please enter a server URL');
+    if (!host.trim()) {
+      Alert.alert('Error', 'Please enter a server hostname');
       return;
     }
 
@@ -61,20 +92,23 @@ export default function SonarrSettingsScreen() {
 
     setIsTesting(true);
     try {
-      setSonarrCredentials(url.trim(), apiKey.trim());
+      setSonarrCredentials(buildUrl(), apiKey.trim());
       const result = await sonarrService.testConnection();
       if (result.ok) {
         Alert.alert('Success', `Connected to Sonarr ${result.version ?? ''}`);
         setConnectionStatus('connected');
+        setSonarrConnectionStatus('connected');
         setVersion(result.version ?? null);
       } else {
         Alert.alert('Error', result.error ?? 'Connection failed');
         setConnectionStatus('error');
+        setSonarrConnectionStatus('error');
         clearSonarrCredentials();
       }
     } catch (error: any) {
       Alert.alert('Error', 'Failed to connect to server');
       setConnectionStatus('error');
+      setSonarrConnectionStatus('error');
       clearSonarrCredentials();
     } finally {
       setIsTesting(false);
@@ -82,8 +116,8 @@ export default function SonarrSettingsScreen() {
   };
 
   const handleConnect = async () => {
-    if (!url.trim()) {
-      Alert.alert('Error', 'Please enter a server URL');
+    if (!host.trim()) {
+      Alert.alert('Error', 'Please enter a server hostname');
       return;
     }
 
@@ -94,22 +128,25 @@ export default function SonarrSettingsScreen() {
 
     setIsLoading(true);
     try {
-      const cleanUrl = url.trim().replace(/\/$/, '');
-      setSonarrCredentials(cleanUrl, apiKey.trim());
+      const fullUrl = buildUrl();
+      setSonarrCredentials(fullUrl, apiKey.trim());
 
       const result = await sonarrService.testConnection();
       if (result.ok) {
         setVersion(result.version ?? null);
         setConnectionStatus('connected');
+        setSonarrConnectionStatus('connected');
         Alert.alert('Success', 'Connected to Sonarr', [
           { text: 'OK', onPress: () => router.back() },
         ]);
       } else {
         clearSonarrCredentials();
+        setSonarrConnectionStatus('error');
         Alert.alert('Error', result.error ?? 'Connection failed');
       }
     } catch (error: any) {
       clearSonarrCredentials();
+      setSonarrConnectionStatus('error');
       Alert.alert('Error', error?.message || 'Connection failed');
     } finally {
       setIsLoading(false);
@@ -123,8 +160,10 @@ export default function SonarrSettingsScreen() {
         text: 'Disconnect',
         style: 'destructive',
         onPress: () => {
-          clearSonarrCredentials();
-          setUrl('');
+          clearSonarrCredentials(); // This also resets sonarrConnectionStatus in the store
+          setProtocol('http');
+          setHost('');
+          setPort(DEFAULT_PORT);
           setApiKey('');
           setConnectionStatus('unknown');
           setVersion(null);
@@ -176,23 +215,61 @@ export default function SonarrSettingsScreen() {
               )}
             </Pressable>
 
+            <View style={styles.optionRow}>
+              <View style={styles.optionInfo}>
+                <Text style={styles.optionTitle}>Use Custom Headers</Text>
+              </View>
+              <Switch
+                value={sonarrUseCustomHeaders}
+                onValueChange={setSonarrUseCustomHeaders}
+                trackColor={{ false: 'rgba(255,255,255,0.2)', true: accentColor + '80' }}
+                thumbColor={sonarrUseCustomHeaders ? accentColor : '#f4f3f4'}
+              />
+            </View>
+
             <Pressable style={styles.disconnectButton} onPress={handleDisconnect}>
               <Text style={styles.disconnectButtonText}>Disconnect</Text>
             </Pressable>
           </View>
         ) : (
           <View style={styles.content}>
-            <Text style={styles.label}>Server URL</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="http://localhost:8989"
-              placeholderTextColor="rgba(255,255,255,0.3)"
-              value={url}
-              onChangeText={setUrl}
-              autoCapitalize="none"
-              autoCorrect={false}
-              keyboardType="url"
-            />
+            <Text style={styles.label}>Server Address</Text>
+            <View style={styles.urlRow}>
+              <View style={styles.protocolPicker}>
+                <Pressable
+                  style={[styles.protocolOption, protocol === 'http' && { backgroundColor: accentColor }]}
+                  onPress={() => setProtocol('http')}
+                >
+                  <Text style={[styles.protocolOptionText, protocol === 'http' && { color: '#fff' }]}>http://</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.protocolOption, protocol === 'https' && { backgroundColor: accentColor }]}
+                  onPress={() => setProtocol('https')}
+                >
+                  <Text style={[styles.protocolOptionText, protocol === 'https' && { color: '#fff' }]}>https://</Text>
+                </Pressable>
+              </View>
+              <TextInput
+                style={[styles.input, styles.hostInput]}
+                placeholder="192.168.1.100"
+                placeholderTextColor="rgba(255,255,255,0.3)"
+                value={host}
+                onChangeText={setHost}
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="url"
+              />
+              <TextInput
+                style={[styles.input, styles.portInput]}
+                placeholder={DEFAULT_PORT}
+                placeholderTextColor="rgba(255,255,255,0.3)"
+                value={port}
+                onChangeText={setPort}
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="number-pad"
+              />
+            </View>
 
             <Text style={styles.label}>API Key</Text>
             <TextInput
@@ -206,7 +283,7 @@ export default function SonarrSettingsScreen() {
               secureTextEntry
             />
             <Text style={styles.hint}>
-              Find your API key in Sonarr Settings → General → API Key
+              Find your API key in Sonarr Settings, General, API Key
             </Text>
 
             <View style={styles.buttonRow}>
@@ -365,5 +442,55 @@ const styles = StyleSheet.create({
     color: '#ef4444',
     fontSize: 14,
     fontWeight: '600',
+  },
+  urlRow: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+  },
+  protocolPicker: {
+    flexDirection: 'column',
+    backgroundColor: colors.surface.default,
+    borderRadius: 10,
+    overflow: 'hidden',
+  },
+  protocolOption: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  protocolOptionText: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  hostInput: {
+    flex: 1,
+  },
+  portInput: {
+    width: 70,
+    textAlign: 'center',
+  },
+  optionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.surface.default,
+    borderRadius: 10,
+    padding: 14,
+    marginBottom: 12,
+  },
+  optionInfo: {
+    flex: 1,
+    marginRight: 12,
+  },
+  optionTitle: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  optionSubtitle: {
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: 12,
+    marginTop: 2,
   },
 });

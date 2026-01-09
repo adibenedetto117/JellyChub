@@ -1,5 +1,6 @@
 import { View, Text, Pressable, StyleSheet, Alert, Modal, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 import { useState, useCallback, useMemo, memo } from 'react';
+import { useTranslation } from 'react-i18next';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -13,7 +14,8 @@ import Animated, {
   type SharedValue,
 } from 'react-native-reanimated';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from '@/providers';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -304,6 +306,7 @@ const ActionButton = memo(function ActionButton({
 });
 
 export default function QueueScreen() {
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const accentColor = useSettingsStore((s) => s.accentColor);
   const hideMedia = useSettingsStore((s) => s.hideMedia);
@@ -526,7 +529,7 @@ export default function QueueScreen() {
             <>
               <View style={styles.sectionHeader}>
                 <Text style={styles.sectionTitle}>
-                  Up Next ({upcomingItems.length} {upcomingItems.length === 1 ? 'track' : 'tracks'})
+                  {t('home.nextUp')} ({upcomingItems.length} {upcomingItems.length === 1 ? 'track' : 'tracks'})
                 </Text>
               </View>
 

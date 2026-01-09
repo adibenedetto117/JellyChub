@@ -1,7 +1,7 @@
 import { View, Text, Pressable, RefreshControl, ScrollView, StyleSheet, Dimensions } from 'react-native';
 import { useState, useCallback, useMemo, memo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView } from '@/providers';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -130,6 +130,7 @@ const LibraryContentRow = memo(function LibraryContentRow({
   }, [library.CollectionType, library.Id]);
 
   const handleItemPress = useCallback((item: BaseItem) => {
+    if (!item?.Id) return;
     const type = item.Type?.toLowerCase();
     // For player/reader routes, use direct navigation (no back tracking needed)
     if (type === 'audiobook') {

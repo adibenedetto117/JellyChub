@@ -17,6 +17,7 @@ import { useAuthStore, useSettingsStore, useDownloadStore } from '@/stores';
 import { useReadingProgressStore } from '@/stores/readingProgressStore';
 import { downloadManager, encryptionService } from '@/services';
 import { getItem, getBookDownloadUrl, reportPlaybackProgress, generatePlaySessionId } from '@/api';
+import { dismissModal } from '@/utils';
 
 export default function PdfReaderScreen() {
   const { itemId } = useLocalSearchParams<{ itemId: string }>();
@@ -555,7 +556,7 @@ export default function PdfReaderScreen() {
           <Ionicons name="alert-circle" size={64} color="#ef4444" />
           <Text style={styles.errorText}>Failed to load PDF</Text>
           <Text style={styles.errorSubtext}>{errorMsg}</Text>
-          <Pressable onPress={() => router.back()} style={[styles.button, { backgroundColor: accentColor }]}>
+          <Pressable onPress={() => dismissModal()} style={[styles.button, { backgroundColor: accentColor }]}>
             <Text style={styles.buttonText}>Go Back</Text>
           </Pressable>
         </View>
@@ -568,7 +569,7 @@ export default function PdfReaderScreen() {
       <StatusBar barStyle="light-content" />
 
       <View style={[styles.header, { paddingTop: insets.top }]}>
-        <Pressable onPress={() => router.back()} style={styles.headerBtn}>
+        <Pressable onPress={() => dismissModal()} style={styles.headerBtn}>
           <Ionicons name="arrow-back" size={24} color="#fff" />
         </Pressable>
         <Text style={styles.headerTitle} numberOfLines={1}>

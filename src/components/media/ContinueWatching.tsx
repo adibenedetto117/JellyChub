@@ -45,16 +45,111 @@ const ContinueCard = memo(function ContinueCard({ item, onPress, cardWidth, card
     scale.value = withTiming(1, { duration: 100 });
   }, [scale]);
 
-  const imageTag = item.BackdropImageTags?.[0] ?? item.ImageTags?.Primary;
-  const imageType = item.BackdropImageTags?.[0] ? 'Backdrop' : 'Primary';
+  // Get the best available image for this item
+  const getItemImageUrl = (): { url: string | null; imageType: 'Primary' | 'Backdrop' | 'Thumb' } => {
+    // For episodes, try multiple fallback sources
+    if (item.Type === 'Episode') {
+      const episode = item as Episode;
 
-  const rawImageUrl = imageTag
-    ? getImageUrl(item.Id, imageType, {
+      // 1. Episode's own Primary image (screenshot/thumbnail) - best for continue watching
+      if (episode.ImageTags?.Primary) {
+        return {
+          url: getImageUrl(episode.Id, 'Primary', {
+            maxWidth: cardWidth * 2,
+            maxHeight: cardHeight * 2,
+            tag: episode.ImageTags.Primary,
+          }),
+          imageType: 'Primary',
+        };
+      }
+
+      // 2. Parent thumb image (often available for episodes)
+      if (episode.ParentThumbImageTag && episode.ParentThumbItemId) {
+        return {
+          url: getImageUrl(episode.ParentThumbItemId, 'Thumb', {
+            maxWidth: cardWidth * 2,
+            maxHeight: cardHeight * 2,
+            tag: episode.ParentThumbImageTag,
+          }),
+          imageType: 'Thumb',
+        };
+      }
+
+      // 3. Parent backdrop - use ParentBackdropItemId if available, fallback to SeriesId
+      if (episode.ParentBackdropImageTags?.[0]) {
+        const backdropItemId = episode.ParentBackdropItemId ?? episode.SeriesId;
+        if (backdropItemId) {
+          return {
+            url: getImageUrl(backdropItemId, 'Backdrop', {
+              maxWidth: cardWidth * 2,
+              maxHeight: cardHeight * 2,
+              tag: episode.ParentBackdropImageTags[0],
+            }),
+            imageType: 'Backdrop',
+          };
+        }
+      }
+
+      // 4. Series primary image (poster)
+      if (episode.SeriesPrimaryImageTag && episode.SeriesId) {
+        return {
+          url: getImageUrl(episode.SeriesId, 'Primary', {
+            maxWidth: cardWidth * 2,
+            maxHeight: cardHeight * 2,
+            tag: episode.SeriesPrimaryImageTag,
+          }),
+          imageType: 'Primary',
+        };
+      }
+
+      // 5. Series backdrop (if SeriesId exists but no tag, try anyway - API may still return image)
+      if (episode.SeriesId) {
+        return {
+          url: getImageUrl(episode.SeriesId, 'Backdrop', {
+            maxWidth: cardWidth * 2,
+            maxHeight: cardHeight * 2,
+          }),
+          imageType: 'Backdrop',
+        };
+      }
+
+      return { url: null, imageType: 'Primary' };
+    }
+
+    // For movies and other items, use backdrop if available, otherwise primary
+    if (item.BackdropImageTags?.[0]) {
+      return {
+        url: getImageUrl(item.Id, 'Backdrop', {
+          maxWidth: cardWidth * 2,
+          maxHeight: cardHeight * 2,
+          tag: item.BackdropImageTags[0],
+        }),
+        imageType: 'Backdrop',
+      };
+    }
+
+    if (item.ImageTags?.Primary) {
+      return {
+        url: getImageUrl(item.Id, 'Primary', {
+          maxWidth: cardWidth * 2,
+          maxHeight: cardHeight * 2,
+          tag: item.ImageTags.Primary,
+        }),
+        imageType: 'Primary',
+      };
+    }
+
+    // Last resort: try without a tag (API may still return an image)
+    return {
+      url: getImageUrl(item.Id, 'Primary', {
         maxWidth: cardWidth * 2,
         maxHeight: cardHeight * 2,
-        tag: imageTag,
-      })
-    : null;
+      }),
+      imageType: 'Primary',
+    };
+  };
+
+  const { url: rawImageUrl, imageType } = getItemImageUrl();
 
   const imageUrl = getDisplayImageUrl(item.Id, rawImageUrl, hideMedia, imageType);
   const displayName = getDisplayName(item, hideMedia);

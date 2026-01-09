@@ -8,9 +8,7 @@ import type { JellyseerrRequestBody } from '@/types/jellyseerr';
 function useJellyseerrInit() {
   const jellyseerrUrl = useSettingsStore((s) => s.jellyseerrUrl);
   const jellyseerrAuthToken = useSettingsStore((s) => s.jellyseerrAuthToken);
-  const jellyfinServerUrl = useSettingsStore((s) => s.jellyseerrJellyfinServerUrl);
-  const jellyfinUserId = useSettingsStore((s) => s.jellyseerrJellyfinUserId);
-  const jellyfinToken = useSettingsStore((s) => s.jellyseerrJellyfinToken);
+  const jellyseerrSessionCookie = useSettingsStore((s) => s.jellyseerrSessionCookie);
   const clearJellyseerrCredentials = useSettingsStore((s) => s.clearJellyseerrCredentials);
 
   // Use ref to avoid re-running effect when function reference changes
@@ -22,27 +20,22 @@ function useJellyseerrInit() {
       const isJellyfinAuth = jellyseerrAuthToken === 'jellyfin-auth';
       const isLocalAuth = jellyseerrAuthToken === 'local-auth';
 
-      if (isJellyfinAuth && jellyfinServerUrl && jellyfinUserId && jellyfinToken) {
-        // Re-authenticate with stored Jellyfin credentials
-        jellyseerrClient.initializeWithJellyfin(
-          jellyseerrUrl,
-          jellyfinServerUrl,
-          jellyfinUserId,
-          jellyfinToken
-        ).catch(() => {
-          // Clear credentials on auth failure so user can re-login
-          jellyseerrClient.clearAuth();
-          clearCredentialsRef.current();
-        });
-      } else if (!isJellyfinAuth && !isLocalAuth) {
-        // API key auth - use the token directly
-        jellyseerrClient.initialize(jellyseerrUrl, jellyseerrAuthToken);
-      } else {
-        // Local auth - session may still be valid, just initialize
+      if (isJellyfinAuth && jellyseerrSessionCookie) {
+        // For Jellyfin auth with stored session cookie, use the session
+        console.log('[useJellyseerr] Initializing with session cookie');
+        jellyseerrClient.initializeWithSession(jellyseerrUrl, jellyseerrSessionCookie);
+      } else if (isJellyfinAuth || isLocalAuth) {
+        // For Jellyfin/local auth without session cookie, the session may have expired
+        // Initialize without auth - API calls may fail with 401
+        console.log('[useJellyseerr] Initializing without auth (session may have expired)');
         jellyseerrClient.initialize(jellyseerrUrl);
+      } else {
+        // API key auth - use the token directly
+        console.log('[useJellyseerr] Initializing with API key');
+        jellyseerrClient.initialize(jellyseerrUrl, jellyseerrAuthToken);
       }
     }
-  }, [jellyseerrUrl, jellyseerrAuthToken, jellyfinServerUrl, jellyfinUserId, jellyfinToken]);
+  }, [jellyseerrUrl, jellyseerrAuthToken, jellyseerrSessionCookie]);
 }
 
 // Hook to check if Jellyseerr is ready to use

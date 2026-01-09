@@ -1,4 +1,4 @@
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView } from '@/providers';
 import { Stack } from 'expo-router';
 import { ArrQueueDisplay } from '@/components/media/ArrQueueDisplay';
 import { colors } from '@/theme';
