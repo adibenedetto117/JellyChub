@@ -74,8 +74,9 @@ function CollapsibleDescription({ text, accentColor, t }: { text: string; accent
 
 export default function DetailScreen() {
   const { t } = useTranslation();
-  const { type: rawType, id, from } = useLocalSearchParams<{ type: string; id: string; from?: string }>();
+  const { type: rawType, id, from, autoplay } = useLocalSearchParams<{ type: string; id: string; from?: string; autoplay?: string }>();
   const type = rawType?.toLowerCase();
+  const shouldAutoplay = autoplay === 'true';
   const currentUser = useAuthStore((state) => state.currentUser);
   const activeServerId = useAuthStore((state) => state.activeServerId);
   const accentColor = useSettingsStore((s) => s.accentColor);
@@ -98,6 +99,7 @@ export default function DetailScreen() {
   const [isFavorite, setIsFavorite] = useState<boolean | null>(null);
   const [isBatchDownloading, setIsBatchDownloading] = useState(false);
   const [contentReady, setContentReady] = useState(false);
+  const [autoplayTriggered, setAutoplayTriggered] = useState(false);
 
   const contentOpacity = useSharedValue(0);
 
@@ -105,20 +107,18 @@ export default function DetailScreen() {
     opacity: contentOpacity.value,
   }));
 
-  const handleGoBack = () => {
-    // Navigate back to the source screen (from URL param) or fallback
-    const fallback = type === 'boxset' ? '/(tabs)/library' : '/(tabs)/home';
-    goBack(from, fallback);
-  };
+  // Log route params for debugging navigation issues
+  console.log('[DetailScreen] Route params:', { type: rawType, id, from, autoplay });
 
-  // Check download status
-  const downloadItem = getDownloadByItemId(id);
-  const isDownloaded = isItemDownloaded(id);
+  // Check download status (safe to call with undefined id - will return undefined)
+  const downloadItem = id ? getDownloadByItemId(id) : undefined;
+  const isDownloaded = id ? isItemDownloaded(id) : false;
   const isDownloadInProgress = downloadItem?.status === 'downloading' || downloadItem?.status === 'pending';
 
+  // Query for item data - disabled if id is missing
   const { data: item, isLoading, error: itemError } = useQuery({
     queryKey: ['item', userId, id],
-    queryFn: () => getItem(userId, id),
+    queryFn: () => getItem(userId, id!),
     enabled: !!userId && !!id,
     staleTime: Infinity,
   });
@@ -134,7 +134,103 @@ export default function DetailScreen() {
     },
   });
 
+  const { data: similar } = useQuery({
+    queryKey: ['similar', id, userId],
+    queryFn: () => getSimilarItems(id!, userId),
+    enabled: !!userId && !!id,
+  });
+
+  const { data: seasons, isLoading: isLoadingSeasons } = useQuery({
+    queryKey: ['seasons', id, userId],
+    queryFn: () => getSeasons(id!, userId),
+    enabled: !!userId && !!id && type === 'series',
+  });
+
+  const { data: tracks, isLoading: isLoadingTracks } = useQuery({
+    queryKey: ['tracks', id, userId],
+    queryFn: () => getAlbumTracks(id!, userId),
+    enabled: !!userId && !!id && type === 'album',
+  });
+
+  const { data: playlistTracks, isLoading: isLoadingPlaylistTracks, error: playlistError } = useQuery({
+    queryKey: ['playlist-items', id],
+    queryFn: () => getPlaylistItems(id!, userId),
+    enabled: !!userId && !!id && type === 'playlist',
+  });
+
+  const { data: artistAlbums, isLoading: isLoadingArtistAlbums } = useQuery({
+    queryKey: ['artistAlbums', id, userId],
+    queryFn: () => getArtistAlbums(id!, userId),
+    enabled: !!userId && !!id && type === 'artist',
+    staleTime: 1000 * 60 * 60, // 1 hour for artist albums
+  });
+
+  const { data: collectionItems, isLoading: isLoadingCollectionItems } = useQuery({
+    queryKey: ['collectionItems', id, userId],
+    queryFn: () => getCollectionItems(userId, id!),
+    enabled: !!userId && !!id && type === 'boxset',
+  });
+
+  // For seasons, we need to get the SeriesId from the item to fetch episodes
+  // Jellyfin uses SeriesId for seasons, but ParentId might also work as fallback
+  const seriesId = item?.SeriesId || item?.ParentId;
+  const { data: episodes, isLoading: isLoadingEpisodes } = useQuery({
+    queryKey: ['episodes', seriesId, id, userId],
+    queryFn: () => getEpisodes(seriesId!, userId, id!),
+    enabled: !!userId && !!id && !!seriesId && type === 'season',
+    staleTime: Infinity,
+  });
+
+  const { data: nextUp } = useQuery({
+    queryKey: ['nextUp', id, userId],
+    queryFn: () => getNextUp(userId, id!, 1),
+    enabled: !!userId && !!id && type === 'series',
+  });
+
+  // Reset opacity when navigating to a new item (must be before show effect)
+  useEffect(() => {
+    contentOpacity.value = 0;
+    setContentReady(false);
+    setAutoplayTriggered(false);
+  }, [id, contentOpacity]);
+
+  // Animate content in when item loads
+  useEffect(() => {
+    if (item) {
+      // Use requestAnimationFrame to ensure reset effect has completed
+      requestAnimationFrame(() => {
+        contentOpacity.value = withTiming(1, {
+          duration: 200,
+          easing: Easing.out(Easing.ease),
+        });
+      });
+      setContentReady(true);
+    }
+  }, [item, contentOpacity]);
+
+  // Handle autoplay for series when coming from home screen Play button
+  useEffect(() => {
+    if (shouldAutoplay && !autoplayTriggered && type === 'series' && item && nextUp !== undefined && id) {
+      setAutoplayTriggered(true);
+      const nextUpEpisode = nextUp?.Items?.[0];
+      if (nextUpEpisode) {
+        const progress = nextUpEpisode.UserData?.PlaybackPositionTicks ?? 0;
+        const hasProgress = progress > 0 && progress < (nextUpEpisode.RunTimeTicks ?? 0);
+        // Pass the current details page as source so player returns here
+        const detailsRoute = `/details/${type}/${id}${from ? `?from=${encodeURIComponent(from)}` : ''}`;
+        router.replace(`/player/video?itemId=${nextUpEpisode.Id}${hasProgress ? '&resume=true' : ''}&from=${encodeURIComponent(detailsRoute)}`);
+      }
+    }
+  }, [shouldAutoplay, autoplayTriggered, type, item, nextUp, id, from]);
+
+  const handleGoBack = () => {
+    // Navigate back to the source screen (from URL param) or fallback
+    const fallback = type === 'boxset' ? '/(tabs)/library' : '/(tabs)/home';
+    goBack(from, fallback);
+  };
+
   const handleToggleFavorite = async () => {
+    if (!id) return;
     const newValue = !currentFavorite;
     setIsFavorite(newValue);
     try {
@@ -144,73 +240,29 @@ export default function DetailScreen() {
     }
   };
 
-  const { data: similar } = useQuery({
-    queryKey: ['similar', id, userId],
-    queryFn: () => getSimilarItems(id, userId),
-    enabled: !!userId && !!id,
-  });
-
-  const { data: seasons, isLoading: isLoadingSeasons } = useQuery({
-    queryKey: ['seasons', id, userId],
-    queryFn: () => getSeasons(id, userId),
-    enabled: !!userId && !!id && type === 'series',
-  });
-
-  const { data: tracks, isLoading: isLoadingTracks } = useQuery({
-    queryKey: ['tracks', id, userId],
-    queryFn: () => getAlbumTracks(id, userId),
-    enabled: !!userId && !!id && type === 'album',
-  });
-
-  const { data: playlistTracks, isLoading: isLoadingPlaylistTracks, error: playlistError } = useQuery({
-    queryKey: ['playlist-items', id],
-    queryFn: () => getPlaylistItems(id, userId),
-    enabled: !!userId && !!id && type === 'playlist',
-  });
-
-  const { data: artistAlbums, isLoading: isLoadingArtistAlbums } = useQuery({
-    queryKey: ['artistAlbums', id, userId],
-    queryFn: () => getArtistAlbums(id, userId),
-    enabled: !!userId && !!id && type === 'artist',
-    staleTime: 1000 * 60 * 60, // 1 hour for artist albums
-  });
-
-  const { data: collectionItems, isLoading: isLoadingCollectionItems } = useQuery({
-    queryKey: ['collectionItems', id, userId],
-    queryFn: () => getCollectionItems(userId, id),
-    enabled: !!userId && !!id && type === 'boxset',
-  });
-
-  // For seasons, we need to get the SeriesId from the item to fetch episodes
-  // Jellyfin uses SeriesId for seasons, but ParentId might also work as fallback
-  const seriesId = item?.SeriesId || item?.ParentId;
-  const { data: episodes, isLoading: isLoadingEpisodes } = useQuery({
-    queryKey: ['episodes', seriesId, id, userId],
-    queryFn: () => getEpisodes(seriesId!, userId, id),
-    enabled: !!userId && !!id && !!seriesId && type === 'season',
-    staleTime: Infinity,
-  });
-
-  const { data: nextUp } = useQuery({
-    queryKey: ['nextUp', id, userId],
-    queryFn: () => getNextUp(userId, id, 1),
-    enabled: !!userId && !!id && type === 'series',
-  });
-
-  useEffect(() => {
-    if (item && !contentReady) {
-      setContentReady(true);
-      contentOpacity.value = withTiming(1, {
-        duration: 200,
-        easing: Easing.out(Easing.ease),
-      });
-    }
-  }, [item, contentReady, contentOpacity]);
-
-  useEffect(() => {
-    setContentReady(false);
-    contentOpacity.value = 0;
-  }, [id, contentOpacity]);
+  // Early return if required params are missing - AFTER all hooks are called
+  if (!id || !rawType) {
+    console.error('[DetailScreen] Missing required params:', { type: rawType, id });
+    return (
+      <Animated.View
+        entering={FadeIn.duration(200)}
+        className="flex-1 bg-background items-center justify-center px-4"
+      >
+        <Ionicons name="alert-circle-outline" size={48} color="#f87171" />
+        <Text className="text-red-400 text-center mt-4">{t('details.errorLoading')}</Text>
+        <Text className="text-text-tertiary text-center mt-2">
+          Missing required navigation parameters (type: {rawType || 'undefined'}, id: {id || 'undefined'})
+        </Text>
+        <Pressable
+          onPress={handleGoBack}
+          className="mt-6 px-6 py-3 rounded-lg"
+          style={{ backgroundColor: accentColor }}
+        >
+          <Text className="text-white font-medium">{t('common.goBack')}</Text>
+        </Pressable>
+      </Animated.View>
+    );
+  }
 
   if (itemError) {
     return (
@@ -234,20 +286,24 @@ export default function DetailScreen() {
 
   const handlePlay = (resume = false) => {
     if (!item) return;
+    // Construct the current details page URL to return to after playback
+    const detailsRoute = `/details/${type}/${id}${from ? `?from=${encodeURIComponent(from)}` : ''}`;
+    const fromParam = `&from=${encodeURIComponent(detailsRoute)}`;
+
     if (type === 'movie' || type === 'episode') {
-      router.push(`/player/video?itemId=${item.Id}${resume ? '&resume=true' : ''}`);
+      router.push(`/player/video?itemId=${item.Id}${resume ? '&resume=true' : ''}${fromParam}`);
     } else if (type === 'series') {
       // Play next up episode for series
       if (nextUpEpisode) {
-        router.push(`/player/video?itemId=${nextUpEpisode.Id}${hasNextUpProgress ? '&resume=true' : ''}`);
+        router.push(`/player/video?itemId=${nextUpEpisode.Id}${hasNextUpProgress ? '&resume=true' : ''}${fromParam}`);
       } else if (seasons?.Items?.[0]) {
         // Fallback: go to first season
-        navigateToDetails('season', seasons.Items[0].Id, from || '/(tabs)/home');
+        navigateToDetails('season', seasons.Items[0].Id, detailsRoute);
       }
     } else if (type === 'season') {
       // Play the episode we determined above
       if (seasonPlayEpisode) {
-        router.push(`/player/video?itemId=${seasonPlayEpisode.Id}${hasSeasonProgress ? '&resume=true' : ''}`);
+        router.push(`/player/video?itemId=${seasonPlayEpisode.Id}${hasSeasonProgress ? '&resume=true' : ''}${fromParam}`);
       }
     } else if (type === 'album') {
       const firstTrack = tracks?.Items?.[0];
@@ -417,9 +473,12 @@ export default function DetailScreen() {
     }
   };
 
+  // Build the current page route for back navigation from child pages
+  const currentDetailsRoute = `/details/${type}/${id}${from ? `?from=${encodeURIComponent(from)}` : ''}`;
+
   const handleItemPress = (pressedItem: BaseItem) => {
-    // Pass through the original 'from' to maintain navigation chain
-    navigateToDetails(pressedItem.Type.toLowerCase(), pressedItem.Id, from || '/(tabs)/home');
+    // Set current page as source so back button returns here
+    navigateToDetails(pressedItem.Type.toLowerCase(), pressedItem.Id, currentDetailsRoute);
   };
 
   const backdropTag = item?.BackdropImageTags?.[0];
@@ -758,7 +817,7 @@ export default function DetailScreen() {
                       key={season.Id}
                       className="bg-surface rounded-xl mb-3 flex-row items-center overflow-hidden"
                       onPress={() =>
-                        navigateToDetails('season', season.Id, from || '/(tabs)/home')
+                        navigateToDetails('season', season.Id, currentDetailsRoute)
                       }
                     >
                       {/* Season poster */}
@@ -862,7 +921,10 @@ export default function DetailScreen() {
                     >
                       <Pressable
                         className="flex-row"
-                        onPress={() => router.push(`/player/video?itemId=${episode.Id}`)}
+                        onPress={() => {
+                          const detailsRoute = `/details/${type}/${id}${from ? `?from=${encodeURIComponent(from)}` : ''}`;
+                          router.push(`/player/video?itemId=${episode.Id}&from=${encodeURIComponent(detailsRoute)}`);
+                        }}
                       >
                         {/* Episode thumbnail */}
                         <View className="w-32 h-20 bg-surface-elevated">
@@ -1149,7 +1211,7 @@ export default function DetailScreen() {
                     <Pressable
                       key={album.Id}
                       className="bg-surface p-3 rounded-xl mb-2 flex-row items-center"
-                      onPress={() => navigateToDetails('album', album.Id, from || '/(tabs)/music')}
+                      onPress={() => navigateToDetails('album', album.Id, currentDetailsRoute)}
                     >
                       <View className="w-14 h-14 rounded-lg overflow-hidden bg-surface mr-3">
                         <CachedImage
@@ -1208,7 +1270,7 @@ export default function DetailScreen() {
                     <Pressable
                       key={collectionItem.Id}
                       className="bg-surface rounded-xl mb-3 flex-row items-center overflow-hidden"
-                      onPress={() => navigateToDetails(itemType || 'item', collectionItem.Id, from || '/(tabs)/library')}
+                      onPress={() => navigateToDetails(itemType || 'item', collectionItem.Id, currentDetailsRoute)}
                     >
                       <View className="w-16 h-24 bg-surface-elevated">
                         {itemImageUrl ? (
