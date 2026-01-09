@@ -381,21 +381,45 @@ function getSearchRelevance(name: string, term: string): number {
   return 10;
 }
 
+export type SearchMediaType = 'Movie' | 'Series' | 'Episode' | 'Audio' | 'MusicAlbum' | 'MusicArtist' | 'Book' | 'AudioBook' | 'TvChannel' | 'Program';
+
+export interface SearchOptions {
+  limit?: number;
+  includeItemTypes?: SearchMediaType[];
+  excludeItemTypes?: SearchMediaType[];
+}
+
 export async function search(
   userId: string,
   searchTerm: string,
-  limit: number = 50
+  options: SearchOptions = {}
 ): Promise<SearchResult> {
+  const { limit = 50, includeItemTypes, excludeItemTypes } = options;
+
+  const params = new URLSearchParams();
+  params.set('UserId', userId);
+  params.set('SearchTerm', searchTerm);
+  params.set('Limit', limit.toString());
+
+  if (includeItemTypes && includeItemTypes.length > 0) {
+    params.set('IncludeItemTypes', includeItemTypes.join(','));
+  }
+  if (excludeItemTypes && excludeItemTypes.length > 0) {
+    params.set('ExcludeItemTypes', excludeItemTypes.join(','));
+  }
+
   const response = await jellyfinClient.api.get<SearchResult>(
-    `/Search/Hints?UserId=${userId}&SearchTerm=${encodeURIComponent(searchTerm)}&Limit=${limit}`
+    `/Search/Hints?${params.toString()}`
   );
 
   if (response.data.SearchHints) {
-    response.data.SearchHints.sort((a, b) => {
-      const scoreA = getSearchRelevance(a.Name || '', searchTerm);
-      const scoreB = getSearchRelevance(b.Name || '', searchTerm);
-      return scoreB - scoreA;
-    });
+    // Pre-compute scores once instead of on every comparison (O(n) vs O(n log n))
+    const scoredHints = response.data.SearchHints.map(hint => ({
+      hint,
+      score: getSearchRelevance(hint.Name || '', searchTerm),
+    }));
+    scoredHints.sort((a, b) => b.score - a.score);
+    response.data.SearchHints = scoredHints.map(s => s.hint);
   }
 
   return response.data;

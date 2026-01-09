@@ -51,6 +51,7 @@ class JellyseerrClient {
     this.api = axios.create({
       baseURL: `${cleanUrl}/api/v1`,
       timeout: 30000,
+      withCredentials: true, // Enable cookie persistence for session auth
       headers: {
         'Content-Type': 'application/json',
         ...(apiKey && { 'X-Api-Key': apiKey }),
@@ -96,6 +97,7 @@ class JellyseerrClient {
     this.api = axios.create({
       baseURL: `${cleanUrl}/api/v1`,
       timeout: 30000,
+      withCredentials: true, // Enable cookie persistence for session auth
       headers: {
         'Content-Type': 'application/json',
       },
@@ -108,6 +110,17 @@ class JellyseerrClient {
       hostname: cleanJellyfinUrl,
       authToken: jellyfinAuthToken,
     });
+
+    // Store the auth cookie from response if available
+    const setCookie = response.headers['set-cookie'];
+    if (setCookie) {
+      // Extract and store the connect.sid cookie for future requests
+      const sessionCookie = setCookie.find((c: string) => c.startsWith('connect.sid'));
+      if (sessionCookie) {
+        const cookieValue = sessionCookie.split(';')[0];
+        this.api.defaults.headers.Cookie = cookieValue;
+      }
+    }
 
     this.isAuthenticated = true;
     return response.data;
@@ -189,6 +202,17 @@ class JellyseerrClient {
       email,
       password,
     });
+
+    // Store the auth cookie from response if available
+    const setCookie = response.headers['set-cookie'];
+    if (setCookie) {
+      const sessionCookie = setCookie.find((c: string) => c.startsWith('connect.sid'));
+      if (sessionCookie) {
+        const cookieValue = sessionCookie.split(';')[0];
+        this.api.defaults.headers.Cookie = cookieValue;
+      }
+    }
+
     this.isAuthenticated = true;
     return response.data;
   }

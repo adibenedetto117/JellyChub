@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tanstack/react-query';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useSettingsStore, selectHasJellyseerr } from '@/stores/settingsStore';
 import { jellyseerrClient } from '@/api/jellyseerr';
 import type { JellyseerrRequestBody } from '@/types/jellyseerr';
@@ -11,6 +11,11 @@ function useJellyseerrInit() {
   const jellyfinServerUrl = useSettingsStore((s) => s.jellyseerrJellyfinServerUrl);
   const jellyfinUserId = useSettingsStore((s) => s.jellyseerrJellyfinUserId);
   const jellyfinToken = useSettingsStore((s) => s.jellyseerrJellyfinToken);
+  const clearJellyseerrCredentials = useSettingsStore((s) => s.clearJellyseerrCredentials);
+
+  // Use ref to avoid re-running effect when function reference changes
+  const clearCredentialsRef = useRef(clearJellyseerrCredentials);
+  clearCredentialsRef.current = clearJellyseerrCredentials;
 
   useEffect(() => {
     if (jellyseerrUrl && jellyseerrAuthToken && !jellyseerrClient.isInitialized()) {
@@ -24,14 +29,16 @@ function useJellyseerrInit() {
           jellyfinServerUrl,
           jellyfinUserId,
           jellyfinToken
-        ).catch((err) => {
-          console.error('Failed to re-authenticate Jellyseerr with Jellyfin:', err);
+        ).catch(() => {
+          // Clear credentials on auth failure so user can re-login
+          jellyseerrClient.clearAuth();
+          clearCredentialsRef.current();
         });
       } else if (!isJellyfinAuth && !isLocalAuth) {
         // API key auth - use the token directly
         jellyseerrClient.initialize(jellyseerrUrl, jellyseerrAuthToken);
       } else {
-        // Local auth - session may still be valid
+        // Local auth - session may still be valid, just initialize
         jellyseerrClient.initialize(jellyseerrUrl);
       }
     }
@@ -217,10 +224,15 @@ export function useCreateRequest() {
 
   return useMutation({
     mutationFn: (body: JellyseerrRequestBody) => jellyseerrClient.createRequest(body),
-    onSuccess: () => {
+    onSuccess: (_, body) => {
+      // Only invalidate requests - the specific movie/tv detail will be refetched when viewed
       queryClient.invalidateQueries({ queryKey: ['jellyseerr', 'requests'] });
-      queryClient.invalidateQueries({ queryKey: ['jellyseerr', 'movie'] });
-      queryClient.invalidateQueries({ queryKey: ['jellyseerr', 'tv'] });
+      // Invalidate the specific media item that was requested
+      if (body.mediaType === 'movie') {
+        queryClient.invalidateQueries({ queryKey: ['jellyseerr', 'movie', body.mediaId] });
+      } else {
+        queryClient.invalidateQueries({ queryKey: ['jellyseerr', 'tv', body.mediaId] });
+      }
     },
   });
 }
