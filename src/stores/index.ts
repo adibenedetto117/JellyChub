@@ -37,6 +37,7 @@ export { useSecurityStore, selectSecuritySettings, selectIsLocked, selectBiometr
 export type { SecuritySettings, AutoLockTimeout } from './securityStore';
 export { useVideoPreferencesStore, selectSubtitleOffset } from './videoPreferencesStore';
 export type { VideoPreferences } from './videoPreferencesStore';
+export { useConnectionStore, selectConnectionStatus, selectIsDisconnected, selectIsRetrying, selectConsecutiveFailures } from './connectionStore';
 
 // Storage exports - centralized MMKV storage instances
 export {

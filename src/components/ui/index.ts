@@ -12,3 +12,4 @@ export { Skeleton, SkeletonCard, SkeletonGrid, SkeletonRow, SkeletonContinueWatc
 export { CachedImage } from './CachedImage';
 export { NowPlayingBars } from './NowPlayingBars';
 export { AnimatedGradient } from './AnimatedGradient';
+export { ConnectionStatusIndicator } from './ConnectionStatusIndicator';
