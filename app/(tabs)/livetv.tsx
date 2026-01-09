@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, memo } from 'react';
+import { useState, useCallback, useMemo, memo, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -10,8 +10,9 @@ import {
   Dimensions,
   Alert,
 } from 'react-native';
+import type { FlatList as FlatListType } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
@@ -222,15 +223,44 @@ const FilterChip = memo(function FilterChip({
   );
 });
 
+// Alphabet sidebar for quick navigation when sorted by name
+const AlphabetSidebar = memo(function AlphabetSidebar({
+  letters,
+  onLetterPress,
+  accentColor,
+}: {
+  letters: string[];
+  onLetterPress: (letter: string) => void;
+  accentColor: string;
+}) {
+  return (
+    <View style={styles.alphabetSidebar}>
+      {letters.map((letter) => (
+        <Pressable
+          key={letter}
+          onPress={() => onLetterPress(letter)}
+          style={styles.alphabetLetter}
+          hitSlop={{ top: 2, bottom: 2, left: 8, right: 8 }}
+        >
+          <Text style={[styles.alphabetLetterText, { color: accentColor }]}>{letter}</Text>
+        </Pressable>
+      ))}
+    </View>
+  );
+});
+
 export default function LiveTvScreen() {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
+  const { channelId } = useLocalSearchParams<{ channelId?: string }>();
   const [refreshing, setRefreshing] = useState(false);
   const [mainTab, setMainTab] = useState<MainTab>('channels');
   const [viewMode, setViewMode] = useState<ViewMode>('channels');
   const [selectedProgram, setSelectedProgram] = useState<LiveTvProgram | null>(null);
   const [showGroupModal, setShowGroupModal] = useState(false);
   const [selectedChannelForGroup, setSelectedChannelForGroup] = useState<string | undefined>();
+  const [handledChannelId, setHandledChannelId] = useState<string | null>(null);
+  const channelListRef = useRef<FlatListType<LiveTvChannel>>(null);
 
   const currentUser = useAuthStore((s) => s.currentUser);
   const accentColor = useSettingsStore((s) => s.accentColor);
@@ -272,6 +302,15 @@ export default function LiveTvScreen() {
   });
 
   const channels = channelsData?.Items ?? [];
+
+  // Handle channelId from search navigation - auto-play the channel immediately
+  useEffect(() => {
+    if (channelId && channelId !== handledChannelId) {
+      setHandledChannelId(channelId);
+      // Navigate directly to the player - don't wait for channels to load
+      router.replace(`/player/livetv?channelId=${channelId}`);
+    }
+  }, [channelId, handledChannelId]);
 
   const guideStartTime = useMemo(() => {
     const now = new Date();
@@ -418,6 +457,35 @@ export default function LiveTvScreen() {
 
     return result;
   }, [channels, channelFilter, channelSort, favoriteChannelIds, recentChannelIds]);
+
+  // Get available letters for alphabet sidebar (only when sorted by name)
+  const availableLetters = useMemo(() => {
+    if (channelSort !== 'name') return [];
+    const letters = new Set<string>();
+    filteredChannels.forEach((ch) => {
+      const firstChar = ch.Name.charAt(0).toUpperCase();
+      if (/[A-Z]/.test(firstChar)) {
+        letters.add(firstChar);
+      } else if (/[0-9]/.test(firstChar)) {
+        letters.add('#');
+      }
+    });
+    return ['#', ...Array.from(letters).filter(l => l !== '#').sort()];
+  }, [filteredChannels, channelSort]);
+
+  // Scroll to letter in channel list
+  const handleLetterPress = useCallback((letter: string) => {
+    const index = filteredChannels.findIndex((ch) => {
+      const firstChar = ch.Name.charAt(0).toUpperCase();
+      if (letter === '#') {
+        return /[0-9]/.test(firstChar);
+      }
+      return firstChar === letter;
+    });
+    if (index !== -1 && channelListRef.current) {
+      channelListRef.current.scrollToIndex({ index, animated: true, viewPosition: 0 });
+    }
+  }, [filteredChannels]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -609,31 +677,47 @@ export default function LiveTvScreen() {
               <Text style={styles.loadingText}>{t('common.loading')}</Text>
             </View>
           ) : viewMode === 'channels' ? (
-            <FlatList
-              data={filteredChannels}
-              renderItem={renderChannel}
-              keyExtractor={(item) => item.Id}
-              contentContainerStyle={styles.listContent}
-              refreshControl={
-                <RefreshControl
-                  refreshing={refreshing}
-                  onRefresh={onRefresh}
-                  tintColor={accentColor}
+            <View style={styles.channelListContainer}>
+              <FlatList
+                ref={channelListRef}
+                data={filteredChannels}
+                renderItem={renderChannel}
+                keyExtractor={(item) => item.Id}
+                contentContainerStyle={styles.listContent}
+                refreshControl={
+                  <RefreshControl
+                    refreshing={refreshing}
+                    onRefresh={onRefresh}
+                    tintColor={accentColor}
+                  />
+                }
+                ListEmptyComponent={
+                  <View style={styles.emptyState}>
+                    <Ionicons name="tv-outline" size={48} color={colors.text.tertiary} />
+                    <Text style={styles.emptyTitle}>{t('liveTV.noChannels')}</Text>
+                    <Text style={styles.emptySubtext}>
+                      {t('common.noResults')}
+                    </Text>
+                  </View>
+                }
+                initialNumToRender={15}
+                maxToRenderPerBatch={10}
+                windowSize={5}
+                onScrollToIndexFailed={(info) => {
+                  // Fallback for when item hasn't been rendered yet
+                  setTimeout(() => {
+                    channelListRef.current?.scrollToIndex({ index: info.index, animated: true });
+                  }, 100);
+                }}
+              />
+              {availableLetters.length > 0 && (
+                <AlphabetSidebar
+                  letters={availableLetters}
+                  onLetterPress={handleLetterPress}
+                  accentColor={accentColor}
                 />
-              }
-              ListEmptyComponent={
-                <View style={styles.emptyState}>
-                  <Ionicons name="tv-outline" size={48} color={colors.text.tertiary} />
-                  <Text style={styles.emptyTitle}>{t('liveTV.noChannels')}</Text>
-                  <Text style={styles.emptySubtext}>
-                    {t('common.noResults')}
-                  </Text>
-                </View>
-              }
-              initialNumToRender={15}
-              maxToRenderPerBatch={10}
-              windowSize={5}
-            />
+              )}
+            </View>
           ) : (
             <View style={styles.guideContainer}>
               {programsLoading ? (
@@ -834,6 +918,29 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingBottom: 100,
+    paddingRight: 24, // Make room for alphabet sidebar
+  },
+  channelListContainer: {
+    flex: 1,
+    flexDirection: 'row',
+  },
+  alphabetSidebar: {
+    position: 'absolute',
+    right: 4,
+    top: 0,
+    bottom: 100,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 8,
+    zIndex: 10,
+  },
+  alphabetLetter: {
+    paddingVertical: 2,
+    paddingHorizontal: 4,
+  },
+  alphabetLetterText: {
+    fontSize: 11,
+    fontWeight: '600',
   },
   guideContainer: {
     flex: 1,

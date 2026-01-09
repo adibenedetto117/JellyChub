@@ -1,19 +1,45 @@
 import { useState, useCallback, useMemo } from 'react';
-import { View, Text, TextInput, FlatList, Pressable, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, FlatList, Pressable, ActivityIndicator, ScrollView, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
+import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore, useSettingsStore } from '@/stores';
 import { search, getImageUrl } from '@/api';
+import type { SearchMediaType } from '@/api';
 import { CachedImage } from '@/components/ui/CachedImage';
+import { SkeletonSearchResults } from '@/components/ui/Skeleton';
 import { useDebounce } from '@/hooks';
-import { getDisplayName, getDisplayImageUrl } from '@/utils';
+import { getDisplayName, getDisplayImageUrl, navigateToDetails } from '@/utils';
+import { colors } from '@/theme';
 import type { SearchHint } from '@/types/jellyfin';
+
+type FilterType = 'all' | SearchMediaType;
+
+interface FilterOption {
+  value: FilterType;
+  label: string;
+  icon: string;
+}
+
+const FILTER_OPTIONS: FilterOption[] = [
+  { value: 'all', label: 'All', icon: 'apps-outline' },
+  { value: 'Movie', label: 'Movies', icon: 'film-outline' },
+  { value: 'Series', label: 'TV Shows', icon: 'tv-outline' },
+  { value: 'TvChannel', label: 'Channels', icon: 'radio-outline' },
+  { value: 'Program', label: 'Programs', icon: 'calendar-outline' },
+  { value: 'Audio', label: 'Music', icon: 'musical-notes-outline' },
+  { value: 'MusicAlbum', label: 'Albums', icon: 'disc-outline' },
+  { value: 'MusicArtist', label: 'Artists', icon: 'person-outline' },
+  { value: 'Book', label: 'Books', icon: 'book-outline' },
+  { value: 'AudioBook', label: 'Audiobooks', icon: 'headset-outline' },
+];
 
 export default function SearchScreen() {
   const { t } = useTranslation();
   const [query, setQuery] = useState('');
+  const [activeFilter, setActiveFilter] = useState<FilterType>('all');
   const currentUser = useAuthStore((state) => state.currentUser);
   const accentColor = useSettingsStore((s) => s.accentColor);
   const hideMedia = useSettingsStore((s) => s.hideMedia);
@@ -37,9 +63,14 @@ export default function SearchScreen() {
     return getDisplayImageUrl(item.Id, rawImageUrl, hideMedia, 'Primary');
   }, [hideMedia]);
 
+  const searchOptions = useMemo(() => ({
+    limit: 50,
+    includeItemTypes: activeFilter !== 'all' ? [activeFilter as SearchMediaType] : undefined,
+  }), [activeFilter]);
+
   const { data, isLoading, isFetching } = useQuery({
-    queryKey: ['search', userId, debouncedQuery],
-    queryFn: () => search(userId, debouncedQuery, 50),
+    queryKey: ['search', userId, debouncedQuery, activeFilter],
+    queryFn: () => search(userId, debouncedQuery, searchOptions),
     enabled: !!userId && debouncedQuery.length >= 2,
     staleTime: 1000 * 60 * 5, // 5 minutes for search results
   });
@@ -59,11 +90,17 @@ export default function SearchScreen() {
       const isPdf = container === 'pdf' || path.endsWith('.pdf');
       router.push(isPdf ? `/reader/pdf?itemId=${item.Id}` : `/reader/epub?itemId=${item.Id}`);
     } else if (itemType === 'musicartist') {
-      router.push(`/details/artist/${item.Id}`);
+      navigateToDetails('artist', item.Id, '/(tabs)/search');
     } else if (itemType === 'musicalbum') {
-      router.push(`/details/album/${item.Id}`);
+      navigateToDetails('album', item.Id, '/(tabs)/search');
+    } else if (itemType === 'tvchannel') {
+      // Navigate to live TV with channel selected
+      router.push(`/(tabs)/livetv?channelId=${item.Id}`);
+    } else if (itemType === 'program') {
+      // Navigate to program details
+      navigateToDetails('program', item.Id, '/(tabs)/search');
     } else {
-      router.push(`/details/${itemType}/${item.Id}`);
+      navigateToDetails(itemType, item.Id, '/(tabs)/search');
     }
   }, []);
 
@@ -141,13 +178,46 @@ export default function SearchScreen() {
             </Pressable>
           )}
         </View>
+
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filterScroll}
+        >
+          {FILTER_OPTIONS.map((filter) => (
+            <Pressable
+              key={filter.value}
+              onPress={() => setActiveFilter(filter.value)}
+              style={[
+                styles.filterChip,
+                activeFilter === filter.value && { backgroundColor: accentColor + '20', borderColor: accentColor },
+              ]}
+            >
+              <Ionicons
+                name={filter.icon as any}
+                size={16}
+                color={activeFilter === filter.value ? accentColor : 'rgba(255,255,255,0.5)'}
+              />
+              <Text
+                style={[
+                  styles.filterChipText,
+                  activeFilter === filter.value && { color: accentColor },
+                ]}
+              >
+                {filter.label}
+              </Text>
+            </Pressable>
+          ))}
+        </ScrollView>
       </View>
 
       {query.length < 2 ? (
         <View className="flex-1 items-center justify-center">
           <Text className="text-text-tertiary">{t('search.startTyping')}</Text>
         </View>
-      ) : results.length === 0 && !isLoading ? (
+      ) : isLoading && results.length === 0 ? (
+        <SkeletonSearchResults count={8} />
+      ) : results.length === 0 ? (
         <View className="flex-1 items-center justify-center">
           <Text className="text-text-tertiary">{t('common.noResults')}</Text>
         </View>
@@ -170,3 +240,27 @@ export default function SearchScreen() {
     </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+  filterScroll: {
+    paddingTop: 12,
+    gap: 8,
+    flexDirection: 'row',
+  },
+  filterChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: colors.surface.default,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'transparent',
+    gap: 6,
+  },
+  filterChipText: {
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 13,
+    fontWeight: '500',
+  },
+});
