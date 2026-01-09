@@ -75,11 +75,10 @@ function getLibraryScreenName(collectionType: Library['CollectionType']): string
 const SCREEN_OPTIONS = {
   headerShown: false,
   lazy: true,
+  unmountOnBlur: true, // Unmount inactive tabs to free memory and stop queries
   tabBarStyle: { display: 'none' } as const,
-  animation: 'fade' as const,
-  animationDuration: 150,
-  // freezeOnBlur disabled - it interferes with back navigation in Tab navigators
-  freezeOnBlur: false,
+  animation: 'none' as const, // Disable animation for instant tab switches
+  freezeOnBlur: true, // Freeze inactive screens to prevent re-renders
 } as const;
 
 const TV_SCREEN_OPTIONS = {
@@ -105,7 +104,6 @@ export default function TabLayout() {
     queryFn: () => getLibraries(userId),
     enabled: !!userId && !offlineMode,
     staleTime: Infinity,
-    refetchOnMount: false,
   });
 
   // Memoize selected libraries computation

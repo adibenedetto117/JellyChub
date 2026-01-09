@@ -13,15 +13,14 @@ import { useRouter, usePathname } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
+import { useShallow } from 'zustand/react/shallow';
 import { useSettingsStore, useAuthStore } from '@/stores';
-import { selectHasJellyseerr, DEFAULT_TAB_ORDER, type TabId } from '@/stores/settingsStore';
+import { selectBottomNavSettings, DEFAULT_TAB_ORDER, type TabId } from '@/stores/settingsStore';
 import { getLibraries } from '@/api';
 import { platformSelect, isTV } from '@/utils/platform';
 import { haptics } from '@/utils/haptics';
 import type { Library } from '@/types/jellyfin';
 
-// Spring config for press animations - defined outside to prevent recreation
-const PRESS_SPRING_CONFIG = { damping: 15, stiffness: 400 };
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -53,13 +52,13 @@ const NavTab = memo(function NavTab({ icon, iconFilled, name, isActive, accentCo
 
   const handlePressIn = useCallback(() => {
     if (!reduceMotion) {
-      scale.value = withSpring(0.9, PRESS_SPRING_CONFIG);
+      scale.value = withTiming(0.9, { duration: 100 });
     }
   }, [scale, reduceMotion]);
 
   const handlePressOut = useCallback(() => {
     if (!reduceMotion) {
-      scale.value = withSpring(1, PRESS_SPRING_CONFIG);
+      scale.value = withTiming(1, { duration: 100 });
     }
   }, [scale, reduceMotion]);
 
@@ -159,6 +158,7 @@ interface MoreMenuProps {
   onClose: () => void;
   onNavigate: (route: string) => void;
   moreMenuTabs: string[];
+  mainBarTabIds: Set<string>;
   hasRadarr: boolean;
   hasSonarr: boolean;
   hasJellyseerr: boolean;
@@ -177,6 +177,7 @@ const MoreMenu = memo(function MoreMenu({
   onClose,
   onNavigate,
   moreMenuTabs,
+  mainBarTabIds,
   hasRadarr,
   hasSonarr,
   hasJellyseerr,
@@ -191,6 +192,8 @@ const MoreMenu = memo(function MoreMenu({
 
   const visibleItems = useMemo(() => {
     return moreMenuTabs.filter((tabId) => {
+      // Don't show items that are already in the main bottom bar
+      if (mainBarTabIds.has(tabId)) return false;
       if (tabId === 'radarr' && !hasRadarr) return false;
       if (tabId === 'sonarr' && !hasSonarr) return false;
       if (tabId === 'jellyseerr' && !hasJellyseerr) return false;
@@ -201,7 +204,7 @@ const MoreMenu = memo(function MoreMenu({
       }
       return true;
     });
-  }, [moreMenuTabs, hasRadarr, hasSonarr, hasJellyseerr, hasLiveTV, libraries]);
+  }, [moreMenuTabs, mainBarTabIds, hasRadarr, hasSonarr, hasJellyseerr, hasLiveTV, libraries]);
 
   const getItemInfo = useCallback((tabId: string): { icon: IconName; name: string; route: string; color: string } | null => {
     if (!(tabId in TAB_ICONS)) {
@@ -391,21 +394,19 @@ export const BottomNav = memo(function BottomNav() {
   const router = useRouter();
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
-  const bottomBarConfig = useSettingsStore((s) => s.bottomBarConfig);
-  const accentColor = useSettingsStore((s) => s.accentColor);
-  const offlineMode = useSettingsStore((s) => s.offlineMode);
-  const reduceMotion = useSettingsStore((s) => s.reduceMotion);
-  const hasJellyseerr = useSettingsStore(selectHasJellyseerr);
-  const radarrUrl = useSettingsStore((s) => s.radarrUrl);
-  const radarrApiKey = useSettingsStore((s) => s.radarrApiKey);
-  const sonarrUrl = useSettingsStore((s) => s.sonarrUrl);
-  const sonarrApiKey = useSettingsStore((s) => s.sonarrApiKey);
+  // Use compound selector with useShallow to reduce subscriptions (9 → 1)
+  const {
+    bottomBarConfig,
+    accentColor,
+    offlineMode,
+    reduceMotion,
+    hasJellyseerr,
+    hasRadarr,
+    hasSonarr,
+  } = useSettingsStore(useShallow(selectBottomNavSettings));
   const currentUser = useAuthStore((s) => s.currentUser);
   const userId = currentUser?.Id ?? '';
   const [showMoreMenu, setShowMoreMenu] = useState(false);
-
-  const hasRadarr = !!(radarrUrl && radarrApiKey);
-  const hasSonarr = !!(sonarrUrl && sonarrApiKey);
   const moreMenuTabs = bottomBarConfig.moreMenuTabs ?? [];
 
   // Memoize admin check
@@ -524,19 +525,21 @@ export const BottomNav = memo(function BottomNav() {
   }, [offlineMode, bottomBarConfig, hasJellyseerr, isAdmin, libraries, hasRadarr, hasSonarr, hasLiveTV, t]);
 
   // Memoize the entire tabs array computation
-  const tabs = useMemo(() => {
+  const { tabs, mainBarTabIds } = useMemo(() => {
     const result: TabConfig[] = [];
     const usedScreenNames = new Set<string>();
+    const tabIds = new Set<string>();
 
     for (const tabId of tabOrder) {
       const config = getTabConfig(tabId);
       if (config && !usedScreenNames.has(config.id)) {
         result.push(config);
         usedScreenNames.add(config.id);
+        tabIds.add(tabId); // Track original tab IDs shown in main bar
       }
     }
 
-    return result;
+    return { tabs: result, mainBarTabIds: tabIds };
   }, [tabOrder, getTabConfig]);
 
   // Memoize isTabActive function
@@ -593,6 +596,7 @@ export const BottomNav = memo(function BottomNav() {
         onClose={() => setShowMoreMenu(false)}
         onNavigate={(route) => router.navigate(route as any)}
         moreMenuTabs={moreMenuTabs}
+        mainBarTabIds={mainBarTabIds}
         hasRadarr={hasRadarr}
         hasSonarr={hasSonarr}
         hasJellyseerr={hasJellyseerr}

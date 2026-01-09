@@ -226,6 +226,13 @@ interface SettingsState extends Omit<AppSettings, 'servers'> {
 
   setLanguage: (language: string | null) => void;
 
+  // Batch update for multiple settings at once (prevents multiple re-renders)
+  batchUpdate: (updates: Partial<Pick<SettingsState,
+    'theme' | 'accentColor' | 'enableAnimations' | 'reduceMotion' |
+    'downloadQuality' | 'downloadOverWifiOnly' | 'autoRemoveWatchedDownloads' |
+    'maxDownloadSize' | 'tvMode' | 'offlineMode' | 'hideMedia' | 'hapticsEnabled' | 'language'
+  >>) => void;
+
   resetToDefaults: () => void;
 }
 
@@ -444,6 +451,9 @@ export const useSettingsStore = create<SettingsState>()(
 
       setLanguage: (language) => set({ language }),
 
+      // Batch update multiple settings in a single state update
+      batchUpdate: (updates) => set(updates),
+
       resetToDefaults: () => set(initialState),
     }),
     {
@@ -530,3 +540,24 @@ export const selectHasRadarr = (state: SettingsState) =>
   !!state.radarrUrl && !!state.radarrApiKey;
 export const selectHasSonarr = (state: SettingsState) =>
   !!state.sonarrUrl && !!state.sonarrApiKey;
+
+// Compound selectors to reduce re-renders by combining related state
+export const selectBottomNavSettings = (state: SettingsState) => ({
+  bottomBarConfig: state.bottomBarConfig,
+  accentColor: state.accentColor,
+  offlineMode: state.offlineMode,
+  reduceMotion: state.reduceMotion,
+  hasJellyseerr: !!state.jellyseerrUrl && !!state.jellyseerrAuthToken,
+  hasRadarr: !!state.radarrUrl && !!state.radarrApiKey,
+  hasSonarr: !!state.sonarrUrl && !!state.sonarrApiKey,
+});
+
+export const selectMiniPlayerSettings = (state: SettingsState) => ({
+  accentColor: state.accentColor,
+  hideMedia: state.hideMedia,
+});
+
+export const selectPosterCardSettings = (state: SettingsState) => ({
+  accentColor: state.accentColor,
+  hideMedia: state.hideMedia,
+});
