@@ -45,7 +45,7 @@ import type {
   SonarrEpisode,
 } from '@/services/sonarrService';
 import { colors, spacing, borderRadius } from '@/theme';
-import { formatBytes, goBack } from '@/utils';
+import { formatBytes } from '@/utils';
 import { Skeleton } from '@/components/ui';
 
 const SONARR_BLUE = '#35c5f4';
@@ -1749,7 +1749,7 @@ export default function SonarrManageScreen() {
       <RNAnimated.View style={[styles.header, { opacity: headerOpacity }]}>
         <LinearGradient colors={[SONARR_BLUE, '#1a8fc9']} style={styles.headerGradient}>
           <View style={styles.headerTop}>
-            <Pressable style={styles.backBtn} onPress={() => goBack('/(tabs)/settings')}>
+            <Pressable style={styles.backBtn} onPress={() => router.back()}>
               <Ionicons name="chevron-back" size={24} color="#fff" />
             </Pressable>
             <View style={styles.headerTitleContainer}>

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, memo } from 'react';
 import {
   View,
   Text,
@@ -42,7 +42,7 @@ import type {
   RadarrRelease,
 } from '@/services/radarrService';
 import { colors, spacing, borderRadius } from '@/theme';
-import { formatBytes, goBack } from '@/utils';
+import { formatBytes } from '@/utils';
 import { Skeleton } from '@/components/ui';
 
 const RADARR_ORANGE = '#ffc230';
@@ -103,14 +103,12 @@ function getQualityBadgeColor(quality: string): string {
   return colors.text.tertiary;
 }
 
-function MovieCard({
+const MovieCard = memo(function MovieCard({
   movie,
   onPress,
-  delay = 0,
 }: {
   movie: RadarrMovie;
   onPress: () => void;
-  delay?: number;
 }) {
   const poster = movie.images.find((i) => i.coverType === 'poster');
   const posterUrl = poster?.remoteUrl || poster?.url;
@@ -125,11 +123,10 @@ function MovieCard({
   const status = getStatusInfo();
 
   return (
-    <Animated.View entering={FadeInDown.delay(delay).springify()}>
-      <Pressable
-        style={({ pressed }) => [styles.movieCard, pressed && styles.movieCardPressed]}
-        onPress={onPress}
-      >
+    <Pressable
+      style={({ pressed }) => [styles.movieCard, pressed && styles.movieCardPressed]}
+      onPress={onPress}
+    >
         <View style={styles.moviePosterContainer}>
           {posterUrl ? (
             <Image source={{ uri: posterUrl }} style={styles.moviePoster} contentFit="cover" />
@@ -168,18 +165,15 @@ function MovieCard({
           </View>
         </View>
       </Pressable>
-    </Animated.View>
   );
-}
+});
 
-function QueueCard({
+const QueueCard = memo(function QueueCard({
   item,
   onRemove,
-  delay = 0,
 }: {
   item: RadarrQueueItem;
   onRemove: () => void;
-  delay?: number;
 }) {
   const progress = item.size > 0 ? ((item.size - item.sizeleft) / item.size) * 100 : 0;
   const progressAnim = useSharedValue(0);
@@ -204,7 +198,7 @@ function QueueCard({
   const qualityColor = getQualityBadgeColor(item.quality?.quality?.name || '');
 
   return (
-    <Animated.View entering={SlideInRight.delay(delay).springify()} style={styles.queueCard}>
+    <View style={styles.queueCard}>
       <LinearGradient
         colors={[`${status.color}08`, 'transparent']}
         style={styles.queueGradientBg}
@@ -255,27 +249,25 @@ function QueueCard({
           <Text style={styles.queueIndexer}>{item.indexer}</Text>
         )}
       </View>
-    </Animated.View>
+    </View>
   );
-}
+});
 
-function SearchResultCard({
+const SearchResultCard = memo(function SearchResultCard({
   result,
   onAdd,
   existingMovie,
-  delay = 0,
 }: {
   result: RadarrLookupResult;
   onAdd: () => void;
   existingMovie?: RadarrMovie;
-  delay?: number;
 }) {
   const poster = result.images.find((i) => i.coverType === 'poster');
   const posterUrl = result.remotePoster || poster?.remoteUrl || poster?.url;
   const rating = result.ratings?.tmdb?.value || result.ratings?.imdb?.value || 0;
 
   return (
-    <Animated.View entering={FadeInDown.delay(delay).springify()} style={styles.searchCard}>
+    <View style={styles.searchCard}>
       <View style={styles.searchPosterContainer}>
         {posterUrl ? (
           <Image source={{ uri: posterUrl }} style={styles.searchPoster} contentFit="cover" />
@@ -318,9 +310,9 @@ function SearchResultCard({
           </LinearGradient>
         </Pressable>
       )}
-    </Animated.View>
+    </View>
   );
-}
+});
 
 function MovieDetailModal({
   visible,
@@ -979,7 +971,7 @@ export default function RadarrManageScreen() {
       <RNAnimated.View style={[styles.header, { opacity: headerOpacity }]}>
         <LinearGradient colors={[RADARR_ORANGE, '#f5a623']} style={styles.headerGradient}>
           <View style={styles.headerTop}>
-            <Pressable style={styles.backBtn} onPress={() => goBack('/(tabs)/settings')}>
+            <Pressable style={styles.backBtn} onPress={() => router.back()}>
               <Ionicons name="chevron-back" size={24} color="#000" />
             </Pressable>
             <View style={styles.headerTitleContainer}>
@@ -1102,17 +1094,28 @@ export default function RadarrManageScreen() {
               subtitle={filter !== 'all' ? 'Try changing your filter' : 'Add movies from the search tab'}
             />
           ) : (
-            <View style={styles.movieGrid}>
-              {filteredMovies.map((movie, index) => (
-                <View key={movie.id} style={{ width: cardWidth }}>
+            <FlatList
+              data={filteredMovies}
+              keyExtractor={(item) => item.id.toString()}
+              numColumns={numColumns}
+              key={numColumns}
+              contentContainerStyle={styles.movieGrid}
+              columnWrapperStyle={styles.movieGridRow}
+              renderItem={({ item }) => (
+                <View style={{ width: cardWidth }}>
                   <MovieCard
-                    movie={movie}
-                    onPress={() => handleMoviePress(movie)}
-                    delay={Math.min(index * 30, 300)}
+                    movie={item}
+                    onPress={() => handleMoviePress(item)}
                   />
                 </View>
-              ))}
-            </View>
+              )}
+              initialNumToRender={12}
+              maxToRenderPerBatch={12}
+              windowSize={5}
+              removeClippedSubviews={true}
+              scrollEnabled={false}
+              nestedScrollEnabled
+            />
           )
         )}
 
@@ -1135,16 +1138,23 @@ export default function RadarrManageScreen() {
               subtitle="No downloads in progress"
             />
           ) : (
-            <View style={styles.queueList}>
-              {queue.map((item, index) => (
+            <FlatList
+              data={queue}
+              keyExtractor={(item) => item.id.toString()}
+              contentContainerStyle={styles.queueList}
+              renderItem={({ item }) => (
                 <QueueCard
-                  key={item.id}
                   item={item}
                   onRemove={() => handleRemoveFromQueue(item.id)}
-                  delay={index * 50}
                 />
-              ))}
-            </View>
+              )}
+              initialNumToRender={10}
+              maxToRenderPerBatch={10}
+              windowSize={5}
+              removeClippedSubviews={true}
+              scrollEnabled={false}
+              nestedScrollEnabled
+            />
           )
         )}
 
@@ -1170,17 +1180,24 @@ export default function RadarrManageScreen() {
               subtitle="Find movies to add to your library"
             />
           ) : (
-            <View style={styles.searchResultsList}>
-              {searchResults.map((result, index) => (
+            <FlatList
+              data={searchResults}
+              keyExtractor={(item) => item.tmdbId.toString()}
+              contentContainerStyle={styles.searchResultsList}
+              renderItem={({ item }) => (
                 <SearchResultCard
-                  key={result.tmdbId}
-                  result={result}
-                  onAdd={() => handleAddMovie(result)}
-                  existingMovie={movies.find((m) => m.tmdbId === result.tmdbId)}
-                  delay={index * 50}
+                  result={item}
+                  onAdd={() => handleAddMovie(item)}
+                  existingMovie={movies.find((m) => m.tmdbId === item.tmdbId)}
                 />
-              ))}
-            </View>
+              )}
+              initialNumToRender={10}
+              maxToRenderPerBatch={10}
+              windowSize={5}
+              removeClippedSubviews={true}
+              scrollEnabled={false}
+              nestedScrollEnabled
+            />
           )
         )}
       </RNAnimated.ScrollView>
@@ -1404,11 +1421,13 @@ const styles = StyleSheet.create({
     color: RADARR_ORANGE,
   },
   movieGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
     paddingHorizontal: spacing[4],
     paddingTop: spacing[4],
+  },
+  movieGridRow: {
+    justifyContent: 'flex-start',
     gap: spacing[3],
+    marginBottom: spacing[3],
   },
   movieCard: {
     marginBottom: spacing[2],

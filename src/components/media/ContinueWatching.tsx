@@ -1,6 +1,6 @@
 import { View, Text, FlatList, Pressable, StyleSheet } from 'react-native';
 import { memo, useCallback, useMemo } from 'react';
-import Animated, { FadeIn, useSharedValue, useAnimatedStyle, withSpring } from 'react-native-reanimated';
+import Animated, { FadeIn, useSharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
@@ -26,8 +26,6 @@ interface ContinueCardProps {
   hideMedia: boolean;
 }
 
-const SPRING_CONFIG = { damping: 15, stiffness: 400 };
-
 const ContinueCard = memo(function ContinueCard({ item, onPress, cardWidth, cardHeight, fontSize, accentColor, hideMedia }: ContinueCardProps) {
   const progress = getWatchProgress(item);
   const remainingTicks = (item.RunTimeTicks ?? 0) - (item.UserData?.PlaybackPositionTicks ?? 0);
@@ -40,11 +38,11 @@ const ContinueCard = memo(function ContinueCard({ item, onPress, cardWidth, card
   }));
 
   const handlePressIn = useCallback(() => {
-    scale.value = withSpring(0.97, SPRING_CONFIG);
+    scale.value = withTiming(0.97, { duration: 100 });
   }, [scale]);
 
   const handlePressOut = useCallback(() => {
-    scale.value = withSpring(1, SPRING_CONFIG);
+    scale.value = withTiming(1, { duration: 100 });
   }, [scale]);
 
   const imageTag = item.BackdropImageTags?.[0] ?? item.ImageTags?.Primary;

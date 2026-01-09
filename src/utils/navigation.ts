@@ -1,12 +1,14 @@
 import { router } from 'expo-router';
 
 /**
- * Navigate back to the specified source or fallback.
- * The source should be read from the URL param 'from'.
+ * Navigate back properly. Uses router.navigate() for instant navigation
+ * to the source/fallback route. This is faster than replace() and more
+ * reliable than back() in Expo Router tabs.
  */
-export function goBack(source: string | undefined, fallback: string = '/(tabs)/home') {
-  const destination = source || fallback;
-  router.replace(destination as any);
+export function goBack(source?: string, fallback: string = '/(tabs)/home') {
+  const target = source || fallback;
+  // Use navigate for instant switching - it reuses existing screens
+  router.navigate(target as any);
 }
 
 /**
@@ -34,9 +36,10 @@ export function setNavigationSource(_source: string) {
 export function dismissModal(fallback?: string) {
   if (router.canDismiss()) {
     router.dismiss();
+  } else if (fallback) {
+    // Use navigate for instant switching
+    router.navigate(fallback as any);
   } else if (router.canGoBack()) {
     router.back();
-  } else if (fallback) {
-    router.replace(fallback as any);
   }
 }

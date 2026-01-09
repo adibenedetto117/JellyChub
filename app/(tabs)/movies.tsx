@@ -7,7 +7,7 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore, useSettingsStore } from '@/stores';
 import { getLibraries, getItems, getImageUrl, getLibraryIdsByType, getItemsFromMultipleLibraries, getGenres } from '@/api';
-import { SearchButton, AnimatedGradient } from '@/components/ui';
+import { SearchButton, AnimatedGradient, SkeletonGrid } from '@/components/ui';
 import { FilterSortModal, DEFAULT_FILTERS, getActiveFilterCount } from '@/components/library';
 import type { FilterOptions, SortOption } from '@/components/library';
 import { getDisplayName, getDisplayImageUrl, navigateToDetails } from '@/utils';
@@ -23,6 +23,10 @@ const POSTER_HEIGHT = POSTER_WIDTH * 1.5;
 
 const ITEMS_PER_PAGE = 100;
 const FULL_ALPHABET = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '#'];
+
+// Row heights for getItemLayout optimization
+const MOVIE_ROW_HEIGHT = 97; // 72px image + 24px padding + 1px border
+const SECTION_HEADER_HEIGHT = 37; // 16px padding + ~20px text + hairline
 
 const MovieCard = memo(function MovieCard({ item, onPress, showRating, hideMedia }: { item: BaseItem; onPress: () => void; showRating?: boolean; hideMedia: boolean }) {
   const rawImageUrl = item.ImageTags?.Primary
@@ -144,7 +148,7 @@ export default function MoviesScreen() {
     queryKey: ['libraries', userId],
     queryFn: () => getLibraries(userId),
     enabled: !!userId,
-    staleTime: 1000 * 60 * 5,
+    staleTime: Infinity,
   });
 
   const movieLibraryIds = useMemo(() => {
@@ -156,7 +160,7 @@ export default function MoviesScreen() {
     queryKey: ['genres', 'movies', userId],
     queryFn: () => getGenres(userId, undefined, ['Movie']),
     enabled: !!userId,
-    staleTime: 1000 * 60 * 30,
+    staleTime: Infinity,
   });
 
   const availableGenres = useMemo(() => {
@@ -292,7 +296,7 @@ export default function MoviesScreen() {
     <MovieCard item={item} onPress={() => handleItemPress(item)} showRating={filters.sortBy !== 'SortName'} hideMedia={hideMedia} />
   ), [handleItemPress, filters.sortBy, hideMedia]);
 
-  const renderSectionHeader = useCallback(({ section }: { section: { title: string; data: BaseItem[] } }) => (
+  const renderSectionHeader = useCallback(({ section }: any) => (
     <View style={styles.sectionHeaderContainer}>
       <Text style={[styles.sectionHeaderText, { color: accentColor }]}>{section.title}</Text>
     </View>
@@ -319,12 +323,18 @@ export default function MoviesScreen() {
         ListFooterComponent={renderFooter}
         ListEmptyComponent={
           isLoading ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator color={accentColor} size="large" />
-              <Text style={styles.loadingText}>Loading movies...</Text>
-            </View>
+            <SkeletonGrid count={12} itemWidth={POSTER_WIDTH - 8} itemHeight={POSTER_HEIGHT} />
           ) : null
         }
+        initialNumToRender={15}
+        maxToRenderPerBatch={15}
+        windowSize={7}
+        removeClippedSubviews={true}
+        getItemLayout={(data, index) => ({
+          length: MOVIE_ROW_HEIGHT,
+          offset: MOVIE_ROW_HEIGHT * index,
+          index,
+        })}
       />
       <AlphabetScroller
         availableLetters={availableLetters}

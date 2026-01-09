@@ -6,10 +6,10 @@ import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tansta
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { useAuthStore, useSettingsStore } from '@/stores';
+import { useAuthStore, useSettingsStore, usePlayerStore } from '@/stores';
 import { getLibraries, getItems, getImageUrl, getLatestMedia, getArtists, createPlaylist, getLibraryIdsByType, getItemsFromMultipleLibraries, getLatestMediaFromMultipleLibraries, getRecentlyPlayed, getMostPlayed } from '@/api';
-import { SkeletonGrid, SearchButton, AnimatedGradient } from '@/components/ui';
-import { getDisplayName, getDisplayImageUrl, getDisplayArtist, formatPlayerTime, ticksToMs } from '@/utils';
+import { SkeletonGrid, SkeletonRow, SearchButton, AnimatedGradient } from '@/components/ui';
+import { getDisplayName, getDisplayImageUrl, getDisplayArtist, formatPlayerTime, ticksToMs, navigateToDetails } from '@/utils';
 import { colors } from '@/theme';
 import type { BaseItem, MusicAlbum, AudioTrack } from '@/types/jellyfin';
 
@@ -312,6 +312,8 @@ export default function MusicScreen() {
     queryKey: ['libraries', userId],
     queryFn: () => getLibraries(userId),
     enabled: !!userId,
+    staleTime: Infinity, // Libraries rarely change
+    gcTime: 1000 * 60 * 60, // Keep in cache for 1 hour
   });
 
   const musicLibraryIds = useMemo(() => {
@@ -331,12 +333,16 @@ export default function MusicScreen() {
       recursive: true,
     }),
     enabled: !!userId && hasMusicLibraries,
+    staleTime: Infinity,
+    gcTime: 1000 * 60 * 10,
   });
 
   const { data: recentlyAdded, refetch: refetchAdded } = useQuery({
     queryKey: ['latestMusic', userId, musicLibraryIds.join(',')],
     queryFn: () => getLatestMediaFromMultipleLibraries(userId, musicLibraryIds, 10),
     enabled: !!userId && hasMusicLibraries,
+    staleTime: Infinity,
+    gcTime: 1000 * 60 * 30,
   });
 
 
@@ -357,7 +363,7 @@ export default function MusicScreen() {
       return totalFetched < lastPage.TotalRecordCount ? totalFetched : undefined;
     },
     enabled: !!userId && hasMusicLibraries && viewMode === 'albums',
-    staleTime: 1000 * 60 * 30,
+    staleTime: Infinity,
   });
 
   const { data: allArtists, isLoading: artistsLoading, refetch: refetchArtists, fetchNextPage: fetchNextArtists, hasNextPage: hasNextArtists, isFetchingNextPage: isFetchingNextArtists } = useInfiniteQuery({
@@ -390,7 +396,7 @@ export default function MusicScreen() {
       return totalFetched < lastPage.TotalRecordCount ? totalFetched : undefined;
     },
     enabled: !!userId && hasMusicLibraries && viewMode === 'artists',
-    staleTime: 1000 * 60 * 60,
+    staleTime: Infinity,
   });
 
   const { data: playlists, isLoading: playlistsLoading, refetch: refetchPlaylists } = useQuery({
@@ -410,7 +416,7 @@ export default function MusicScreen() {
     queryKey: ['recentlyPlayedTracks', userId],
     queryFn: () => getRecentlyPlayed(userId, 15, ['Audio']),
     enabled: !!userId && hasMusicLibraries,
-    staleTime: 1000 * 60 * 5,
+    staleTime: Infinity,
   });
 
   // Most played tracks
@@ -418,7 +424,7 @@ export default function MusicScreen() {
     queryKey: ['mostPlayedTracks', userId],
     queryFn: () => getMostPlayed(userId, 15, ['Audio']),
     enabled: !!userId && hasMusicLibraries,
-    staleTime: 1000 * 60 * 5,
+    staleTime: Infinity,
   });
 
   // All songs query for Songs tab
@@ -440,7 +446,7 @@ export default function MusicScreen() {
       return totalFetched < lastPage.TotalRecordCount ? totalFetched : undefined;
     },
     enabled: !!userId && hasMusicLibraries && viewMode === 'songs',
-    staleTime: 1000 * 60 * 30,
+    staleTime: Infinity,
   });
 
   const albums = allAlbums?.pages.flatMap((p) => p.Items) ?? [];
@@ -621,18 +627,28 @@ export default function MusicScreen() {
   }, [refetchRecent, refetchAdded, refetchAlbums, refetchArtists, refetchPlaylists, refetchRecentTracks, refetchMostPlayed, refetchSongs]);
 
   const handleAlbumPress = useCallback((item: BaseItem) => {
-    router.push(`/details/album/${item.Id}`);
+    navigateToDetails('album', item.Id, '/(tabs)/music');
   }, []);
 
   const handleArtistPress = useCallback((item: BaseItem) => {
-    router.push(`/details/artist/${item.Id}`);
+    navigateToDetails('artist', item.Id, '/(tabs)/music');
   }, []);
 
   const handlePlaylistPress = useCallback((item: BaseItem) => {
-    router.push(`/(tabs)/playlist/${item.Id}`);
+    router.push(`/(tabs)/playlist/${item.Id}?from=${encodeURIComponent('/(tabs)/music')}`);
   }, []);
 
-  const handleSongPress = useCallback((item: BaseItem) => {
+  const handleSongPress = useCallback((item: BaseItem, sourceList?: BaseItem[]) => {
+    // If we have a source list, set up the queue with all items
+    if (sourceList && sourceList.length > 0) {
+      const itemIndex = sourceList.findIndex(i => i.Id === item.Id);
+      const queueItems = sourceList.map((track, idx) => ({
+        id: track.Id,
+        item: track,
+        index: idx,
+      }));
+      usePlayerStore.getState().setQueue(queueItems, Math.max(0, itemIndex));
+    }
     router.push(`/player/music?itemId=${item.Id}`);
   }, []);
 
@@ -685,7 +701,7 @@ export default function MusicScreen() {
     <SongRow item={item} onPress={() => handleSongPress(item)} hideMedia={hideMedia} />
   ), [handleSongPress, hideMedia]);
 
-  const renderSectionHeader = useCallback(({ section }: { section: { title: string; data: BaseItem[] } }) => (
+  const renderSectionHeader = useCallback(({ section }: any) => (
     <View style={styles.sectionHeaderContainer}>
       <Text style={[styles.sectionHeaderText, { color: accentColor }]}>{section.title}</Text>
     </View>
@@ -704,7 +720,7 @@ export default function MusicScreen() {
           <SectionHeader title="Recently Played" icon="time-outline" onSeeAll={setViewModeSongs} />
           <View style={styles.tracksSection}>
             {recentlyPlayedTracks.Items.slice(0, 5).map((item) => (
-              <SongRow key={item.Id} item={item} onPress={() => handleSongPress(item)} hideMedia={hideMedia} />
+              <SongRow key={item.Id} item={item} onPress={() => handleSongPress(item, recentlyPlayedTracks.Items)} hideMedia={hideMedia} />
             ))}
           </View>
         </>
@@ -716,7 +732,7 @@ export default function MusicScreen() {
           <SectionHeader title="Most Played" icon="trending-up" onSeeAll={setViewModeSongs} />
           <View style={styles.tracksSection}>
             {mostPlayedTracks.Items.slice(0, 5).map((item) => (
-              <SongRow key={item.Id} item={item} onPress={() => handleSongPress(item)} hideMedia={hideMedia} showPlayCount />
+              <SongRow key={item.Id} item={item} onPress={() => handleSongPress(item, mostPlayedTracks.Items)} hideMedia={hideMedia} showPlayCount />
             ))}
           </View>
         </>
@@ -782,10 +798,7 @@ export default function MusicScreen() {
         }
         ListEmptyComponent={
           albumsLoading ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator color={accentColor} size="large" />
-              <Text style={styles.loadingText}>Loading albums...</Text>
-            </View>
+            <SkeletonRow title={false} cardWidth={64} cardHeight={64} count={8} isSquare />
           ) : (
             <View style={styles.emptyState}>
               <Text style={styles.emptyStateText}>No albums found</Text>
@@ -830,10 +843,7 @@ export default function MusicScreen() {
         }
         ListEmptyComponent={
           artistsLoading ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator color={accentColor} size="large" />
-              <Text style={styles.loadingText}>Loading artists...</Text>
-            </View>
+            <SkeletonRow title={false} cardWidth={56} cardHeight={56} count={8} isSquare />
           ) : (
             <View style={styles.emptyState}>
               <Text style={styles.emptyStateText}>No artists found</Text>
@@ -876,10 +886,7 @@ export default function MusicScreen() {
         }
         ListEmptyComponent={
           playlistsLoading ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator color={accentColor} size="large" />
-              <Text style={styles.loadingText}>Loading playlists...</Text>
-            </View>
+            <SkeletonRow title={false} cardWidth={56} cardHeight={56} count={8} isSquare />
           ) : (
             <View style={styles.emptyState}>
               <Text style={styles.emptyStateText}>No playlists yet</Text>
@@ -927,10 +934,7 @@ export default function MusicScreen() {
         }
         ListEmptyComponent={
           songsLoading ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator color={accentColor} size="large" />
-              <Text style={styles.loadingText}>Loading songs...</Text>
-            </View>
+            <SkeletonRow title={false} cardWidth={64} cardHeight={64} count={8} isSquare />
           ) : (
             <View style={styles.emptyState}>
               <Text style={styles.emptyStateText}>No songs found</Text>

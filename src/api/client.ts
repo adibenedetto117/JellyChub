@@ -109,13 +109,8 @@ export function getImageUrl(
 ): string | null {
   if (!jellyfinClient.isInitialized() || !itemId) return null;
 
-  const { maxWidth, maxHeight, quality = 90, tag } = options;
-  const params = new URLSearchParams();
-
-  if (maxWidth) params.set('maxWidth', maxWidth.toString());
-  if (maxHeight) params.set('maxHeight', maxHeight.toString());
-  params.set('quality', quality.toString());
-  if (tag) params.set('tag', tag);
+  const { buildImageParams } = require('./urlParams');
+  const params = buildImageParams(options);
 
   return `${jellyfinClient.url}/Items/${itemId}/Images/${imageType}?${params.toString()}`;
 }

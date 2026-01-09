@@ -13,7 +13,7 @@ import { CachedImage } from '@/components/ui/CachedImage';
 import { AddToArrModal } from '@/components/media/AddToArrModal';
 import { radarrService, sonarrService } from '@/services';
 import { colors } from '@/theme';
-import { getDisplayImageUrl, goBack } from '@/utils';
+import { getDisplayImageUrl } from '@/utils';
 import { MEDIA_STATUS } from '@/types/jellyseerr';
 import type { JellyseerrMovieDetails, JellyseerrTvDetails } from '@/types/jellyseerr';
 
@@ -265,7 +265,7 @@ export default function JellyseerrDetailsScreen() {
         <Stack.Screen options={{ headerShown: false }} />
         <Ionicons name="alert-circle" size={64} color={colors.text.tertiary} />
         <Text style={styles.errorText}>Details not found</Text>
-        <Pressable onPress={() => goBack('/(tabs)/home')}>
+        <Pressable onPress={() => router.back()}>
           <LinearGradient
             colors={[JELLYSEERR_PURPLE, JELLYSEERR_PURPLE_DARK]}
             style={styles.errorButton}
@@ -306,7 +306,7 @@ export default function JellyseerrDetailsScreen() {
 
           <Pressable
             style={[styles.backButton, { top: insets.top + 8 }]}
-            onPress={() => goBack('/(tabs)/home')}
+            onPress={() => router.back()}
           >
             <View style={styles.backButtonInner}>
               <Ionicons name="chevron-back" size={24} color="#fff" />

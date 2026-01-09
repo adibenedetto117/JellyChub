@@ -40,7 +40,7 @@ import {
   getSubtitleUrl,
 } from '@/api';
 import { downloadManager, encryptionService } from '@/services';
-import { formatPlayerTime, ticksToMs, msToTicks, getSubtitleStreams, getAudioStreams, openInExternalPlayer, hasExternalPlayerSupport, getDisplayName, getDisplaySeriesName, goBack } from '@/utils';
+import { formatPlayerTime, ticksToMs, msToTicks, getSubtitleStreams, getAudioStreams, openInExternalPlayer, hasExternalPlayerSupport, getDisplayName, getDisplaySeriesName } from '@/utils';
 import { isTV, tvConstants } from '@/utils/platform';
 import { useTVRemoteHandler, useBackHandler } from '@/hooks';
 import { Ionicons } from '@expo/vector-icons';
@@ -1240,7 +1240,7 @@ export default function VideoPlayerScreen() {
 
     // Clear state and exit
     clearCurrentItem();
-    goBack('/(tabs)/home');
+    router.back();
   }, [player, mediaSource, itemId, playSessionId, progress.position, clearCurrentItem]);
 
   const handleOpenExternalPlayer = useCallback(async () => {

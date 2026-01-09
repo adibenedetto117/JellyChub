@@ -20,7 +20,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { usePlayerStore, useSettingsStore, useAuthStore } from '@/stores';
 import { audioService } from '@/services';
 import { getImageUrl, createPlaylist, addToPlaylist } from '@/api';
-import { formatPlayerTime, ticksToMs, getDisplayName, getDisplayImageUrl, getDisplayArtist, goBack } from '@/utils';
+import { formatPlayerTime, ticksToMs, getDisplayName, getDisplayImageUrl, getDisplayArtist } from '@/utils';
 import { CachedImage } from '@/components/ui/CachedImage';
 import { colors } from '@/theme';
 import type { QueueItem } from '@/types/player';
@@ -382,7 +382,7 @@ export default function QueueScreen() {
           onPress: async () => {
             await audioService.stop();
             clearQueue();
-            goBack('/(tabs)/home');
+            router.back();
           },
         },
       ]
@@ -444,7 +444,8 @@ export default function QueueScreen() {
   }, [playlistName, createPlaylistMutation]);
 
   const handleBack = useCallback(() => {
-    goBack('/(tabs)/home');
+    // Go to music tab since queue is music-related - use navigate for instant switch
+    router.navigate('/(tabs)/music');
   }, []);
 
   if (queue.length === 0) {

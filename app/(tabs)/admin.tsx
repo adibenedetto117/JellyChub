@@ -32,7 +32,6 @@ import {
 } from '@/api/admin';
 import type { SystemInfo, SessionInfo, ItemCounts, ActivityLogEntry, ScheduledTask, UserInfo, UserPolicy, MediaFolder, TranscodingInfo } from '@/api/admin';
 import { colors } from '@/theme';
-import { goBack } from '@/utils';
 import { getImageUrl } from '@/api/client';
 
 type TabType = 'dashboard' | 'streams' | 'tasks' | 'users';
@@ -327,7 +326,7 @@ export default function AdminScreen() {
             Administrator privileges required.
           </Text>
           <Pressable
-            onPress={() => goBack('/(tabs)/settings')}
+            onPress={() => router.back()}
             style={{ backgroundColor: accentColor, marginTop: 24, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 8 }}
           >
             <Text style={{ color: '#fff', fontWeight: '600' }}>Go Back</Text>

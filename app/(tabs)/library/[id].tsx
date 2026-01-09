@@ -15,7 +15,7 @@ import {
   getLibraryIcon,
   getGenres,
 } from '@/api';
-import { SearchButton } from '@/components/ui';
+import { SearchButton, SkeletonGrid } from '@/components/ui';
 import { FilterSortModal, DEFAULT_FILTERS, getActiveFilterCount } from '@/components/library';
 import type { FilterOptions, SortOption } from '@/components/library';
 import { getDisplayName, getDisplayImageUrl, goBack, navigateToDetails } from '@/utils';
@@ -171,11 +171,11 @@ export default function LibraryDetailScreen() {
   const hideMedia = useSettingsStore((s) => s.hideMedia);
   const userId = currentUser?.Id ?? '';
 
-  const { data: libraries } = useQuery({
+  const { data: libraries, isLoading: librariesLoading } = useQuery({
     queryKey: ['libraries', userId],
     queryFn: () => getLibraries(userId),
     enabled: !!userId,
-    staleTime: 1000 * 60 * 5,
+    staleTime: Infinity,
   });
 
   const library = useMemo(() => {
@@ -356,6 +356,7 @@ export default function LibraryDetailScreen() {
     <View style={styles.alphabeticalContainer}>
       <SectionList
         ref={sectionListRef}
+        style={{ flex: 1 }}
         sections={itemSections}
         contentContainerStyle={styles.sectionListContent}
         renderItem={({ item }) => (
@@ -378,11 +379,8 @@ export default function LibraryDetailScreen() {
         }
         ListFooterComponent={renderFooter}
         ListEmptyComponent={
-          isLoading ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator color={accentColor} size="large" />
-              <Text style={styles.loadingText}>Loading...</Text>
-            </View>
+          isLoading || librariesLoading || itemTypes.length === 0 ? (
+            <SkeletonGrid count={12} itemWidth={POSTER_WIDTH - 8} itemHeight={isSquare ? POSTER_WIDTH - 8 : POSTER_HEIGHT} />
           ) : null
         }
       />
@@ -397,6 +395,7 @@ export default function LibraryDetailScreen() {
   const renderGridView = () => (
     <FlatList
       ref={flatListRef}
+      style={{ flex: 1 }}
       data={sortedItems}
       renderItem={({ item }) => (
         <ItemCard item={item} onPress={() => handleItemPress(item)} showRating={filters.sortBy !== 'SortName'} isSquare={isSquare} hideMedia={hideMedia} />
@@ -415,11 +414,8 @@ export default function LibraryDetailScreen() {
       }
       ListFooterComponent={renderFooter}
       ListEmptyComponent={
-        isLoading ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator color={accentColor} size="large" />
-            <Text style={styles.loadingText}>Loading...</Text>
-          </View>
+        isLoading || librariesLoading || itemTypes.length === 0 ? (
+          <SkeletonGrid count={12} itemWidth={POSTER_WIDTH - 8} itemHeight={isSquare ? POSTER_WIDTH - 8 : POSTER_HEIGHT} />
         ) : null
       }
       initialNumToRender={12}
@@ -566,10 +562,12 @@ const styles = StyleSheet.create({
   sectionListContent: {
     paddingHorizontal: 16,
     paddingBottom: 100,
+    flexGrow: 1,
   },
   gridContent: {
     paddingHorizontal: GRID_PADDING,
     paddingBottom: 100,
+    flexGrow: 1,
   },
   gridRow: {
     justifyContent: 'flex-start',

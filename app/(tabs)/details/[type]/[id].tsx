@@ -9,7 +9,7 @@ import Animated, { FadeIn, FadeOut, useSharedValue, useAnimatedStyle, withTiming
 import { useTranslation } from 'react-i18next';
 import { useAuthStore, useSettingsStore, usePlayerStore, useDownloadStore } from '@/stores';
 import { getItem, getImageUrl, getSimilarItems, getSeasons, getEpisodes, getAlbumTracks, getArtistAlbums, getPlaylistItems, getCollectionItems, getNextUp, markAsFavorite } from '@/api';
-import { formatDuration, formatYear, formatRating, ticksToMs, getWatchProgress, getDisplayName, getDisplayImageUrl, getDisplaySeriesName, getDisplayArtist, goBack } from '@/utils';
+import { formatDuration, formatYear, formatRating, ticksToMs, getWatchProgress, getDisplayName, getDisplayImageUrl, getDisplaySeriesName, getDisplayArtist, goBack, navigateToDetails } from '@/utils';
 import { MediaRow } from '@/components/media/MediaRow';
 import { Button } from '@/components/ui/Button';
 import { CachedImage } from '@/components/ui/CachedImage';
@@ -120,7 +120,7 @@ export default function DetailScreen() {
     queryKey: ['item', userId, id],
     queryFn: () => getItem(userId, id),
     enabled: !!userId && !!id,
-    staleTime: 1000 * 60, // 1 minute - balance freshness with performance
+    staleTime: Infinity,
   });
 
   const currentFavorite = isFavorite ?? item?.UserData?.IsFavorite ?? false;
@@ -188,7 +188,7 @@ export default function DetailScreen() {
     queryKey: ['episodes', seriesId, id, userId],
     queryFn: () => getEpisodes(seriesId!, userId, id),
     enabled: !!userId && !!id && !!seriesId && type === 'season',
-    staleTime: 1000 * 60, // 1 minute
+    staleTime: Infinity,
   });
 
   const { data: nextUp } = useQuery({
@@ -210,7 +210,7 @@ export default function DetailScreen() {
   useEffect(() => {
     setContentReady(false);
     contentOpacity.value = 0;
-  }, [id]);
+  }, [id, contentOpacity]);
 
   if (itemError) {
     return (
@@ -242,7 +242,7 @@ export default function DetailScreen() {
         router.push(`/player/video?itemId=${nextUpEpisode.Id}${hasNextUpProgress ? '&resume=true' : ''}`);
       } else if (seasons?.Items?.[0]) {
         // Fallback: go to first season
-        router.push(`/details/season/${seasons.Items[0].Id}`);
+        navigateToDetails('season', seasons.Items[0].Id, from || '/(tabs)/home');
       }
     } else if (type === 'season') {
       // Play the episode we determined above
@@ -418,7 +418,8 @@ export default function DetailScreen() {
   };
 
   const handleItemPress = (pressedItem: BaseItem) => {
-    router.push(`/details/${pressedItem.Type.toLowerCase()}/${pressedItem.Id}`);
+    // Pass through the original 'from' to maintain navigation chain
+    navigateToDetails(pressedItem.Type.toLowerCase(), pressedItem.Id, from || '/(tabs)/home');
   };
 
   const backdropTag = item?.BackdropImageTags?.[0];
@@ -532,14 +533,14 @@ export default function DetailScreen() {
             {/* Info Column */}
             <View className="flex-1 justify-end pb-1">
               {type === 'season' && displaySeriesName && item && (
-                <Pressable onPress={() => router.push(`/details/series/${item.SeriesId || item.ParentId}`)}>
+                <Pressable onPress={() => navigateToDetails('series', item.SeriesId || item.ParentId || '', from || '/(tabs)/home')}>
                   <Text className="text-text-secondary text-sm mb-1" numberOfLines={1}>
                     {displaySeriesName}
                   </Text>
                 </Pressable>
               )}
               {type === 'episode' && displaySeriesName && item && (
-                <Pressable onPress={() => router.push(`/details/series/${item.SeriesId}`)}>
+                <Pressable onPress={() => navigateToDetails('series', item.SeriesId || '', from || '/(tabs)/home')}>
                   <Text className="text-text-secondary text-sm mb-1" numberOfLines={1}>
                     {displaySeriesName} • S{item.ParentIndexNumber} E{item.IndexNumber}
                   </Text>
@@ -757,7 +758,7 @@ export default function DetailScreen() {
                       key={season.Id}
                       className="bg-surface rounded-xl mb-3 flex-row items-center overflow-hidden"
                       onPress={() =>
-                        router.push(`/details/season/${season.Id}`)
+                        navigateToDetails('season', season.Id, from || '/(tabs)/home')
                       }
                     >
                       {/* Season poster */}
@@ -1148,7 +1149,7 @@ export default function DetailScreen() {
                     <Pressable
                       key={album.Id}
                       className="bg-surface p-3 rounded-xl mb-2 flex-row items-center"
-                      onPress={() => router.push(`/details/album/${album.Id}`)}
+                      onPress={() => navigateToDetails('album', album.Id, from || '/(tabs)/music')}
                     >
                       <View className="w-14 h-14 rounded-lg overflow-hidden bg-surface mr-3">
                         <CachedImage
@@ -1207,7 +1208,7 @@ export default function DetailScreen() {
                     <Pressable
                       key={collectionItem.Id}
                       className="bg-surface rounded-xl mb-3 flex-row items-center overflow-hidden"
-                      onPress={() => router.push(`/details/${itemType}/${collectionItem.Id}`)}
+                      onPress={() => navigateToDetails(itemType || 'item', collectionItem.Id, from || '/(tabs)/library')}
                     >
                       <View className="w-16 h-24 bg-surface-elevated">
                         {itemImageUrl ? (

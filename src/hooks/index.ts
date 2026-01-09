@@ -57,3 +57,28 @@ export {
   useTvGenres,
   useDiscoverByGenre,
 } from './useJellyseerr';
+export {
+  useToggle,
+  useDisclosure,
+  useModal,
+  usePrevious,
+  useDebouncedCallback,
+  useForceUpdate,
+  useIsMounted,
+  useUpdateEffect,
+  type ModalType,
+} from './useUtilities';
+export {
+  createJellyseerrQuery,
+  createJellyseerrQueryWithParam,
+  createJellyseerrInfiniteQuery,
+  createJellyseerrInfiniteQueryWithParam,
+  jellyseerrKeys,
+} from './queryFactories';
+export {
+  useAccentColor,
+  useAccentColorVariants,
+  useAccentStyles,
+  type AccentColorVariants,
+  type AccentColorUtils,
+} from './useAccentColor';

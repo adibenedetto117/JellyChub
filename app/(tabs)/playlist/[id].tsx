@@ -15,7 +15,7 @@ import { colors } from '@/theme';
 import type { BaseItem, AudioTrack } from '@/types/jellyfin';
 
 export default function PlaylistScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, from } = useLocalSearchParams<{ id: string; from?: string }>();
   const currentUser = useAuthStore((state) => state.currentUser);
   const accentColor = useSettingsStore((s) => s.accentColor);
   const hideMedia = useSettingsStore((s) => s.hideMedia);
@@ -43,7 +43,7 @@ export default function PlaylistScreen() {
   const totalDuration = tracks.reduce((sum, t) => sum + (t.RunTimeTicks ?? 0), 0);
 
   const handleGoBack = () => {
-    goBack('/(tabs)/home');
+    goBack(from, '/(tabs)/music');
   };
 
   const handlePlayAll = () => {

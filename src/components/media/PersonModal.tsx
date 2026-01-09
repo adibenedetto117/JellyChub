@@ -1,10 +1,11 @@
 import { View, Text, ScrollView, Pressable, ActivityIndicator, Modal, StyleSheet } from 'react-native';
+import { memo, useCallback, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { useSettingsStore, useAuthStore } from '@/stores';
 import { getPerson, getPersonItems, getImageUrl } from '@/api';
 import { CachedImage } from '@/components/ui/CachedImage';
-import { getDisplayName, getDisplayImageUrl } from '@/utils';
+import { getDisplayName, getDisplayImageUrl, navigateToDetails } from '@/utils';
 import type { BaseItem } from '@/types/jellyfin';
 
 interface PersonModalProps {
@@ -15,7 +16,7 @@ interface PersonModalProps {
   onClose: () => void;
 }
 
-export function PersonModal({ personId, personName, personImageTag, visible, onClose }: PersonModalProps) {
+export const PersonModal = memo(function PersonModal({ personId, personName, personImageTag, visible, onClose }: PersonModalProps) {
   const accentColor = useSettingsStore((s) => s.accentColor);
   const hideMedia = useSettingsStore((s) => s.hideMedia);
   const userId = useAuthStore((s) => s.currentUser?.Id ?? '');
@@ -46,7 +47,7 @@ export function PersonModal({ personId, personName, personImageTag, visible, onC
   const imageUrl = personId ? getDisplayImageUrl(personId, rawImageUrl, hideMedia, 'Primary') : null;
   const displayPersonName = person ? getDisplayName(person as any, hideMedia) : personName;
 
-  const formatBirthInfo = () => {
+  const formatBirthInfo = useMemo(() => {
     if (!person?.PremiereDate) return null;
     const birthDate = new Date(person.PremiereDate);
     const birthYear = birthDate.getFullYear();
@@ -59,14 +60,15 @@ export function PersonModal({ personId, personName, personImageTag, visible, onC
 
     const age = new Date().getFullYear() - birthYear;
     return `Born ${birthYear} (${age} years old)`;
-  };
+  }, [person?.PremiereDate, person?.EndDate]);
 
-  const handleItemPress = (item: BaseItem) => {
+  const handleItemPress = useCallback((item: BaseItem) => {
     onClose();
+    // Reduced delay for snappier navigation
     setTimeout(() => {
-      router.push(`/details/${item.Type.toLowerCase()}/${item.Id}`);
-    }, 300);
-  };
+      navigateToDetails(item.Type.toLowerCase(), item.Id, '/(tabs)/home');
+    }, 100);
+  }, [onClose]);
 
   return (
     <Modal
@@ -107,8 +109,8 @@ export function PersonModal({ personId, personName, personImageTag, visible, onC
               </View>
               <View style={styles.personInfo}>
                 <Text style={styles.personName}>{displayPersonName}</Text>
-                {formatBirthInfo() && (
-                  <Text style={styles.birthInfo}>{formatBirthInfo()}</Text>
+                {formatBirthInfo && (
+                  <Text style={styles.birthInfo}>{formatBirthInfo}</Text>
                 )}
               </View>
             </View>
@@ -186,7 +188,7 @@ export function PersonModal({ personId, personName, personImageTag, visible, onC
       </View>
     </Modal>
   );
-}
+});
 
 const styles = StyleSheet.create({
   overlay: {

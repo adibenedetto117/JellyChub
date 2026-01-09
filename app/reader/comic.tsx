@@ -37,7 +37,6 @@ import { useReadingProgressStore } from '@/stores/readingProgressStore';
 import { useResponsive } from '@/hooks/useResponsive';
 import { downloadManager, encryptionService } from '@/services';
 import { getItem, getBookDownloadUrl, reportPlaybackProgress, generatePlaySessionId } from '@/api';
-import { goBack } from '@/utils';
 
 type PageMode = 'single' | 'double' | 'webtoon';
 type ReadDirection = 'ltr' | 'rtl';
@@ -336,7 +335,7 @@ export default function ComicReaderScreen() {
   }, [showControls, resetControlsTimeout]);
 
   const handleClose = () => {
-    goBack('/(tabs)/home');
+    router.back();
   };
 
   const toggleControls = useCallback(() => {

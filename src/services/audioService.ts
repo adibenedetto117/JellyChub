@@ -157,6 +157,13 @@ class AudioService {
     const store = usePlayerStore.getState();
     const isAudiobook = forceMediaType === 'audiobook' || item.Type === 'AudioBook';
 
+    // If this item isn't in the queue, add it as a single-track queue
+    // This ensures the queue is never empty when playing from home or other contexts
+    const isInQueue = store.queue.some((q) => q.id === item.Id);
+    if (!isInQueue) {
+      store.setQueue([{ id: item.Id, item, index: 0 }], 0);
+    }
+
     if (this.currentItemId === item.Id && this.player) {
       try {
         if (!this.player.playing) {

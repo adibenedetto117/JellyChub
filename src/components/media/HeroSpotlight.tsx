@@ -1,5 +1,6 @@
 import { View, Text, Pressable, StyleSheet, Dimensions, PanResponder } from 'react-native';
 import { memo, useState, useRef, useCallback, useEffect, useMemo } from 'react';
+import { Image } from 'expo-image';
 import Animated, {
   FadeIn,
   FadeOut,
@@ -64,6 +65,31 @@ export const HeroSpotlight = memo(function HeroSpotlight({ items, onItemPress, o
       }
     };
   }, [displayItems.length, startAutoScroll]);
+
+  // Preload upcoming hero images - fire and forget, don't block UI
+  useEffect(() => {
+    if (displayItems.length <= 1) return;
+
+    // Preload next 2 images in rotation - non-blocking
+    const indicesToPreload = [
+      (activeIndex + 1) % displayItems.length,
+      (activeIndex + 2) % displayItems.length,
+    ];
+
+    indicesToPreload.forEach((index) => {
+      const item = displayItems[index];
+      const tag = item?.BackdropImageTags?.[0];
+      if (tag) {
+        const url = getImageUrl(item.Id, 'Backdrop', {
+          maxWidth: SCREEN_WIDTH * 2,
+          maxHeight: heroHeight * 2,
+          tag,
+        });
+        // Fire and forget - don't await
+        if (url) Image.prefetch(url).catch(() => {});
+      }
+    });
+  }, [activeIndex, displayItems, heroHeight]);
 
   const handleSwipe = useCallback((direction: 'left' | 'right') => {
     setSlideDirection(direction);

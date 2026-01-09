@@ -60,7 +60,7 @@ export {
   getMostPlayed,
 } from './library';
 
-export type { LibraryQueryParams, LibraryConfig, Genre, CreatePlaylistResult, PersonDetails, GroupedLibraries } from './library';
+export type { LibraryQueryParams, LibraryConfig, Genre, CreatePlaylistResult, PersonDetails, GroupedLibraries, SearchMediaType, SearchOptions } from './library';
 
 export {
   getPlaybackInfo,
@@ -127,3 +127,18 @@ export {
 } from './livetv';
 
 export type { SeriesTimerInfo } from './livetv';
+
+export {
+  getAuthParams,
+  buildVideoStreamParams,
+  buildHlsStreamParams,
+  buildTranscodeParams,
+  buildAudioStreamParams,
+  buildImageParams,
+} from './urlParams';
+export type {
+  BaseStreamParams,
+  VideoStreamParams,
+  AudioStreamParams,
+  HlsStreamParams,
+} from './urlParams';

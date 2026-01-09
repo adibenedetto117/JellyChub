@@ -95,6 +95,7 @@ export const PosterCard = memo(function PosterCard({
 
   const scale = useSharedValue(1);
   const borderOpacity = useSharedValue(0);
+  const shadowOpacity = useSharedValue(0);
 
   // Handle TV focus state changes
   useEffect(() => {
@@ -105,6 +106,9 @@ export const PosterCard = memo(function PosterCard({
       borderOpacity.value = withTiming(1, {
         duration: tvConstants.focusDuration,
       });
+      shadowOpacity.value = withTiming(1, {
+        duration: tvConstants.focusDuration,
+      });
     } else if (isTV) {
       scale.value = withTiming(1, {
         duration: tvConstants.focusDuration,
@@ -112,8 +116,11 @@ export const PosterCard = memo(function PosterCard({
       borderOpacity.value = withTiming(0, {
         duration: tvConstants.focusDuration,
       });
+      shadowOpacity.value = withTiming(0, {
+        duration: tvConstants.focusDuration,
+      });
     }
-  }, [isFocused, scale, borderOpacity]);
+  }, [isFocused, scale, borderOpacity, shadowOpacity]);
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
@@ -123,19 +130,21 @@ export const PosterCard = memo(function PosterCard({
     opacity: borderOpacity.value,
   }));
 
+  const shadowAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: shadowOpacity.value,
+  }));
+
   // Mobile press handlers (not used on TV)
   const handlePressIn = useCallback(() => {
-    if (!isTV) {
-      haptics.light();
-      if (!reduceMotion) {
-        scale.value = withSpring(0.95, SPRING_CONFIG);
-      }
+    if (!isTV && !reduceMotion) {
+      // Use simple timing instead of spring for better FPS
+      scale.value = withTiming(0.97, { duration: 100 });
     }
   }, [scale, reduceMotion]);
 
   const handlePressOut = useCallback(() => {
     if (!reduceMotion && !isTV) {
-      scale.value = withSpring(1, SPRING_CONFIG);
+      scale.value = withTiming(1, { duration: 100 });
     }
   }, [scale, reduceMotion]);
 
@@ -205,6 +214,22 @@ export const PosterCard = memo(function PosterCard({
       // @ts-ignore - TV-specific prop
       hasTVPreferredFocus={autoFocus}
     >
+      {/* TV Shadow glow effect */}
+      {isTV && (
+        <Animated.View
+          style={[
+            posterStyles.shadowContainer,
+            {
+              width: dimensions.width + 20,
+              height: dimensions.height + 20,
+              shadowColor: accentColor,
+            },
+            shadowAnimatedStyle,
+          ]}
+          pointerEvents="none"
+        />
+      )}
+
       <View
         style={[posterStyles.imageContainer, { width: dimensions.width, height: dimensions.height }]}
         accessible={false}
@@ -223,7 +248,7 @@ export const PosterCard = memo(function PosterCard({
             style={posterStyles.progressTrack}
             accessible={false}
           >
-            <View style={[posterStyles.progressFill, { width: `${progress}%` }]} />
+            <View style={[posterStyles.progressFill, { width: `${progress}%`, backgroundColor: accentColor }]} />
           </View>
         )}
 
@@ -277,6 +302,17 @@ export const PosterCard = memo(function PosterCard({
 const posterStyles = StyleSheet.create({
   pressable: {
     marginRight: 12,
+    alignItems: 'center',
+  },
+  shadowContainer: {
+    position: 'absolute',
+    top: -10,
+    left: -10,
+    borderRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.4,
+    shadowRadius: 16,
+    elevation: 16,
   },
   imageContainer: {
     borderRadius: 12,
@@ -293,7 +329,6 @@ const posterStyles = StyleSheet.create({
   },
   progressFill: {
     height: '100%',
-    backgroundColor: '#6366f1', // accent color fallback
   },
   focusRing: {
     position: 'absolute',

@@ -113,7 +113,6 @@ const LibraryContentRow = memo(function LibraryContentRow({
     }),
     enabled: !!userId,
     staleTime: Infinity,
-    refetchOnMount: false,
   });
 
   const handleSeeAll = useCallback(() => {
@@ -254,7 +253,6 @@ export default function LibraryScreen() {
     queryFn: () => getLibraries(userId),
     enabled: !!userId,
     staleTime: Infinity,
-    refetchOnMount: false,
   });
 
   const browsableLibraries = useMemo(() => {

@@ -19,7 +19,7 @@ import { useAuthStore, usePlayerStore, useSettingsStore, useDownloadStore } from
 import { useReadingProgressStore } from '@/stores/readingProgressStore';
 import { downloadManager } from '@/services';
 import { getItem, getImageUrl, generatePlaySessionId, getBookDownloadUrl, reportPlaybackProgress } from '@/api';
-import { formatPlayerTime, ticksToMs, msToTicks, getDisplayName, getDisplayImageUrl, getDisplayArtist, goBack } from '@/utils';
+import { formatPlayerTime, ticksToMs, msToTicks, getDisplayName, getDisplayImageUrl, getDisplayArtist } from '@/utils';
 import { audioService, parseM4BChapters } from '@/services';
 import { colors } from '@/theme';
 
@@ -311,12 +311,12 @@ export default function AudiobookPlayerScreen() {
   }, [item]);
 
   const handleMinimize = () => {
-    goBack('/(tabs)/home');
+    router.back();
   };
 
   const handleStop = async () => {
     await audioService.stop();
-    goBack('/(tabs)/home');
+    router.back();
   };
 
   const handleDownload = useCallback(async () => {

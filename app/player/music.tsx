@@ -27,7 +27,7 @@ import {
   addToPlaylist,
   getInstantMix,
 } from '@/api';
-import { formatPlayerTime, ticksToMs, getDisplayName, getDisplayArtist, getDisplayImageUrl, goBack, dismissModal } from '@/utils';
+import { formatPlayerTime, ticksToMs, getDisplayName, getDisplayArtist, getDisplayImageUrl, dismissModal, navigateToDetails } from '@/utils';
 import { EqualizerModal, SleepTimerSelector, SleepTimerIndicator } from '@/components/player';
 import type { VideoSleepTimer } from '@/types/player';
 
@@ -313,12 +313,12 @@ export default function MusicPlayerScreen() {
   }, [item?.Id]);
 
   const handleClose = () => {
-    goBack('/(tabs)/home');
+    router.back();
   };
 
   const handleStopAndClose = async () => {
     await audioService.stop();
-    goBack('/(tabs)/home');
+    router.back();
   };
 
   const handlePlayPause = async () => {
@@ -352,7 +352,7 @@ export default function MusicPlayerScreen() {
       setShowOptions(false);
       dismissModal('/(tabs)/home');
       setTimeout(() => {
-        router.push(`/details/album/${albumId}`);
+        navigateToDetails('album', albumId, '/(tabs)/music');
       }, 100);
     }
   };
@@ -363,7 +363,7 @@ export default function MusicPlayerScreen() {
       setShowOptions(false);
       dismissModal('/(tabs)/home');
       setTimeout(() => {
-        router.push(`/details/artist/${artistId}`);
+        navigateToDetails('artist', artistId, '/(tabs)/music');
       }, 100);
     }
   };

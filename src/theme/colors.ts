@@ -107,3 +107,14 @@ export function getAccentColorVariants(baseColor: string): {
     subtle: `#${toHex(subtleR)}${toHex(subtleG)}${toHex(subtleB)}`,
   };
 }
+
+/**
+ * Converts hex color to rgba with specified opacity
+ */
+export function hexToRgba(hex: string, opacity: number): string {
+  const cleanHex = hex.replace('#', '');
+  const r = parseInt(cleanHex.substring(0, 2), 16);
+  const g = parseInt(cleanHex.substring(2, 4), 16);
+  const b = parseInt(cleanHex.substring(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+}

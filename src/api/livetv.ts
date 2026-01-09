@@ -435,7 +435,17 @@ export async function getLiveTvPlaybackInfo(channelId: string, userId: string): 
       ],
       ContainerProfiles: [],
       CodecProfiles: [],
-      SubtitleProfiles: [],
+      SubtitleProfiles: [
+        { Format: 'srt', Method: 'Encode' },
+        { Format: 'ass', Method: 'Encode' },
+        { Format: 'ssa', Method: 'Encode' },
+        { Format: 'vtt', Method: 'Encode' },
+        { Format: 'sub', Method: 'Encode' },
+        { Format: 'smi', Method: 'Encode' },
+        { Format: 'pgs', Method: 'Encode' },
+        { Format: 'dvdsub', Method: 'Encode' },
+        { Format: 'dvbsub', Method: 'Encode' },
+      ],
     },
   });
   return response.data;

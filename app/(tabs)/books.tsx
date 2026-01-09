@@ -7,7 +7,7 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore, useSettingsStore, useReadingProgressStore, useDownloadStore } from '@/stores';
 import { getItems, getImageUrl, getLibraries, getLibraryIdsByType, getItemsFromMultipleLibraries } from '@/api';
-import { SearchButton } from '@/components/ui';
+import { SearchButton, SkeletonRow } from '@/components/ui';
 import { formatPlayerTime, ticksToMs, getDisplayName, getDisplayImageUrl, getDisplayArtist } from '@/utils';
 import { colors } from '@/theme';
 import { downloadManager } from '@/services/downloadManager';
@@ -261,7 +261,6 @@ export default function BooksScreen() {
       }),
     enabled: !!userId && hasBookLibraries,
     staleTime: Infinity,
-    refetchOnMount: false,
   });
 
   const latestEbooks = booksData?.Items?.filter(item => item.Type === 'Book') as Book[] | undefined;
@@ -405,7 +404,7 @@ export default function BooksScreen() {
 
       <SectionHeader title="Recent eBooks" onSeeAll={() => setViewMode('ebooks')} />
       {latestEbooksLoading ? (
-        <View style={styles.loadingContainer}><ActivityIndicator color={accentColor} size="small" /></View>
+        <SkeletonRow title={false} cardWidth={HORIZONTAL_BOOK_WIDTH} cardHeight={HORIZONTAL_BOOK_HEIGHT} count={4} />
       ) : latestEbooks && latestEbooks.length > 0 ? (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalScroll}>
           {latestEbooks.map((item) => (
@@ -420,7 +419,7 @@ export default function BooksScreen() {
 
       <SectionHeader title="Recent Audiobooks" onSeeAll={() => setViewMode('audiobooks')} />
       {latestAudiobooksLoading ? (
-        <View style={styles.loadingContainer}><ActivityIndicator color={accentColor} size="small" /></View>
+        <SkeletonRow title={false} cardWidth={HORIZONTAL_BOOK_WIDTH} cardHeight={HORIZONTAL_BOOK_HEIGHT} count={4} />
       ) : latestAudiobooks && latestAudiobooks.length > 0 ? (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalScroll}>
           {latestAudiobooks.map((item) => (
@@ -441,8 +440,8 @@ export default function BooksScreen() {
     <View style={styles.listContainer}>
       {ebooksLoading ? (
         <View style={styles.fullScreenLoading}>
-          <ActivityIndicator color={accentColor} size="large" />
-          <Text style={styles.loadingText}>Loading eBooks...</Text>
+          <SkeletonRow title={false} cardWidth={60} cardHeight={60} count={6} isSquare />
+          <SkeletonRow title={false} cardWidth={60} cardHeight={60} count={6} isSquare />
         </View>
       ) : (
         <>
@@ -476,8 +475,8 @@ export default function BooksScreen() {
     <View style={styles.listContainer}>
       {audiobooksLoading ? (
         <View style={styles.fullScreenLoading}>
-          <ActivityIndicator color={accentColor} size="large" />
-          <Text style={styles.loadingText}>Loading audiobooks...</Text>
+          <SkeletonRow title={false} cardWidth={60} cardHeight={60} count={6} isSquare />
+          <SkeletonRow title={false} cardWidth={60} cardHeight={60} count={6} isSquare />
         </View>
       ) : (
         <>

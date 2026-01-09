@@ -1,11 +1,11 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, memo } from 'react';
 import { View, Text, FlatList, Pressable, StyleSheet, Dimensions, ScrollView, RefreshControl } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
+import Animated, { FadeIn } from 'react-native-reanimated';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore, useSettingsStore, usePlayerStore } from '@/stores';
 import { useResponsive } from '@/hooks';
@@ -13,12 +13,97 @@ import { getFavorites, getFavoriteSongs, getImageUrl } from '@/api';
 import { AnimatedGradient } from '@/components/ui';
 import { CachedImage } from '@/components/ui/CachedImage';
 import { SkeletonRow } from '@/components/ui/Skeleton';
-import { formatDuration, ticksToMs, getDisplayName, getDisplayImageUrl, getDisplayArtist, goBack } from '@/utils';
+import { formatDuration, ticksToMs, getDisplayName, getDisplayImageUrl, getDisplayArtist, navigateToDetails } from '@/utils';
 import type { BaseItem } from '@/types/jellyfin';
 
 type FilterType = 'all' | 'movies' | 'shows' | 'music';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+// Memoized poster item component to prevent re-renders
+interface PosterItemProps {
+  item: BaseItem;
+  onPress: () => void;
+  posterWidth: number;
+  posterHeight: number;
+  hideMedia: boolean;
+  accentColor: string;
+  fontSize: number;
+}
+
+const PosterItem = memo(function PosterItem({ item, onPress, posterWidth, posterHeight, hideMedia, accentColor, fontSize }: PosterItemProps) {
+  const imageTag = item.ImageTags?.Primary;
+  const rawImageUrl = getImageUrl(item.Id, 'Primary', { maxWidth: posterWidth * 2, tag: imageTag });
+  const imageUrl = getDisplayImageUrl(item.Id, rawImageUrl, hideMedia, 'Primary');
+  const displayName = getDisplayName(item, hideMedia);
+
+  return (
+    <Pressable style={[styles.posterContainer, { width: posterWidth }]} onPress={onPress}>
+      <View style={[styles.posterImage, { width: posterWidth, height: posterHeight }]}>
+        <CachedImage
+          uri={imageUrl}
+          style={{ width: posterWidth, height: posterHeight }}
+          borderRadius={10}
+          fallbackText={displayName?.charAt(0) ?? '?'}
+        />
+        <View style={[styles.typeBadge, { backgroundColor: accentColor }]}>
+          <Ionicons
+            name={item.Type === 'Movie' ? 'film' : 'tv'}
+            size={10}
+            color="#fff"
+          />
+        </View>
+      </View>
+      <Text style={[styles.posterTitle, { fontSize }]} numberOfLines={2}>{displayName}</Text>
+    </Pressable>
+  );
+});
+
+// Memoized track item component
+interface TrackItemProps {
+  item: BaseItem;
+  index: number;
+  onPress: () => void;
+  hideMedia: boolean;
+  horizontalPadding: number;
+  fontSizeBase: number;
+  fontSizeSm: number;
+  unknownArtistText: string;
+}
+
+const TrackItem = memo(function TrackItem({ item, index, onPress, hideMedia, horizontalPadding, fontSizeBase, fontSizeSm, unknownArtistText }: TrackItemProps) {
+  const albumId = (item as any).AlbumId || item.Id;
+  const imageTag = (item as any).AlbumPrimaryImageTag || item.ImageTags?.Primary;
+  const rawImageUrl = imageTag ? getImageUrl(albumId, 'Primary', { maxWidth: 120, tag: imageTag }) : null;
+  const imageUrl = getDisplayImageUrl(albumId, rawImageUrl, hideMedia, 'Primary');
+  const rawArtists = (item as any).Artists || [(item as any).AlbumArtist || ''];
+  const displayArtists = getDisplayArtist(rawArtists, hideMedia);
+  const displayName = getDisplayName(item, hideMedia);
+
+  return (
+    <Pressable
+      style={[styles.trackRow, { paddingHorizontal: horizontalPadding }]}
+      onPress={onPress}
+    >
+      <Text style={styles.trackNumber}>{index + 1}</Text>
+      <View style={styles.trackImage}>
+        <CachedImage
+          uri={imageUrl}
+          style={{ width: 48, height: 48 }}
+          borderRadius={6}
+          fallbackText={displayName?.charAt(0) ?? '?'}
+        />
+      </View>
+      <View style={styles.trackInfo}>
+        <Text style={[styles.trackName, { fontSize: fontSizeBase }]} numberOfLines={1}>{displayName}</Text>
+        <Text style={[styles.trackArtist, { fontSize: fontSizeSm }]} numberOfLines={1}>{displayArtists[0] || unknownArtistText}</Text>
+      </View>
+      <Text style={[styles.trackDuration, { fontSize: fontSizeSm }]}>
+        {formatDuration(ticksToMs(item.RunTimeTicks ?? 0))}
+      </Text>
+    </Pressable>
+  );
+});
 
 export default function FavoritesScreen() {
   const { t } = useTranslation();
@@ -41,16 +126,14 @@ export default function FavoritesScreen() {
     queryKey: ['allFavorites', userId],
     queryFn: () => getFavorites(userId, ['Movie', 'Series'], 100),
     enabled: !!userId,
-    staleTime: 1000 * 30, // 30 seconds - refetch when returning
-    refetchOnMount: 'always',
+    staleTime: Infinity,
   });
 
   const { data: musicFavorites, isLoading: isLoadingMusic, refetch: refetchMusic } = useQuery({
     queryKey: ['favoriteSongs', userId],
     queryFn: () => getFavoriteSongs(userId),
     enabled: !!userId,
-    staleTime: 1000 * 30,
-    refetchOnMount: 'always',
+    staleTime: Infinity,
   });
 
   const onRefresh = useCallback(async () => {
@@ -89,9 +172,9 @@ export default function FavoritesScreen() {
   const handleItemPress = useCallback((item: BaseItem) => {
     const type = item.Type?.toLowerCase();
     if (type === 'movie') {
-      router.push(`/details/movie/${item.Id}`);
+      navigateToDetails('movie', item.Id, '/(tabs)/favorites');
     } else if (type === 'series') {
-      router.push(`/details/series/${item.Id}`);
+      navigateToDetails('series', item.Id, '/(tabs)/favorites');
     } else if (type === 'audio') {
       const queueItems = tracks.map((t, i) => ({ id: t.Id, item: t, index: i }));
       setQueue(queueItems);
@@ -107,73 +190,31 @@ export default function FavoritesScreen() {
     }
   }, [tracks, setQueue]);
 
-  const renderPosterItem = ({ item, index }: { item: BaseItem; index: number }) => {
-    // Always try to get image - Jellyfin will return it even without tag
-    const imageTag = item.ImageTags?.Primary;
-    const rawImageUrl = getImageUrl(item.Id, 'Primary', { maxWidth: posterWidth * 2, tag: imageTag });
-    const imageUrl = getDisplayImageUrl(item.Id, rawImageUrl, hideMedia, 'Primary');
-    const displayName = getDisplayName(item, hideMedia);
+  // Use useCallback to memoize the render functions
+  const renderPosterItem = useCallback(({ item }: { item: BaseItem }) => (
+    <PosterItem
+      item={item}
+      onPress={() => handleItemPress(item)}
+      posterWidth={posterWidth}
+      posterHeight={posterHeight}
+      hideMedia={hideMedia}
+      accentColor={accentColor}
+      fontSize={fontSize.xs}
+    />
+  ), [handleItemPress, posterWidth, posterHeight, hideMedia, accentColor, fontSize.xs]);
 
-    return (
-      <Animated.View entering={FadeInDown.delay(index * 30).duration(300)}>
-        <Pressable style={[styles.posterContainer, { width: posterWidth }]} onPress={() => handleItemPress(item)}>
-          <View style={[styles.posterImage, { width: posterWidth, height: posterHeight }]}>
-            <CachedImage
-              uri={imageUrl}
-              style={{ width: posterWidth, height: posterHeight }}
-              borderRadius={10}
-              fallbackText={displayName?.charAt(0) ?? '?'}
-            />
-            {/* Type badge */}
-            <View style={[styles.typeBadge, { backgroundColor: accentColor }]}>
-              <Ionicons
-                name={item.Type === 'Movie' ? 'film' : 'tv'}
-                size={10}
-                color="#fff"
-              />
-            </View>
-          </View>
-          <Text style={[styles.posterTitle, { fontSize: fontSize.xs }]} numberOfLines={2}>{displayName}</Text>
-        </Pressable>
-      </Animated.View>
-    );
-  };
-
-  const renderTrackItem = ({ item, index }: { item: BaseItem; index: number }) => {
-    const albumId = (item as any).AlbumId || item.Id;
-    const imageTag = (item as any).AlbumPrimaryImageTag || item.ImageTags?.Primary;
-    const rawImageUrl = imageTag ? getImageUrl(albumId, 'Primary', { maxWidth: 120, tag: imageTag }) : null;
-    const imageUrl = getDisplayImageUrl(albumId, rawImageUrl, hideMedia, 'Primary');
-    const rawArtists = (item as any).Artists || [(item as any).AlbumArtist || ''];
-    const displayArtists = getDisplayArtist(rawArtists, hideMedia);
-    const displayName = getDisplayName(item, hideMedia);
-
-    return (
-      <Animated.View entering={FadeInDown.delay(index * 20).duration(250)}>
-        <Pressable
-          style={[styles.trackRow, { paddingHorizontal: horizontalPadding }]}
-          onPress={() => handleItemPress(item)}
-        >
-          <Text style={styles.trackNumber}>{index + 1}</Text>
-          <View style={styles.trackImage}>
-            <CachedImage
-              uri={imageUrl}
-              style={{ width: 48, height: 48 }}
-              borderRadius={6}
-              fallbackText={displayName?.charAt(0) ?? '?'}
-            />
-          </View>
-          <View style={styles.trackInfo}>
-            <Text style={[styles.trackName, { fontSize: fontSize.base }]} numberOfLines={1}>{displayName}</Text>
-            <Text style={[styles.trackArtist, { fontSize: fontSize.sm }]} numberOfLines={1}>{displayArtists[0] || t('favorites.unknownArtist')}</Text>
-          </View>
-          <Text style={[styles.trackDuration, { fontSize: fontSize.sm }]}>
-            {formatDuration(ticksToMs(item.RunTimeTicks ?? 0))}
-          </Text>
-        </Pressable>
-      </Animated.View>
-    );
-  };
+  const renderTrackItem = useCallback(({ item, index }: { item: BaseItem; index: number }) => (
+    <TrackItem
+      item={item}
+      index={index}
+      onPress={() => handleItemPress(item)}
+      hideMedia={hideMedia}
+      horizontalPadding={horizontalPadding}
+      fontSizeBase={fontSize.base}
+      fontSizeSm={fontSize.sm}
+      unknownArtistText={t('favorites.unknownArtist')}
+    />
+  ), [handleItemPress, hideMedia, horizontalPadding, fontSize.base, fontSize.sm, t]);
 
   const filters: { key: FilterType; label: string; icon: keyof typeof Ionicons.glyphMap; count: number }[] = [
     { key: 'all', label: t('favorites.all'), icon: 'heart', count: totalCount },
@@ -190,7 +231,7 @@ export default function FavoritesScreen() {
 
       {/* Header */}
       <Animated.View entering={FadeIn.duration(400)} style={[styles.header, { paddingHorizontal: horizontalPadding }]}>
-        <Pressable onPress={() => goBack('/(tabs)/home')} style={styles.backButton}>
+        <Pressable onPress={() => router.back()} style={styles.backButton}>
           <Ionicons name="chevron-back" size={28} color="#fff" />
         </Pressable>
         <View style={styles.headerCenter}>
@@ -296,6 +337,10 @@ export default function FavoritesScreen() {
             refreshControl={
               <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={accentColor} />
             }
+            initialNumToRender={10}
+            maxToRenderPerBatch={10}
+            windowSize={5}
+            removeClippedSubviews={true}
           />
         </View>
       ) : activeFilter === 'all' ? (
@@ -314,8 +359,8 @@ export default function FavoritesScreen() {
                 {t('favorites.moviesAndShows')}
               </Text>
               <View style={[styles.gridContainer, { paddingHorizontal: horizontalPadding }]}>
-                {filteredItems.map((item, index) => (
-                  <View key={item.Id}>{renderPosterItem({ item, index })}</View>
+                {filteredItems.map((item) => (
+                  <View key={item.Id}>{renderPosterItem({ item })}</View>
                 ))}
               </View>
             </Animated.View>
@@ -356,6 +401,10 @@ export default function FavoritesScreen() {
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={accentColor} />
           }
+          initialNumToRender={9}
+          maxToRenderPerBatch={9}
+          windowSize={5}
+          removeClippedSubviews={true}
         />
       )}
     </SafeAreaView>

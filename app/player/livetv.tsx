@@ -27,7 +27,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore, useSettingsStore, useLiveTvStore } from '@/stores';
 import { getChannel, getChannels, getLiveHlsStreamUrl, getLiveDirectStreamUrl, getLiveStreamUrl, getLiveTvPlaybackInfo, jellyfinClient } from '@/api';
-import { goBack } from '@/utils';
 import { colors } from '@/theme';
 import type { LiveTvChannel } from '@/types/livetv';
 
@@ -260,7 +259,7 @@ export default function LiveTvPlayerScreen() {
   }, [showControls, hideControls, showControlsWithTimeout]);
 
   const handleBack = useCallback(() => {
-    goBack('/(tabs)/home');
+    router.back();
   }, []);
 
   const handleChannelChange = useCallback((channel: LiveTvChannel) => {

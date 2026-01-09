@@ -1,12 +1,11 @@
 import { useState, useEffect } from 'react';
 import { View, Text, TextInput, Pressable, Alert, ActivityIndicator, ScrollView, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Stack } from 'expo-router';
+import { Stack, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { sonarrService } from '@/services';
 import { colors } from '@/theme';
-import { goBack } from '@/utils';
 
 export default function SonarrSettingsScreen() {
   const {
@@ -103,7 +102,7 @@ export default function SonarrSettingsScreen() {
         setVersion(result.version ?? null);
         setConnectionStatus('connected');
         Alert.alert('Success', 'Connected to Sonarr', [
-          { text: 'OK', onPress: () => goBack('/(tabs)/settings') },
+          { text: 'OK', onPress: () => router.back() },
         ]);
       } else {
         clearSonarrCredentials();

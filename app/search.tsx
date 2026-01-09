@@ -6,7 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuthStore, useSettingsStore } from '@/stores';
 import { jellyfinClient, getImageUrl } from '@/api/client';
 import { CachedImage } from '@/components/ui/CachedImage';
-import { dismissModal } from '@/utils';
+import { dismissModal, navigateToDetails } from '@/utils';
 
 interface SearchItem {
   Id: string;
@@ -62,15 +62,15 @@ export default function SearchScreen() {
     if (t === 'audio') {
       router.push(`/player/music?itemId=${item.Id}`);
     } else if (t === 'musicartist') {
-      router.push(`/details/artist/${item.Id}`);
+      navigateToDetails('artist', item.Id, '/search');
     } else if (t === 'musicalbum') {
-      router.push(`/details/album/${item.Id}`);
+      navigateToDetails('album', item.Id, '/search');
     } else if (t === 'movie') {
-      router.push(`/details/movie/${item.Id}`);
+      navigateToDetails('movie', item.Id, '/search');
     } else if (t === 'series') {
-      router.push(`/details/series/${item.Id}`);
+      navigateToDetails('series', item.Id, '/search');
     } else if (t === 'episode') {
-      router.push(`/details/episode/${item.Id}`);
+      navigateToDetails('episode', item.Id, '/search');
     } else if (t === 'audiobook') {
       router.push(`/player/audiobook?itemId=${item.Id}`);
     } else if (t === 'book') {
@@ -79,9 +79,9 @@ export default function SearchScreen() {
       const isPdf = container === 'pdf' || path.endsWith('.pdf');
       router.push(isPdf ? `/reader/pdf?itemId=${item.Id}` : `/reader/epub?itemId=${item.Id}`);
     } else if (t === 'playlist') {
-      router.push(`/details/playlist/${item.Id}`);
+      navigateToDetails('playlist', item.Id, '/search');
     } else {
-      router.push(`/details/${t}/${item.Id}`);
+      navigateToDetails(t, item.Id, '/search');
     }
   };
 
