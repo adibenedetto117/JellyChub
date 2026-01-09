@@ -1,4 +1,12 @@
-import { useState, useEffect, useCallback } from 'react';
+/**
+ * @deprecated Use PosterCard from '@/components/media/PosterCard' instead.
+ * PosterCard now supports both mobile and TV platforms with responsive sizing
+ * and TV-specific focus effects (shadow glow, focus ring).
+ *
+ * This component is kept for backward compatibility but may be removed in a future version.
+ */
+
+import { useState, useEffect, useCallback, memo, useMemo } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import Animated, {
   useSharedValue,
@@ -9,7 +17,7 @@ import { getImageUrl } from '@/api';
 import { tvConstants } from '@/utils/platform';
 import { useSettingsStore } from '@/stores';
 import { CachedImage } from '@/components/ui/CachedImage';
-import { getWatchProgress, getDisplayName, getDisplayYear } from '@/utils';
+import { getWatchProgress, getDisplayName, getDisplayYear, getDisplayImageUrl } from '@/utils';
 import type { BaseItem } from '@/types/jellyfin';
 
 interface Props {
@@ -31,7 +39,7 @@ const DIMENSIONS = {
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
-export function TVPosterCard({
+export const TVPosterCard = memo(function TVPosterCard({
   item,
   onPress,
   onFocus,
@@ -50,21 +58,31 @@ export function TVPosterCard({
   const shadowOpacity = useSharedValue(0);
 
   const dimensions = DIMENSIONS[variant];
-  const progress = getWatchProgress(item);
+  const progress = useMemo(() => getWatchProgress(item), [item.UserData, item.RunTimeTicks]);
   const hasProgress = showProgress && progress > 0 && progress < 100;
 
-  const imageType = variant === 'backdrop' ? 'Backdrop' : 'Primary';
-  const imageTag = variant === 'backdrop'
-    ? item.BackdropImageTags?.[0]
-    : item.ImageTags?.Primary;
+  const { imageUrl, displayName, subtitle } = useMemo(() => {
+    const imageType = variant === 'backdrop' ? 'Backdrop' : 'Primary';
+    const imageTag = variant === 'backdrop'
+      ? item.BackdropImageTags?.[0]
+      : item.ImageTags?.Primary;
 
-  const imageUrl = imageTag
-    ? getImageUrl(item.Id, imageType, {
-        maxWidth: dimensions.width * 2,
-        maxHeight: dimensions.height * 2,
-        tag: imageTag,
-      })
-    : null;
+    const rawImageUrl = imageTag
+      ? getImageUrl(item.Id, imageType, {
+          maxWidth: dimensions.width * 2,
+          maxHeight: dimensions.height * 2,
+          tag: imageTag,
+        })
+      : null;
+
+    return {
+      imageUrl: getDisplayImageUrl(item.Id, rawImageUrl, hideMedia, imageType),
+      displayName: getDisplayName(item, hideMedia),
+      subtitle: item.Type === 'Episode'
+        ? `S${(item as any).ParentIndexNumber || '?'}E${(item as any).IndexNumber || '?'}`
+        : getDisplayYear(item.ProductionYear, hideMedia)?.toString(),
+    };
+  }, [item.Id, item.ImageTags, item.BackdropImageTags, item.Name, item.Type, item.ProductionYear, variant, dimensions.width, dimensions.height, hideMedia]);
 
   useEffect(() => {
     if (isFocused) {
@@ -112,11 +130,6 @@ export function TVPosterCard({
     onBlur?.();
   }, [onBlur]);
 
-  const displayName = getDisplayName(item, hideMedia);
-  const subtitle = item.Type === 'Episode'
-    ? `S${(item as any).ParentIndexNumber || '?'}E${(item as any).IndexNumber || '?'}`
-    : getDisplayYear(item.ProductionYear, hideMedia)?.toString();
-
   return (
     <AnimatedPressable
       onPress={onPress}
@@ -151,7 +164,7 @@ export function TVPosterCard({
           style={{ width: dimensions.width, height: dimensions.height }}
           borderRadius={12}
           fallbackText={item.Name?.charAt(0)?.toUpperCase() || '?'}
-          priority="high"
+          priority={isFocused ? 'high' : 'normal'}
         />
 
         {hasProgress && (
@@ -200,7 +213,7 @@ export function TVPosterCard({
       )}
     </AnimatedPressable>
   );
-}
+});
 
 const styles = StyleSheet.create({
   pressable: {

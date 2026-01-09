@@ -59,42 +59,43 @@ export default function HomeScreen() {
   const userId = currentUser?.Id ?? '';
   const horizontalPadding = isResponsiveTV ? 48 : isTablet ? 24 : 16;
 
+  // Priority 1: Libraries (needed for other queries) and Resume items (most visible)
   const { data: libraries, refetch: refetchLibraries } = useQuery({
     queryKey: ['libraries', userId],
     queryFn: () => getLibraries(userId),
     enabled: !!userId,
-    staleTime: Infinity,
-    refetchOnMount: false,
+    staleTime: 1000 * 60 * 60, // 1 hour - libraries rarely change
   });
 
   const { data: resumeItems, refetch: refetchResume, isLoading: isLoadingResume } = useQuery({
     queryKey: ['resume', userId],
     queryFn: () => getResumeItems(userId, 12),
     enabled: !!userId,
-    staleTime: 1000 * 30, // 30 seconds - refetch when stale
+    staleTime: 1000 * 30, // 30 seconds - continue watching changes frequently
   });
 
+  // Priority 2: Next Up - loads after resume items are fetched or cached
   const { data: nextUp, refetch: refetchNextUp, isLoading: isLoadingNextUp } = useQuery({
     queryKey: ['nextUp', userId],
     queryFn: () => getNextUp(userId),
-    enabled: !!userId,
-    staleTime: 1000 * 30,
+    enabled: !!userId && resumeItems !== undefined, // Wait for resume to complete
+    staleTime: 1000 * 30, // 30 seconds - next up changes as you watch
   });
 
+  // Priority 3: Secondary content - loads after critical data is ready
   const { data: suggestions, refetch: refetchSuggestions, isLoading: isLoadingSuggestions } = useQuery({
     queryKey: ['suggestions', userId],
     queryFn: () => getSuggestions(userId, 12),
-    enabled: !!userId,
-    staleTime: 1000 * 60 * 5,
+    enabled: !!userId && nextUp !== undefined, // Wait for nextUp
+    staleTime: 1000 * 60 * 10, // 10 minutes - suggestions don't change often
   });
 
-  // Combined favorites query - fetches both movies and series in a single API call
-  // We request 24 items total to ensure we have enough of each type after splitting
+  // Priority 4: Favorites - loads last as it's lower in the page
   const { data: allFavorites, refetch: refetchFavorites } = useQuery({
     queryKey: ['favorites', userId],
     queryFn: () => getFavorites(userId, ['Movie', 'Series'], 24),
-    enabled: !!userId,
-    staleTime: 1000 * 60 * 5,
+    enabled: !!userId && suggestions !== undefined, // Wait for suggestions
+    staleTime: 1000 * 60 * 5, // 5 minutes - favorites change occasionally
   });
 
   // Split the combined favorites into movies and series for display
@@ -118,19 +119,24 @@ export default function HomeScreen() {
     return groupLibrariesByType(filteredLibraries);
   }, [libraries]);
 
-  // Create queries for each grouped collection type
-  const latestMediaQueries = useQueries({
-    queries: groupedLibraries.map((group) => ({
+  // Priority 5: Latest media queries - only start after favorites are loaded
+  // This prevents 5+ queries firing simultaneously on mount
+  const latestMediaQueriesConfig = useMemo(() =>
+    groupedLibraries.map((group) => ({
       queryKey: ['latestMediaGrouped', userId, group.collectionType, group.libraries.map(l => l.Id).join(',')],
       queryFn: () => getLatestMediaFromMultipleLibraries(
         userId,
         group.libraries.map(l => l.Id),
         12
       ),
-      enabled: !!userId && group.libraries.length > 0,
-      staleTime: Infinity,
-      refetchOnMount: false,
-    })),
+      enabled: !!userId && group.libraries.length > 0 && allFavorites !== undefined,
+      staleTime: 1000 * 60 * 5, // 5 minutes - latest media changes with new additions
+      })),
+  [groupedLibraries, userId, allFavorites]);
+
+  // Create queries for each grouped collection type
+  const latestMediaQueries = useQueries({
+    queries: latestMediaQueriesConfig,
   });
 
   // Combine grouped library info with query results for rendering
