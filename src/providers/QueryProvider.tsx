@@ -7,15 +7,15 @@ import { queryCacheStorage } from '@/stores/storage';
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 1000 * 60 * 15, // 15 minutes default - data stays fresh longer
-      gcTime: 1000 * 60 * 60 * 24, // 24 hours - keep in cache longer
-      retry: 2,
+      staleTime: 1000 * 60 * 5, // 5 minutes - balanced caching
+      gcTime: 1000 * 60 * 60 * 24, // 24 hour cache
+      retry: 0, // No retries - fail fast
       refetchOnWindowFocus: false,
-      refetchOnMount: false, // Don't refetch on mount if data exists
-      refetchOnReconnect: false, // Don't refetch on reconnect
+      refetchOnMount: true, // Refetch stale data on mount
+      refetchOnReconnect: true, // Sync when network reconnects
     },
     mutations: {
-      retry: 1,
+      retry: 0,
     },
   },
 });
@@ -58,8 +58,15 @@ persistQueryClient({
         'resume',
         'nextUp',
         'latestMedia',
+        'suggestions',
+        'favorites',
         // Library screen data
         'libraryPreview',
+        'libraryDetail',
+        // Movies/Shows screen data
+        'moviesData',
+        'showsData',
+        'booksData',
         // Person/Cast data - cached forever
         'person',
         'person-items',

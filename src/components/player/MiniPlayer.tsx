@@ -1,14 +1,34 @@
-import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { View, Text, Pressable, StyleSheet, Dimensions } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import Animated, { useSharedValue, useAnimatedStyle, withSpring, withTiming } from 'react-native-reanimated';
+import Animated, { useSharedValue, useAnimatedStyle, withSpring, withTiming, FadeIn, runOnJS } from 'react-native-reanimated';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { useShallow } from 'zustand/react/shallow';
 import { usePlayerStore, useSettingsStore } from '@/stores';
+import { selectMiniPlayerSettings } from '@/stores/settingsStore';
 import { audioService } from '@/services';
 import { getImageUrl } from '@/api';
-import { getDisplayName, getDisplayImageUrl } from '@/utils';
+import { getDisplayName, getDisplayImageUrl, getDisplayArtist } from '@/utils';
 import { CachedImage } from '@/components/ui/CachedImage';
 import { memo, useCallback, useMemo, useState, useEffect } from 'react';
+
+// Isolated progress bar component - only this re-renders on progress updates
+const MiniPlayerProgress = memo(function MiniPlayerProgress({ accentColor }: { accentColor: string }) {
+  const progress = usePlayerStore((state) => state.progress);
+  const progressPercent = progress.duration > 0 ? (progress.position / progress.duration) * 100 : 0;
+
+  return (
+    <View style={styles.progressContainer}>
+      <View style={[styles.progressBar, { backgroundColor: accentColor, width: `${progressPercent}%` }]} />
+    </View>
+  );
+});
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const MINI_PLAYER_HEIGHT = 64;
+const BOTTOM_NAV_HEIGHT = 56; // Base height without safe area
+const SWIPE_THRESHOLD = 50; // Minimum swipe distance to trigger action
 
 // Paths where MiniPlayer should be hidden
 const HIDDEN_PATHS = ['/player/music', '/player/video', '/player/audiobook', '/(auth)', '/login'];
@@ -17,25 +37,24 @@ export const MiniPlayer = memo(function MiniPlayer() {
   const router = useRouter();
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
-  const accentColor = useSettingsStore((s) => s.accentColor);
-  const hideMedia = useSettingsStore((s) => s.hideMedia);
+  // Use compound selector with useShallow to reduce subscriptions (2 → 1)
+  const { accentColor, hideMedia } = useSettingsStore(useShallow(selectMiniPlayerSettings));
 
+  // Player store - only subscribe to what changes infrequently
+  // Progress is handled by isolated MiniPlayerProgress component to avoid re-renders
   const currentItem = usePlayerStore((state) => state.currentItem);
   const playerState = usePlayerStore((state) => state.playerState);
-  const progress = usePlayerStore((state) => state.progress);
   const mediaType = usePlayerStore((state) => state.mediaType);
 
   const [isDismissing, setIsDismissing] = useState(false);
-  const scale = useSharedValue(1);
-  const opacity = useSharedValue(1);
+  const translateY = useSharedValue(0);
 
   useEffect(() => {
     if (currentItem && isDismissing) {
       setIsDismissing(false);
-      scale.value = 1;
-      opacity.value = 1;
+      translateY.value = 0;
     }
-  }, [currentItem, isDismissing, scale, opacity]);
+  }, [currentItem, isDismissing, translateY]);
 
   // Memoize path checking to avoid repeated string operations
   const shouldHide = useMemo(() => {
@@ -69,9 +88,11 @@ export const MiniPlayer = memo(function MiniPlayer() {
     return getDisplayName(item, hideMedia);
   }, [item, hideMedia]);
 
-  const progressPercent = useMemo(() => {
-    return progress.duration > 0 ? (progress.position / progress.duration) * 100 : 0;
-  }, [progress.position, progress.duration]);
+  const artistName = useMemo(() => {
+    if (!item) return '';
+    return getDisplayArtist(item, hideMedia);
+  }, [item, hideMedia]);
+
   const isPlaying = playerState === 'playing';
 
   const handlePress = useCallback(() => {
@@ -92,13 +113,22 @@ export const MiniPlayer = memo(function MiniPlayer() {
     await audioService.stop();
   }, []);
 
+  const handleSkipNext = useCallback(async () => {
+    await audioService.skipToNext();
+  }, []);
+
+  const handleSkipPrev = useCallback(async () => {
+    await audioService.skipToPrevious();
+  }, []);
+
   const handleClose = useCallback(async () => {
     if (isDismissing) return;
     setIsDismissing(true);
-    scale.value = withSpring(0, { damping: 15, stiffness: 400 });
-    opacity.value = withTiming(0, { duration: 150 });
-    await stopAudio();
-  }, [isDismissing, scale, opacity, stopAudio]);
+    translateY.value = withTiming(MINI_PLAYER_HEIGHT + 20, { duration: 200 });
+    setTimeout(async () => {
+      await stopAudio();
+    }, 200);
+  }, [isDismissing, translateY, stopAudio]);
 
   const handlePlayPausePress = useCallback((e: any) => {
     e.stopPropagation();
@@ -110,125 +140,204 @@ export const MiniPlayer = memo(function MiniPlayer() {
     handleClose();
   }, [handleClose]);
 
+  const translateX = useSharedValue(0);
+
+  // Swipe gesture for skip and dismiss
+  const panGesture = Gesture.Pan()
+    .onUpdate((event) => {
+      // Horizontal swipe for skip
+      translateX.value = event.translationX * 0.5;
+      // Vertical swipe for dismiss (only down)
+      if (event.translationY > 0) {
+        translateY.value = event.translationY * 0.5;
+      }
+    })
+    .onEnd((event) => {
+      // Horizontal: skip prev/next
+      if (Math.abs(event.translationX) > SWIPE_THRESHOLD) {
+        if (event.translationX > 0) {
+          runOnJS(handleSkipPrev)();
+        } else {
+          runOnJS(handleSkipNext)();
+        }
+      }
+      // Vertical: dismiss if swiped down
+      if (event.translationY > SWIPE_THRESHOLD) {
+        runOnJS(handleClose)();
+      } else {
+        translateY.value = withSpring(0, { damping: 20, stiffness: 300 });
+      }
+      translateX.value = withSpring(0, { damping: 20, stiffness: 300 });
+    });
+
   const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: -80 }, { scale: scale.value }],
-    opacity: opacity.value,
+    transform: [
+      { translateX: translateX.value },
+      { translateY: translateY.value },
+    ],
   }));
 
   if (!shouldShow) return null;
 
+  // Position above the bottom nav
+  const bottomPosition = BOTTOM_NAV_HEIGHT + insets.bottom;
+
   return (
-    <Animated.View style={[miniPlayerStyles.container, { top: insets.top + 8 }, animatedStyle]}>
-      <Pressable onPress={handlePress} style={miniPlayerStyles.pressable}>
-        <View
-          style={[
-            miniPlayerStyles.progressBar,
-            { backgroundColor: accentColor, width: `${progressPercent}%` },
-          ]}
-        />
+    <GestureDetector gesture={panGesture}>
+      <Animated.View
+        entering={FadeIn.duration(200)}
+        style={[
+          styles.container,
+          { bottom: bottomPosition },
+          animatedStyle
+        ]}
+      >
+        {/* Progress bar at top - isolated component to avoid re-renders */}
+        <MiniPlayerProgress accentColor={accentColor} />
 
-        <CachedImage
-          uri={albumArtUrl}
-          style={miniPlayerStyles.albumArt}
-          borderRadius={mediaType === 'audiobook' ? 4 : 17}
-          showSkeleton={false}
-        />
-
-        <View style={miniPlayerStyles.textContainer}>
-          <Text style={miniPlayerStyles.displayName} numberOfLines={1}>
-            {displayName}
-          </Text>
-        </View>
-
-        <Pressable
-          onPress={handlePlayPausePress}
-          hitSlop={miniPlayerStyles.hitSlop}
-          style={miniPlayerStyles.controlButton}
-        >
-          <Ionicons
-            name={isPlaying ? 'pause' : 'play'}
-            size={16}
-            color="#fff"
-            style={{ marginLeft: isPlaying ? 0 : 2 }}
+        <Pressable onPress={handlePress} style={styles.content}>
+          {/* Album Art */}
+          <CachedImage
+            uri={albumArtUrl}
+            style={[styles.albumArt, { borderRadius: mediaType === 'audiobook' ? 4 : 6 }]}
+            showSkeleton={false}
           />
-        </Pressable>
 
-        <Pressable
-          onPress={handleClosePress}
-          hitSlop={miniPlayerStyles.closeHitSlop}
-          style={miniPlayerStyles.controlButton}
-        >
-          <Ionicons name="close" size={14} color="rgba(255,255,255,0.6)" />
+          {/* Track Info */}
+          <View style={styles.trackInfo}>
+            <Text style={styles.trackName} numberOfLines={1}>
+              {displayName}
+            </Text>
+            {artistName ? (
+              <Text style={styles.artistName} numberOfLines={1}>
+                {artistName}
+              </Text>
+            ) : null}
+          </View>
+
+          {/* Controls */}
+          <View style={styles.controls}>
+            {/* Skip Previous */}
+            <Pressable
+              onPress={(e) => { e.stopPropagation(); handleSkipPrev(); }}
+              style={styles.skipButton}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Ionicons name="play-skip-back" size={20} color="rgba(255,255,255,0.8)" />
+            </Pressable>
+
+            {/* Play/Pause */}
+            <Pressable
+              onPress={handlePlayPausePress}
+              style={[styles.playButton, { backgroundColor: accentColor }]}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Ionicons
+                name={isPlaying ? 'pause' : 'play'}
+                size={24}
+                color="#fff"
+                style={{ marginLeft: isPlaying ? 0 : 2 }}
+              />
+            </Pressable>
+
+            {/* Skip Next */}
+            <Pressable
+              onPress={(e) => { e.stopPropagation(); handleSkipNext(); }}
+              style={styles.skipButton}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Ionicons name="play-skip-forward" size={20} color="rgba(255,255,255,0.8)" />
+            </Pressable>
+
+            {/* Close Button */}
+            <Pressable
+              onPress={handleClosePress}
+              style={styles.closeButton}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Ionicons name="close" size={22} color="rgba(255,255,255,0.6)" />
+            </Pressable>
+          </View>
         </Pressable>
-      </Pressable>
-    </Animated.View>
+      </Animated.View>
+    </GestureDetector>
   );
 });
 
-// Static styles moved outside component
-const miniPlayerStyles = StyleSheet.create({
+const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    alignSelf: 'center',
-    left: '50%',
-    width: 160,
-    height: 40,
-    zIndex: 100,
-    transform: [{ translateX: -80 }],
-  },
-  pressable: {
-    width: '100%',
-    height: '100%',
+    left: 0,
+    right: 0,
+    height: MINI_PLAYER_HEIGHT,
     backgroundColor: '#1a1a1a',
-    borderRadius: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingLeft: 3,
-    paddingRight: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 10,
-    overflow: 'hidden',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(255,255,255,0.1)',
+    zIndex: 100,
+  },
+  progressContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 2,
+    backgroundColor: 'rgba(255,255,255,0.1)',
   },
   progressBar: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    height: 2,
-    borderRadius: 1,
+    height: '100%',
+  },
+  content: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingTop: 2,
   },
   albumArt: {
-    width: 34,
-    height: 34,
+    width: 48,
+    height: 48,
   },
-  textContainer: {
+  trackInfo: {
     flex: 1,
-    marginLeft: 6,
-    marginRight: 2,
+    marginLeft: 12,
+    marginRight: 8,
   },
-  displayName: {
+  trackName: {
     color: '#fff',
-    fontSize: 10,
+    fontSize: 14,
     fontWeight: '600',
   },
-  controlButton: {
-    width: 26,
-    height: 26,
+  artistName: {
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 12,
+    marginTop: 2,
+  },
+  controls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  skipButton: {
+    width: 36,
+    height: 36,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  hitSlop: {
-    top: 8,
-    bottom: 8,
-    left: 4,
-    right: 4,
+  playButton: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 20,
   },
-  closeHitSlop: {
-    top: 8,
-    bottom: 8,
-    left: 4,
-    right: 8,
+  closeButton: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 4,
   },
 });
+
+// Export the height for layout calculations
+export const MINI_PLAYER_HEIGHT_EXPORT = MINI_PLAYER_HEIGHT;

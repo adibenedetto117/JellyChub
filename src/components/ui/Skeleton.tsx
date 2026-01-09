@@ -1,33 +1,7 @@
 import { View, ViewStyle, StyleProp } from 'react-native';
-import { memo, useEffect, createContext, useContext } from 'react';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withRepeat,
-  withTiming,
-  interpolate,
-  Easing,
-  SharedValue,
-} from 'react-native-reanimated';
+import { memo } from 'react';
 
-const SkeletonContext = createContext<SharedValue<number> | null>(null);
-
-function useSkeletonAnimation(): SharedValue<number> {
-  const contextValue = useContext(SkeletonContext);
-  const localValue = useSharedValue(0);
-
-  useEffect(() => {
-    if (!contextValue) {
-      localValue.value = withRepeat(
-        withTiming(1, { duration: 1500, easing: Easing.inOut(Easing.ease) }),
-        -1,
-        false
-      );
-    }
-  }, [contextValue, localValue]);
-
-  return contextValue ?? localValue;
-}
+// Static skeleton - no animations for maximum performance
 
 interface SkeletonProps {
   width?: number | string;
@@ -42,17 +16,7 @@ export const Skeleton = memo(function Skeleton({
   borderRadius = 8,
   style,
 }: SkeletonProps) {
-  const shimmerValue = useSkeletonAnimation();
-
-  const animatedStyle = useAnimatedStyle(() => {
-    const opacity = interpolate(
-      shimmerValue.value,
-      [0, 0.5, 1],
-      [0.3, 0.6, 0.3]
-    );
-    return { opacity };
-  });
-
+  // Static skeleton - no animation for maximum performance
   return (
     <View
       style={[
@@ -61,16 +25,14 @@ export const Skeleton = memo(function Skeleton({
           height: typeof height === 'number' ? height : undefined,
           borderRadius,
           overflow: 'hidden',
+          backgroundColor: '#374151',
+          opacity: 0.4,
         },
         typeof width === 'string' && { width: width as any },
         typeof height === 'string' && { height: height as any },
         style,
       ]}
-    >
-      <Animated.View
-        style={[{ flex: 1, backgroundColor: '#374151' }, animatedStyle]}
-      />
-    </View>
+    />
   );
 });
 
@@ -113,26 +75,15 @@ export const SkeletonGrid = memo(function SkeletonGrid({
   itemHeight,
   showTitle = true,
 }: SkeletonGridProps) {
-  const shimmerValue = useSharedValue(0);
-
-  useEffect(() => {
-    shimmerValue.value = withRepeat(
-      withTiming(1, { duration: 1500, easing: Easing.inOut(Easing.ease) }),
-      -1,
-      false
-    );
-  }, [shimmerValue]);
-
+  // No animation - static skeleton for performance
   return (
-    <SkeletonContext.Provider value={shimmerValue}>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 12 }}>
-        {Array.from({ length: count }).map((_, index) => (
-          <View key={index} style={{ width: '33.33%', padding: 4 }}>
-            <SkeletonCard width={itemWidth} height={itemHeight} showTitle={showTitle} />
-          </View>
-        ))}
-      </View>
-    </SkeletonContext.Provider>
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 12 }}>
+      {Array.from({ length: count }).map((_, index) => (
+        <View key={index} style={{ width: '33.33%', padding: 4 }}>
+          <SkeletonCard width={itemWidth} height={itemHeight} showTitle={showTitle} />
+        </View>
+      ))}
+    </View>
   );
 });
 
@@ -151,32 +102,22 @@ export const SkeletonRow = memo(function SkeletonRow({
   count = 5,
   isSquare = false,
 }: SkeletonRowProps) {
-  const shimmerValue = useSharedValue(0);
   const actualHeight = isSquare ? cardWidth : cardHeight;
 
-  useEffect(() => {
-    shimmerValue.value = withRepeat(
-      withTiming(1, { duration: 1500, easing: Easing.inOut(Easing.ease) }),
-      -1,
-      false
-    );
-  }, [shimmerValue]);
-
+  // No animation - static skeleton for performance
   return (
-    <SkeletonContext.Provider value={shimmerValue}>
-      <View style={{ marginBottom: 24 }}>
-        {title && (
-          <View style={{ paddingHorizontal: 16, marginBottom: 12 }}>
-            <Skeleton width={140} height={20} borderRadius={4} />
-          </View>
-        )}
-        <View style={{ flexDirection: 'row', paddingLeft: 16 }}>
-          {Array.from({ length: count }).map((_, index) => (
-            <SkeletonCard key={index} width={cardWidth} height={actualHeight} showTitle />
-          ))}
+    <View style={{ marginBottom: 24 }}>
+      {title && (
+        <View style={{ paddingHorizontal: 16, marginBottom: 12 }}>
+          <Skeleton width={140} height={20} borderRadius={4} />
         </View>
+      )}
+      <View style={{ flexDirection: 'row', paddingLeft: 16 }}>
+        {Array.from({ length: count }).map((_, index) => (
+          <SkeletonCard key={index} width={cardWidth} height={actualHeight} showTitle />
+        ))}
       </View>
-    </SkeletonContext.Provider>
+    </View>
   );
 });
 
@@ -187,36 +128,60 @@ interface SkeletonContinueWatchingProps {
 export const SkeletonContinueWatching = memo(function SkeletonContinueWatching({
   count = 3,
 }: SkeletonContinueWatchingProps) {
-  const shimmerValue = useSharedValue(0);
-
-  useEffect(() => {
-    shimmerValue.value = withRepeat(
-      withTiming(1, { duration: 1500, easing: Easing.inOut(Easing.ease) }),
-      -1,
-      false
-    );
-  }, [shimmerValue]);
-
+  // No animation - static skeleton for performance
   return (
-    <SkeletonContext.Provider value={shimmerValue}>
-      <View style={{ marginBottom: 24 }}>
-        <View style={{ paddingHorizontal: 16, marginBottom: 12 }}>
-          <Skeleton width={160} height={20} borderRadius={4} />
-        </View>
-        <View style={{ flexDirection: 'row', paddingLeft: 16 }}>
-          {Array.from({ length: count }).map((_, index) => (
-            <View key={index} style={{ marginRight: 12 }}>
-              <Skeleton width={200} height={112} borderRadius={12} />
-              <View style={{ marginTop: 8 }}>
-                <Skeleton width={160} height={14} borderRadius={4} />
-                <View style={{ marginTop: 6 }}>
-                  <Skeleton width={180} height={4} borderRadius={2} />
-                </View>
+    <View style={{ marginBottom: 24 }}>
+      <View style={{ paddingHorizontal: 16, marginBottom: 12 }}>
+        <Skeleton width={160} height={20} borderRadius={4} />
+      </View>
+      <View style={{ flexDirection: 'row', paddingLeft: 16 }}>
+        {Array.from({ length: count }).map((_, index) => (
+          <View key={index} style={{ marginRight: 12 }}>
+            <Skeleton width={200} height={112} borderRadius={12} />
+            <View style={{ marginTop: 8 }}>
+              <Skeleton width={160} height={14} borderRadius={4} />
+              <View style={{ marginTop: 6 }}>
+                <Skeleton width={180} height={4} borderRadius={2} />
               </View>
             </View>
-          ))}
-        </View>
+          </View>
+        ))}
       </View>
-    </SkeletonContext.Provider>
+    </View>
+  );
+});
+
+interface SkeletonSearchResultsProps {
+  count?: number;
+}
+
+export const SkeletonSearchResults = memo(function SkeletonSearchResults({
+  count = 8,
+}: SkeletonSearchResultsProps) {
+  // No animation - static skeleton for performance
+  return (
+    <View style={{ paddingHorizontal: 16 }}>
+      {Array.from({ length: count }).map((_, index) => (
+        <View
+          key={index}
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            padding: 12,
+            backgroundColor: 'rgba(255,255,255,0.05)',
+            borderRadius: 12,
+            marginBottom: 8,
+          }}
+        >
+          <Skeleton width={48} height={48} borderRadius={8} style={{ marginRight: 12 }} />
+          <View style={{ flex: 1 }}>
+            <Skeleton width="70%" height={16} borderRadius={4} />
+            <View style={{ marginTop: 6 }}>
+              <Skeleton width="50%" height={12} borderRadius={4} />
+            </View>
+          </View>
+        </View>
+      ))}
+    </View>
   );
 });

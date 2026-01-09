@@ -5,8 +5,6 @@ import Animated, {
   useAnimatedStyle,
   withRepeat,
   withTiming,
-  withSequence,
-  withDelay,
   Easing,
   cancelAnimation,
 } from 'react-native-reanimated';
@@ -17,10 +15,10 @@ interface NowPlayingBarsProps {
   size?: 'small' | 'medium';
 }
 
+// Simplified animation - just 2 bars with simple up/down motion
 export function NowPlayingBars({ isPlaying, color = '#fff', size = 'medium' }: NowPlayingBarsProps) {
-  const bar1Height = useSharedValue(0.3);
-  const bar2Height = useSharedValue(0.5);
-  const bar3Height = useSharedValue(0.4);
+  const bar1Height = useSharedValue(0.4);
+  const bar2Height = useSharedValue(0.6);
 
   const barWidth = size === 'small' ? 2 : 3;
   const barGap = size === 'small' ? 2 : 3;
@@ -28,57 +26,28 @@ export function NowPlayingBars({ isPlaying, color = '#fff', size = 'medium' }: N
 
   useEffect(() => {
     if (isPlaying) {
+      // Simple alternating animation - much lighter on CPU
       bar1Height.value = withRepeat(
-        withSequence(
-          withTiming(1, { duration: 400, easing: Easing.inOut(Easing.ease) }),
-          withTiming(0.3, { duration: 350, easing: Easing.inOut(Easing.ease) }),
-          withTiming(0.7, { duration: 300, easing: Easing.inOut(Easing.ease) }),
-          withTiming(0.4, { duration: 400, easing: Easing.inOut(Easing.ease) })
-        ),
+        withTiming(1, { duration: 600, easing: Easing.inOut(Easing.ease) }),
         -1,
-        false
+        true // reverse for smooth alternation
       );
 
-      bar2Height.value = withDelay(
-        100,
-        withRepeat(
-          withSequence(
-            withTiming(0.5, { duration: 350, easing: Easing.inOut(Easing.ease) }),
-            withTiming(1, { duration: 400, easing: Easing.inOut(Easing.ease) }),
-            withTiming(0.3, { duration: 350, easing: Easing.inOut(Easing.ease) }),
-            withTiming(0.8, { duration: 300, easing: Easing.inOut(Easing.ease) })
-          ),
-          -1,
-          false
-        )
-      );
-
-      bar3Height.value = withDelay(
-        200,
-        withRepeat(
-          withSequence(
-            withTiming(0.6, { duration: 300, easing: Easing.inOut(Easing.ease) }),
-            withTiming(0.2, { duration: 400, easing: Easing.inOut(Easing.ease) }),
-            withTiming(1, { duration: 350, easing: Easing.inOut(Easing.ease) }),
-            withTiming(0.5, { duration: 350, easing: Easing.inOut(Easing.ease) })
-          ),
-          -1,
-          false
-        )
+      bar2Height.value = withRepeat(
+        withTiming(0.3, { duration: 600, easing: Easing.inOut(Easing.ease) }),
+        -1,
+        true
       );
     } else {
       cancelAnimation(bar1Height);
       cancelAnimation(bar2Height);
-      cancelAnimation(bar3Height);
-      bar1Height.value = withTiming(0.4, { duration: 300 });
-      bar2Height.value = withTiming(0.6, { duration: 300 });
-      bar3Height.value = withTiming(0.4, { duration: 300 });
+      bar1Height.value = withTiming(0.4, { duration: 200 });
+      bar2Height.value = withTiming(0.6, { duration: 200 });
     }
 
     return () => {
       cancelAnimation(bar1Height);
       cancelAnimation(bar2Height);
-      cancelAnimation(bar3Height);
     };
   }, [isPlaying]);
 
@@ -90,15 +59,10 @@ export function NowPlayingBars({ isPlaying, color = '#fff', size = 'medium' }: N
     height: bar2Height.value * maxHeight,
   }));
 
-  const bar3Style = useAnimatedStyle(() => ({
-    height: bar3Height.value * maxHeight,
-  }));
-
   return (
     <View style={styles.container}>
       <Animated.View style={[styles.bar, { width: barWidth, backgroundColor: color }, bar1Style]} />
-      <Animated.View style={[styles.bar, { width: barWidth, backgroundColor: color, marginHorizontal: barGap }, bar2Style]} />
-      <Animated.View style={[styles.bar, { width: barWidth, backgroundColor: color }, bar3Style]} />
+      <Animated.View style={[styles.bar, { width: barWidth, backgroundColor: color, marginLeft: barGap }, bar2Style]} />
     </View>
   );
 }
