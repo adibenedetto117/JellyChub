@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo } from 'react';
-import { View, Text, TextInput, FlatList, Pressable, ActivityIndicator, ScrollView, StyleSheet } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { View, Text, TextInput, FlatList, Pressable, ActivityIndicator, Modal, StyleSheet } from 'react-native';
+import { SafeAreaView } from '@/providers';
 import { router } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -40,10 +40,29 @@ export default function SearchScreen() {
   const { t } = useTranslation();
   const [query, setQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
+  const [filterModalVisible, setFilterModalVisible] = useState(false);
   const currentUser = useAuthStore((state) => state.currentUser);
   const accentColor = useSettingsStore((s) => s.accentColor);
   const hideMedia = useSettingsStore((s) => s.hideMedia);
   const userId = currentUser?.Id ?? '';
+
+  // Get the currently selected filter option
+  const activeFilterOption = FILTER_OPTIONS.find(f => f.value === activeFilter) || FILTER_OPTIONS[0];
+
+  // Handle filter selection from modal
+  const handleFilterSelect = useCallback((filter: FilterType) => {
+    setActiveFilter(filter);
+    setFilterModalVisible(false);
+  }, []);
+
+  // Handle back button press
+  const handleBack = () => {
+    if (router.canDismiss()) {
+      router.dismiss();
+    } else {
+      router.back();
+    }
+  };
 
   // Debounce search query to reduce API calls while typing
   const debouncedQuery = useDebounce(query, 300);
@@ -94,11 +113,13 @@ export default function SearchScreen() {
     } else if (itemType === 'musicalbum') {
       navigateToDetails('album', item.Id, '/(tabs)/search');
     } else if (itemType === 'tvchannel') {
-      // Navigate to live TV with channel selected
-      router.push(`/(tabs)/livetv?channelId=${item.Id}`);
+      // Navigate to live TV player with channel selected
+      router.push(`/player/livetv?channelId=${item.Id}`);
     } else if (itemType === 'program') {
-      // Navigate to program details
-      navigateToDetails('program', item.Id, '/(tabs)/search');
+      // Programs are Live TV items - navigate to the channel player
+      // Use ChannelId from the program if available, otherwise use the item Id
+      const channelId = (item as any).ChannelId || item.Id;
+      router.push(`/player/livetv?channelId=${channelId}`);
     } else {
       navigateToDetails(itemType, item.Id, '/(tabs)/search');
     }
@@ -114,6 +135,16 @@ export default function SearchScreen() {
       case 'movie': return item.ProductionYear ? `${t('mediaTypes.movie')} (${item.ProductionYear})` : t('mediaTypes.movie');
       case 'series': return item.ProductionYear ? `${t('mediaTypes.series')} (${item.ProductionYear})` : t('mediaTypes.series');
       case 'episode': return item.Series || t('mediaTypes.episode');
+      case 'tvchannel': return (item as any).ChannelNumber ? `Channel ${(item as any).ChannelNumber}` : 'Live TV Channel';
+      case 'program': {
+        // Show start time for programs
+        const startDate = (item as any).StartDate;
+        if (startDate) {
+          const time = new Date(startDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          return `Live TV - ${time}`;
+        }
+        return 'Live TV Program';
+      }
       default: return item.Type;
     }
   }, [t]);
@@ -156,7 +187,16 @@ export default function SearchScreen() {
   return (
     <SafeAreaView className="flex-1 bg-background" edges={['top']}>
       <View className="px-4 py-4">
-        <Text style={{ color: '#fff', fontSize: 28, fontWeight: '700', marginBottom: 16 }}>{t('search.title')}</Text>
+        <View className="flex-row items-center justify-between mb-4">
+          <Text style={{ color: '#fff', fontSize: 28, fontWeight: '700', flex: 1 }}>{t('search.title')}</Text>
+          <Pressable
+            onPress={handleBack}
+            className="h-10 w-10 items-center justify-center rounded-full bg-surface"
+            hitSlop={8}
+          >
+            <Ionicons name="close" size={24} color={accentColor} />
+          </Pressable>
+        </View>
 
         <View className="bg-surface rounded-xl flex-row items-center px-4">
           <TextInput
@@ -179,37 +219,70 @@ export default function SearchScreen() {
           )}
         </View>
 
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.filterScroll}
+        {/* Filter Dropdown Button */}
+        <Pressable
+          onPress={() => setFilterModalVisible(true)}
+          style={[styles.filterDropdown, { borderColor: accentColor + '40' }]}
         >
-          {FILTER_OPTIONS.map((filter) => (
-            <Pressable
-              key={filter.value}
-              onPress={() => setActiveFilter(filter.value)}
-              style={[
-                styles.filterChip,
-                activeFilter === filter.value && { backgroundColor: accentColor + '20', borderColor: accentColor },
-              ]}
-            >
-              <Ionicons
-                name={filter.icon as any}
-                size={16}
-                color={activeFilter === filter.value ? accentColor : 'rgba(255,255,255,0.5)'}
-              />
-              <Text
+          <View style={styles.filterDropdownLeft}>
+            <Ionicons
+              name={activeFilterOption.icon as any}
+              size={18}
+              color={accentColor}
+            />
+            <Text style={[styles.filterDropdownText, { color: '#fff' }]}>
+              {activeFilterOption.label}
+            </Text>
+          </View>
+          <Ionicons name="chevron-down" size={18} color="rgba(255,255,255,0.5)" />
+        </Pressable>
+      </View>
+
+      {/* Filter Selection Modal */}
+      <Modal
+        visible={filterModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setFilterModalVisible(false)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setFilterModalVisible(false)}
+        >
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>{t('search.filterBy')}</Text>
+            {FILTER_OPTIONS.map((filter) => (
+              <Pressable
+                key={filter.value}
+                onPress={() => handleFilterSelect(filter.value)}
                 style={[
-                  styles.filterChipText,
-                  activeFilter === filter.value && { color: accentColor },
+                  styles.modalOption,
+                  activeFilter === filter.value && { backgroundColor: accentColor + '15' },
                 ]}
               >
-                {filter.label}
-              </Text>
-            </Pressable>
-          ))}
-        </ScrollView>
-      </View>
+                <View style={styles.modalOptionLeft}>
+                  <Ionicons
+                    name={filter.icon as any}
+                    size={22}
+                    color={activeFilter === filter.value ? accentColor : 'rgba(255,255,255,0.6)'}
+                  />
+                  <Text
+                    style={[
+                      styles.modalOptionText,
+                      activeFilter === filter.value && { color: accentColor },
+                    ]}
+                  >
+                    {filter.label}
+                  </Text>
+                </View>
+                {activeFilter === filter.value && (
+                  <Ionicons name="checkmark" size={22} color={accentColor} />
+                )}
+              </Pressable>
+            ))}
+          </View>
+        </Pressable>
+      </Modal>
 
       {query.length < 2 ? (
         <View className="flex-1 items-center justify-center">
@@ -227,7 +300,7 @@ export default function SearchScreen() {
           renderItem={renderItem}
           keyExtractor={(item) => item.Id}
           keyboardShouldPersistTaps="handled"
-          contentContainerStyle={{ paddingHorizontal: 16 }}
+          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 100 }}
           ListHeaderComponent={
             results.length > 0 ? (
               <Text className="text-text-secondary text-sm mb-3">
@@ -242,25 +315,64 @@ export default function SearchScreen() {
 }
 
 const styles = StyleSheet.create({
-  filterScroll: {
-    paddingTop: 12,
-    gap: 8,
-    flexDirection: 'row',
-  },
-  filterChip: {
+  filterDropdown: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     backgroundColor: colors.surface.default,
-    borderRadius: 20,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: 'transparent',
-    gap: 6,
+    marginTop: 12,
   },
-  filterChipText: {
-    color: 'rgba(255,255,255,0.6)',
+  filterDropdownLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  filterDropdownText: {
+    fontSize: 15,
+    fontWeight: '500',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  modalContent: {
+    backgroundColor: colors.surface.default,
+    borderRadius: 16,
+    width: '100%',
+    maxWidth: 340,
+    paddingVertical: 8,
+  },
+  modalTitle: {
+    color: 'rgba(255,255,255,0.5)',
     fontSize: 13,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  modalOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  modalOptionLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  modalOptionText: {
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: 16,
     fontWeight: '500',
   },
 });

@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { View, Text, TextInput, FlatList, Pressable, ActivityIndicator, Keyboard } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView } from '@/providers';
 import { router } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
+import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore, useSettingsStore } from '@/stores';
 import { jellyfinClient, getImageUrl } from '@/api/client';
 import { CachedImage } from '@/components/ui/CachedImage';
@@ -34,6 +35,15 @@ export default function SearchScreen() {
   const inputRef = useRef<TextInput>(null);
   const user = useAuthStore((s) => s.currentUser);
   const accent = useSettingsStore((s) => s.accentColor);
+
+  const handleBack = () => {
+    Keyboard.dismiss();
+    if (router.canDismiss()) {
+      router.dismiss();
+    } else {
+      router.back();
+    }
+  };
 
   useEffect(() => {
     setTimeout(() => inputRef.current?.focus(), 200);
@@ -118,6 +128,9 @@ export default function SearchScreen() {
       </View>
 
       <View style={{ flexDirection: 'row', paddingHorizontal: 16, paddingBottom: 12, alignItems: 'center' }}>
+        <Pressable onPress={handleBack} style={{ paddingRight: 12 }}>
+          <Ionicons name="chevron-back" size={28} color={accent} />
+        </Pressable>
         <View style={{ flex: 1, backgroundColor: '#1c1c1c', borderRadius: 10, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12 }}>
           <TextInput
             ref={inputRef}
@@ -137,9 +150,6 @@ export default function SearchScreen() {
             </Pressable>
           )}
         </View>
-        <Pressable onPress={() => { Keyboard.dismiss(); dismissModal(); }} style={{ paddingLeft: 12 }}>
-          <Text style={{ color: accent, fontSize: 16 }}>Cancel</Text>
-        </Pressable>
       </View>
 
       {query.length < 2 ? (

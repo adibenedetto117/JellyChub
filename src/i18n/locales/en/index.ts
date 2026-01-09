@@ -48,7 +48,7 @@ export default {
   // Home Screen
   home: {
     continueWatching: 'Continue Watching',
-    upNext: 'Up Next',
+    nextUp: 'Next Up',
     latestMovies: 'Latest Movies',
     latestShows: 'Latest TV Shows',
     recentlyAddedMusic: 'Recently Added Music',
@@ -68,7 +68,7 @@ export default {
     skipIntro: 'Skip Intro',
     skipCredits: 'Skip Credits',
     nextEpisode: 'Next Episode',
-    upNext: 'Up Next',
+    nextUp: 'Next Up',
     playNow: 'Play Now',
     loadingStream: 'Loading stream...',
     loadingSubtitles: 'Loading subtitles...',
@@ -172,6 +172,7 @@ export default {
     opensubtitles: 'OpenSubtitles',
     notConfigured: 'Not configured',
     connected: 'Connected',
+    connectionError: 'Connection error',
 
     navigation: 'Navigation',
     customizeBottomBar: 'Customize Bottom Bar',
@@ -286,6 +287,7 @@ export default {
     albumBy: 'Album by {{artist}}',
     albumLabel: 'Album',
     songLabel: 'Song',
+    filterBy: 'Filter by type',
   },
 
   // Auth Screens
@@ -357,7 +359,7 @@ export default {
     noChannels: 'No Channels',
     noChannelsDesc: 'Configure Live TV in your Jellyfin server settings',
     nowPlaying: 'Now Playing',
-    upNext: 'Up Next',
+    nextUp: 'Next Up',
     allChannels: 'All Channels',
     noRecordings: 'No Recordings',
     noRecordingsDesc: 'Your recorded programs will appear here',

@@ -48,7 +48,7 @@ export default {
   // Home Screen
   home: {
     continueWatching: 'Weiterschauen',
-    upNext: 'Als Nächstes',
+    nextUp: 'Als Nächstes',
     latestMovies: 'Neueste Filme',
     latestShows: 'Neueste Serien',
     recentlyAddedMusic: 'Kürzlich hinzugefügt',
@@ -68,7 +68,7 @@ export default {
     skipIntro: 'Intro überspringen',
     skipCredits: 'Abspann überspringen',
     nextEpisode: 'Nächste Folge',
-    upNext: 'Als Nächstes',
+    nextUp: 'Als Nächstes',
     playNow: 'Jetzt abspielen',
     loadingStream: 'Stream wird geladen...',
     loadingSubtitles: 'Untertitel werden geladen...',
@@ -172,6 +172,7 @@ export default {
     opensubtitles: 'OpenSubtitles',
     notConfigured: 'Nicht konfiguriert',
     connected: 'Verbunden',
+    connectionError: 'Verbindungsfehler',
 
     navigation: 'Navigation',
     customizeBottomBar: 'Navigationsleiste anpassen',
@@ -356,7 +357,7 @@ export default {
     noChannels: 'Keine Sender',
     noChannelsDesc: 'Konfiguriere Live TV in deinen Jellyfin Server-Einstellungen',
     nowPlaying: 'Läuft gerade',
-    upNext: 'Als Nächstes',
+    nextUp: 'Als Nächstes',
     allChannels: 'Alle Sender',
   },
 
