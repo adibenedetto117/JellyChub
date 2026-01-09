@@ -1,16 +1,16 @@
 import { useEffect, useState } from 'react';
-import { View, Platform, InteractionManager } from 'react-native';
+import { View, Platform } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { SafeAreaProvider, useSafeAreaInsets, initialWindowMetrics } from 'react-native-safe-area-context';
+import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
 import * as SplashScreen from 'expo-splash-screen';
 import { QueryProvider } from '@/providers';
 import { useAuthStore, useSettingsStore } from '@/stores';
 import { jellyfinClient, jellyseerrClient } from '@/api';
 import { notificationService } from '@/services';
 import { useDeepLinking } from '@/hooks';
-import { ErrorBoundary } from '@/components/ui';
+import { ErrorBoundary, ConnectionStatusIndicator } from '@/components/ui';
 import { MiniPlayer } from '@/components/player';
 import { BottomNav } from '@/components/navigation';
 import { TVSidebar } from '@/components/tv';
@@ -113,7 +113,6 @@ const SEARCH_MODAL_OPTIONS = {
 SplashScreen.preventAutoHideAsync();
 
 function AppContent() {
-  const insets = useSafeAreaInsets();
   const [isReady, setIsReady] = useState(false);
   const activeServer = useAuthStore((state) => state.getActiveServer());
   const jellyseerrUrl = useSettingsStore((state) => state.jellyseerrUrl);
@@ -121,25 +120,17 @@ function AppContent() {
 
   useDeepLinking();
 
-  // Defer client initialization to after navigation animations complete
-  // This prevents jank during initial app load and screen transitions
+  // Initialize API clients immediately when credentials are available
+  // This must happen synchronously so queries can execute on first render
   useEffect(() => {
     if (activeServer?.url) {
-      // Use InteractionManager to defer heavy initialization
-      const handle = InteractionManager.runAfterInteractions(() => {
-        jellyfinClient.initialize(activeServer.url);
-      });
-      return () => handle.cancel();
+      jellyfinClient.initialize(activeServer.url, activeServer.customHeaders);
     }
-  }, [activeServer?.url]);
+  }, [activeServer?.url, activeServer?.customHeaders]);
 
   useEffect(() => {
     if (jellyseerrUrl && jellyseerrAuthToken) {
-      // Defer Jellyseerr client initialization
-      const handle = InteractionManager.runAfterInteractions(() => {
-        jellyseerrClient.initialize(jellyseerrUrl, jellyseerrAuthToken);
-      });
-      return () => handle.cancel();
+      jellyseerrClient.initialize(jellyseerrUrl, jellyseerrAuthToken);
     }
   }, [jellyseerrUrl, jellyseerrAuthToken]);
 
@@ -147,19 +138,29 @@ function AppContent() {
     notificationService.initialize();
   }, []);
 
+  // Use initialWindowMetrics for stable, synchronous layout
+  // This avoids the race condition where dynamic insets change after initial render
   useEffect(() => {
-    const insetsReady = insets.top > 0 || insets.bottom > 0;
-    if (insetsReady || isReady) {
+    if (isReady) return;
+
+    // initialWindowMetrics provides stable insets synchronously
+    // If available and valid, we can show content immediately
+    const hasValidMetrics = initialWindowMetrics &&
+      (initialWindowMetrics.insets.top > 0 || initialWindowMetrics.insets.bottom > 0 ||
+       initialWindowMetrics.frame.height > 0);
+
+    if (hasValidMetrics) {
       setIsReady(true);
       SplashScreen.hideAsync();
     } else {
+      // Fallback for edge cases where initialWindowMetrics is unavailable
       const timeout = setTimeout(() => {
         setIsReady(true);
         SplashScreen.hideAsync();
-      }, 100);
+      }, 50);
       return () => clearTimeout(timeout);
     }
-  }, [insets, isReady]);
+  }, [isReady]);
 
   if (!isReady) {
     return <View style={{ flex: 1, backgroundColor: colors.background.primary }} />;
@@ -168,6 +169,8 @@ function AppContent() {
   return (
     <View style={{ flex: 1, flexDirection: isTV ? 'row' : 'column' }}>
       <StatusBar style="light" />
+      {/* Connection status indicator - shows when API calls fail */}
+      {!isTV && <ConnectionStatusIndicator />}
       {/* TV Sidebar - Left side navigation for TV */}
       {isTV && <TVSidebar />}
       <View style={{ flex: 1 }}>
