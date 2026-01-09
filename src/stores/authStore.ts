@@ -36,6 +36,12 @@ interface AuthState {
 
   setQuickConnect: (secret: string | null, code: string | null) => void;
   clearQuickConnect: () => void;
+
+  // Custom headers for reverse proxy auth
+  setCustomHeaders: (headers: Record<string, string>) => void;
+  addCustomHeader: (name: string, value: string) => void;
+  removeCustomHeader: (name: string) => void;
+  clearCustomHeaders: () => void;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -163,6 +169,64 @@ export const useAuthStore = create<AuthState>()(
 
       clearQuickConnect: () =>
         set({ quickConnectSecret: null, quickConnectCode: null }),
+
+      // Custom headers for reverse proxy auth
+      setCustomHeaders: (headers) => {
+        const { activeServerId } = get();
+        if (activeServerId) {
+          set((state) => ({
+            servers: state.servers.map((s) =>
+              s.id === activeServerId
+                ? { ...s, customHeaders: headers }
+                : s
+            ),
+          }));
+        }
+      },
+
+      addCustomHeader: (name, value) => {
+        const { activeServerId, servers } = get();
+        if (activeServerId) {
+          const server = servers.find((s) => s.id === activeServerId);
+          const existingHeaders = server?.customHeaders ?? {};
+          set((state) => ({
+            servers: state.servers.map((s) =>
+              s.id === activeServerId
+                ? { ...s, customHeaders: { ...existingHeaders, [name]: value } }
+                : s
+            ),
+          }));
+        }
+      },
+
+      removeCustomHeader: (name) => {
+        const { activeServerId, servers } = get();
+        if (activeServerId) {
+          const server = servers.find((s) => s.id === activeServerId);
+          const existingHeaders = { ...(server?.customHeaders ?? {}) };
+          delete existingHeaders[name];
+          set((state) => ({
+            servers: state.servers.map((s) =>
+              s.id === activeServerId
+                ? { ...s, customHeaders: existingHeaders }
+                : s
+            ),
+          }));
+        }
+      },
+
+      clearCustomHeaders: () => {
+        const { activeServerId } = get();
+        if (activeServerId) {
+          set((state) => ({
+            servers: state.servers.map((s) =>
+              s.id === activeServerId
+                ? { ...s, customHeaders: {} }
+                : s
+            ),
+          }));
+        }
+      },
     }),
     {
       name: 'auth-storage',

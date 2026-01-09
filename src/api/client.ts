@@ -1,5 +1,6 @@
 import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig } from 'axios';
 import { useAuthStore } from '@/stores/authStore';
+import { useConnectionStore } from '@/stores/connectionStore';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import { APP_STORAGE } from '@/stores/storage';
@@ -46,9 +47,13 @@ function buildAuthHeader(token?: string): string {
 class JellyfinClient {
   private instance: AxiosInstance | null = null;
   private baseUrl: string | null = null;
+  private pendingCustomHeaders: Record<string, string> | null = null;
 
-  initialize(serverUrl: string): void {
+  initialize(serverUrl: string, customHeaders?: Record<string, string>): void {
     this.baseUrl = serverUrl.replace(/\/$/, '');
+    // Store custom headers for use before server is saved to store
+    this.pendingCustomHeaders = customHeaders ?? null;
+
     this.instance = axios.create({
       baseURL: this.baseUrl,
       timeout: 30000,
@@ -65,15 +70,51 @@ class JellyfinClient {
 
         config.headers['X-Emby-Authorization'] = buildAuthHeader(token);
 
+        // Add custom headers for reverse proxy authentication
+        // First check server config, then fall back to pending headers (for initial connection)
+        const headers = server?.customHeaders ?? this.pendingCustomHeaders;
+        if (headers) {
+          Object.entries(headers).forEach(([name, value]) => {
+            if (name && value) {
+              config.headers[name] = value;
+            }
+          });
+        }
+
         return config;
       },
       (error) => Promise.reject(error)
     );
 
     this.instance.interceptors.response.use(
-      (response) => response,
-      (error: AxiosError) => Promise.reject(error)
+      (response) => {
+        // Report successful connection - this immediately clears any disconnected state
+        useConnectionStore.getState().reportSuccess();
+        return response;
+      },
+      (error: AxiosError) => {
+        // Only report network-level failures (server unreachable)
+        // Don't report on HTTP errors (4xx, 5xx) - those mean the server IS reachable
+        const isNetworkError =
+          !error.response && // No response means server couldn't be reached
+          (error.code === 'ECONNABORTED' || // Connection aborted (timeout)
+            error.code === 'ERR_NETWORK' || // Network error
+            error.code === 'ECONNREFUSED' || // Connection refused
+            error.code === 'ENOTFOUND' || // DNS lookup failed
+            error.code === 'ETIMEDOUT' || // Connection timed out
+            error.message === 'Network Error' ||
+            error.message?.includes('timeout'));
+
+        if (isNetworkError) {
+          useConnectionStore.getState().reportFailure();
+        }
+        return Promise.reject(error);
+      }
     );
+  }
+
+  clearPendingHeaders(): void {
+    this.pendingCustomHeaders = null;
   }
 
   get api(): AxiosInstance {
