@@ -1,5 +1,6 @@
 export { SubtitleSelector } from './SubtitleSelector';
 export { SubtitleDisplay } from './SubtitleDisplay';
+export { AudioSubtitleSelector } from './AudioSubtitleSelector';
 export { SubtitleStyleModal } from './SubtitleStyleModal';
 export { MiniPlayer, MINI_PLAYER_HEIGHT_EXPORT } from './MiniPlayer';
 export { SleepTimerSelector, SleepTimerIndicator } from './SleepTimerSelector';
@@ -21,3 +22,4 @@ export { ChapterList, ChapterMarkers, CurrentChapterDisplay, ChapterNavigation }
 export { TrickplayPreview, TimeOnlyPreview } from './TrickplayPreview';
 export { CastRemoteControl, CastMiniControl } from './CastRemoteControl';
 export { VideoOptionsMenu } from './VideoOptionsMenu';
+export { EpisodeList } from './EpisodeList';

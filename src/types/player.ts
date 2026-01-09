@@ -52,6 +52,56 @@ export type SubtitleFontColor = '#ffffff' | '#ffff00' | '#00ffff' | '#00ff00';
 export type SubtitleBackgroundColor = 'none' | '#000000' | '#333333';
 export type SubtitleOutlineStyle = 'none' | 'outline' | 'shadow' | 'both';
 
+// Player control placement options
+export type PlayerControlPlacement = 'visible' | 'menu' | 'hidden';
+
+// Player control IDs
+export type PlayerControlId =
+  | 'pip'
+  | 'cast'
+  | 'speed'
+  | 'audioSubs'
+  | 'subtitleSearch'
+  | 'episodes'
+  | 'quality'
+  | 'chapters'
+  | 'sleepTimer'
+  | 'lock'
+  | 'externalPlayer';
+
+// Player controls configuration
+export type PlayerControlsConfig = Record<PlayerControlId, PlayerControlPlacement>;
+
+// Default player controls order
+export const DEFAULT_PLAYER_CONTROLS_ORDER: PlayerControlId[] = [
+  'audioSubs',
+  'subtitleSearch',
+  'episodes',
+  'cast',
+  'pip',
+  'speed',
+  'quality',
+  'chapters',
+  'sleepTimer',
+  'lock',
+  'externalPlayer',
+];
+
+// Default player controls configuration
+export const DEFAULT_PLAYER_CONTROLS_CONFIG: PlayerControlsConfig = {
+  pip: 'visible',
+  cast: 'visible',
+  speed: 'menu',
+  audioSubs: 'visible',
+  subtitleSearch: 'visible',
+  episodes: 'visible',
+  quality: 'menu',
+  chapters: 'menu',
+  sleepTimer: 'menu',
+  lock: 'menu',
+  externalPlayer: 'menu',
+};
+
 export interface PlayerSettings {
   autoPlay: boolean;
   defaultSubtitleLanguage: string;
@@ -66,6 +116,14 @@ export interface PlayerSettings {
   hardwareAcceleration: boolean;
   maxStreamingBitrate: number;
   externalPlayerEnabled: boolean;
+  // Player controls configuration
+  controlsConfig: PlayerControlsConfig;
+  controlsOrder: PlayerControlId[];
+  // Legacy settings (deprecated, use controlsConfig instead)
+  showPiPButton?: boolean;
+  showCastButton?: boolean;
+  showSpeedInMenu?: boolean;
+  showEpisodeList?: boolean;
 }
 
 export interface AudiobookPlayerState {
