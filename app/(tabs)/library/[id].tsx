@@ -2,7 +2,7 @@ import { View, Text, SectionList, FlatList, Pressable, RefreshControl, ActivityI
 import { Image } from 'expo-image';
 import { useState, useCallback, useMemo, useRef } from 'react';
 import { useQuery, useInfiniteQuery } from '@tanstack/react-query';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView } from '@/providers';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore, useSettingsStore } from '@/stores';
@@ -50,6 +50,9 @@ function getIoniconName(iconName: string): keyof typeof Ionicons.glyphMap {
 }
 
 function ItemCard({ item, onPress, showRating, isSquare, hideMedia }: { item: BaseItem; onPress: () => void; showRating?: boolean; isSquare?: boolean; hideMedia: boolean }) {
+  // Early return for null/undefined items to prevent crashes
+  if (!item?.Id) return null;
+
   const rawImageUrl = item.ImageTags?.Primary
     ? getImageUrl(item.Id, 'Primary', { maxWidth: 300, tag: item.ImageTags.Primary })
     : null;
@@ -93,6 +96,9 @@ function ItemCard({ item, onPress, showRating, isSquare, hideMedia }: { item: Ba
 }
 
 function ItemRow({ item, onPress, isSquare, hideMedia }: { item: BaseItem; onPress: () => void; isSquare?: boolean; hideMedia: boolean }) {
+  // Early return for null/undefined items to prevent crashes
+  if (!item?.Id) return null;
+
   const rawImageUrl = item.ImageTags?.Primary
     ? getImageUrl(item.Id, 'Primary', { maxWidth: 120, tag: item.ImageTags.Primary })
     : null;
@@ -215,6 +221,7 @@ export default function LibraryDetailScreen() {
     hasNextPage,
     isFetchingNextPage,
     isLoading,
+    isError,
     refetch,
   } = useInfiniteQuery({
     queryKey: ['libraryDetail', userId, libraryId, filters],
@@ -236,16 +243,21 @@ export default function LibraryDetailScreen() {
     initialPageParam: 0,
     getNextPageParam: (lastPage, pages) => {
       if (filters.sortBy === 'Random') return undefined;
-      const totalFetched = pages.reduce((acc, p) => acc + p.Items.length, 0);
-      return totalFetched < lastPage.TotalRecordCount ? totalFetched : undefined;
+      if (!lastPage?.Items) return undefined;
+      const totalFetched = pages.reduce((acc, p) => acc + (p.Items?.length ?? 0), 0);
+      return totalFetched < (lastPage.TotalRecordCount ?? 0) ? totalFetched : undefined;
     },
     enabled: !!userId && !!libraryId && itemTypes.length > 0,
     staleTime: filters.sortBy === 'Random' ? 0 : 1000 * 60 * 5,
   });
 
-  const allItems = data?.pages.flatMap((p) => p.Items) ?? [];
-  const totalCount = data?.pages[0]?.TotalRecordCount ?? 0;
-  const sortedItems = allItems;
+  // Filter out any null/undefined items and ensure each has a valid Id
+  const allItems = (data?.pages?.flatMap((p) => p?.Items ?? []) ?? []).filter(
+    (item): item is BaseItem => item != null && item.Id != null
+  );
+  const totalCount = data?.pages?.[0]?.TotalRecordCount ?? 0;
+  // Filter out null/undefined items to prevent FlatList crashes
+  const sortedItems = allItems.filter((item): item is BaseItem => item != null && item.Id != null);
 
   const { sections: itemSections, availableLetters } = useMemo(() => {
     if (filters.sortBy !== 'SortName') {
@@ -254,8 +266,9 @@ export default function LibraryDetailScreen() {
 
     const grouped: Record<string, BaseItem[]> = {};
     sortedItems.forEach((item) => {
+      if (!item) return;
       const sortName = item.SortName ?? item.Name ?? '?';
-      const firstChar = sortName.charAt(0).toUpperCase();
+      const firstChar = sortName.length > 0 ? sortName.charAt(0).toUpperCase() : '#';
       const letter = /[A-Z]/.test(firstChar) ? firstChar : '#';
       if (!grouped[letter]) grouped[letter] = [];
       grouped[letter].push(item);
@@ -297,6 +310,7 @@ export default function LibraryDetailScreen() {
   }, [refetch]);
 
   const handleItemPress = (item: BaseItem) => {
+    if (!item?.Id) return;
     const type = item.Type?.toLowerCase();
     // Navigate to this collection screen so back returns here
     const sourceRoute = `/library/${libraryId}`;
@@ -355,6 +369,7 @@ export default function LibraryDetailScreen() {
   const renderAlphabeticalView = () => (
     <View style={styles.alphabeticalContainer}>
       <SectionList
+        key={`section-${libraryId}`}
         ref={sectionListRef}
         style={{ flex: 1 }}
         sections={itemSections}
@@ -367,7 +382,7 @@ export default function LibraryDetailScreen() {
             <Text style={[styles.sectionHeaderText, { color: accentColor }]}>{section.title}</Text>
           </View>
         )}
-        keyExtractor={(item) => item.Id}
+        keyExtractor={(item, index) => `${item.Id}-${index}`}
         stickySectionHeadersEnabled={true}
         onEndReached={() => hasNextPage && !isFetchingNextPage && fetchNextPage()}
         onEndReachedThreshold={0.5}
@@ -378,11 +393,7 @@ export default function LibraryDetailScreen() {
           <Text style={styles.listHeader}>{sortedItems.length} of {totalCount} items</Text>
         }
         ListFooterComponent={renderFooter}
-        ListEmptyComponent={
-          isLoading || librariesLoading || itemTypes.length === 0 ? (
-            <SkeletonGrid count={12} itemWidth={POSTER_WIDTH - 8} itemHeight={isSquare ? POSTER_WIDTH - 8 : POSTER_HEIGHT} />
-          ) : null
-        }
+        ListEmptyComponent={null}
       />
       <AlphabetScroller
         availableLetters={availableLetters}
@@ -394,13 +405,14 @@ export default function LibraryDetailScreen() {
 
   const renderGridView = () => (
     <FlatList
+      key={`grid-${libraryId}-${filters.sortBy}`}
       ref={flatListRef}
       style={{ flex: 1 }}
       data={sortedItems}
       renderItem={({ item }) => (
         <ItemCard item={item} onPress={() => handleItemPress(item)} showRating={filters.sortBy !== 'SortName'} isSquare={isSquare} hideMedia={hideMedia} />
       )}
-      keyExtractor={(item) => item.Id}
+      keyExtractor={(item, index) => `${item.Id}-${index}`}
       numColumns={NUM_COLUMNS}
       columnWrapperStyle={styles.gridRow}
       contentContainerStyle={styles.gridContent}
@@ -414,14 +426,21 @@ export default function LibraryDetailScreen() {
       }
       ListFooterComponent={renderFooter}
       ListEmptyComponent={
-        isLoading || librariesLoading || itemTypes.length === 0 ? (
-          <SkeletonGrid count={12} itemWidth={POSTER_WIDTH - 8} itemHeight={isSquare ? POSTER_WIDTH - 8 : POSTER_HEIGHT} />
-        ) : null
+        <View style={styles.emptyContainer}>
+          <View style={[styles.emptyIcon, { backgroundColor: accentColor + '20' }]}>
+            <Ionicons name={getIoniconName(iconName)} size={48} color={accentColor} />
+          </View>
+          <Text style={styles.emptyTitle}>No items found</Text>
+          <Text style={styles.emptySubtitle}>
+            {activeFilterCount > 0
+              ? 'Try adjusting your filters'
+              : 'Nothing to show here'}
+          </Text>
+        </View>
       }
       initialNumToRender={12}
       maxToRenderPerBatch={12}
       windowSize={5}
-      removeClippedSubviews={true}
     />
   );
 
@@ -465,7 +484,27 @@ export default function LibraryDetailScreen() {
         )}
       </View>
 
-      {filters.sortBy === 'SortName' ? renderAlphabeticalView() : renderGridView()}
+      {isError ? (
+        <View style={styles.emptyContainer}>
+          <View style={[styles.emptyIcon, { backgroundColor: '#ef444420' }]}>
+            <Ionicons name="alert-circle-outline" size={48} color="#ef4444" />
+          </View>
+          <Text style={styles.emptyTitle}>Failed to load library</Text>
+          <Text style={styles.emptySubtitle}>
+            There was an error loading this library. Please try again.
+          </Text>
+          <Pressable
+            onPress={() => refetch()}
+            style={[styles.retryButton, { borderColor: accentColor }]}
+          >
+            <Text style={[styles.retryButtonText, { color: accentColor }]}>Retry</Text>
+          </Pressable>
+        </View>
+      ) : isLoading || librariesLoading || itemTypes.length === 0 ? (
+        <View style={styles.gridContent}>
+          <SkeletonGrid count={12} itemWidth={POSTER_WIDTH - 8} itemHeight={isSquare ? POSTER_WIDTH - 8 : POSTER_HEIGHT} />
+        </View>
+      ) : filters.sortBy === 'SortName' ? renderAlphabeticalView() : renderGridView()}
 
       <FilterSortModal
         visible={showFilterModal}
@@ -735,5 +774,43 @@ const styles = StyleSheet.create({
   },
   bottomSpacer: {
     height: 100,
+  },
+  emptyContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 100,
+    paddingHorizontal: 32,
+  },
+  emptyIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  emptyTitle: {
+    color: '#fff',
+    fontSize: 20,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  emptySubtitle: {
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  retryButton: {
+    marginTop: 20,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  retryButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
   },
 });

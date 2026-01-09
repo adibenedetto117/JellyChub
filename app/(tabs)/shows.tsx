@@ -2,7 +2,7 @@ import { View, Text, SectionList, FlatList, Pressable, RefreshControl, ActivityI
 import { Image } from 'expo-image';
 import { useState, useCallback, useMemo, useRef, memo } from 'react';
 import { useQuery, useInfiniteQuery } from '@tanstack/react-query';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView } from '@/providers';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore, useSettingsStore } from '@/stores';
@@ -23,9 +23,6 @@ const POSTER_HEIGHT = POSTER_WIDTH * 1.5;
 
 const ITEMS_PER_PAGE = 100;
 const FULL_ALPHABET = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '#'];
-
-// Row heights for getItemLayout optimization
-const SHOW_ROW_HEIGHT = 97; // 72px image + 24px padding + 1px border
 
 const ShowCard = memo(function ShowCard({ item, onPress, showRating, hideMedia }: { item: BaseItem; onPress: () => void; showRating?: boolean; hideMedia: boolean }) {
   const rawImageUrl = item.ImageTags?.Primary
@@ -206,7 +203,8 @@ export default function ShowsScreen() {
 
   const allShows = data?.pages.flatMap((p) => p.Items) ?? [];
   const totalCount = data?.pages[0]?.TotalRecordCount ?? 0;
-  const sortedShows = allShows;
+  // Filter out any null/undefined items to prevent FlatList crashes
+  const sortedShows = allShows.filter((item): item is Series => item != null);
 
   const { sections: showSections, availableLetters } = useMemo(() => {
     if (filters.sortBy !== 'SortName') {
@@ -300,77 +298,85 @@ export default function ShowsScreen() {
     </View>
   ), [accentColor]);
 
-  const renderAlphabeticalView = () => (
-    <View style={styles.alphabeticalContainer}>
-      <SectionList
-        ref={sectionListRef}
-        sections={showSections}
-        contentContainerStyle={styles.sectionListContent}
-        renderItem={renderShowRow}
-        renderSectionHeader={renderSectionHeader}
-        keyExtractor={(item) => item.Id}
-        stickySectionHeadersEnabled={true}
-        onEndReached={() => hasNextPage && !isFetchingNextPage && fetchNextPage()}
-        onEndReachedThreshold={0.5}
+  const renderAlphabeticalView = () => {
+    // Show skeleton OUTSIDE SectionList when loading to prevent "addViewAt: failed to insert" crash
+    if (isLoading) {
+      return (
+        <View style={styles.alphabeticalContainer}>
+          <View style={[styles.sectionListContent, { flex: 1 }]}>
+            <SkeletonGrid count={12} itemWidth={POSTER_WIDTH - 8} itemHeight={POSTER_HEIGHT} />
+          </View>
+        </View>
+      );
+    }
+
+    return (
+      <View style={styles.alphabeticalContainer}>
+        <SectionList
+          ref={sectionListRef}
+          sections={showSections}
+          contentContainerStyle={styles.sectionListContent}
+          renderItem={renderShowRow}
+          renderSectionHeader={renderSectionHeader}
+          keyExtractor={(item, index) => `${item.Id}-${index}`}
+          stickySectionHeadersEnabled={true}
+          onEndReached={() => hasNextPage && !isFetchingNextPage && fetchNextPage()}
+          onEndReachedThreshold={0.5}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={accentColor} />
+          }
+          ListHeaderComponent={
+            <Text style={styles.listHeader}>{sortedShows.length} of {totalCount} shows</Text>
+          }
+          ListFooterComponent={renderFooter}
+          initialNumToRender={15}
+          maxToRenderPerBatch={15}
+          windowSize={7}
+        />
+        <AlphabetScroller
+          availableLetters={availableLetters}
+          onLetterPress={scrollToLetter}
+          accentColor={accentColor}
+        />
+      </View>
+    );
+  };
+
+  const renderGridView = () => {
+    // Show skeleton OUTSIDE FlatList when loading to prevent "addViewAt: failed to insert" crash
+    if (isLoading) {
+      return (
+        <View style={styles.gridContent}>
+          <SkeletonGrid count={12} itemWidth={POSTER_WIDTH - 8} itemHeight={POSTER_HEIGHT} />
+        </View>
+      );
+    }
+
+    return (
+      <FlatList
+        ref={flatListRef}
+        key={`shows-grid-${filters.sortBy}-${filters.sortOrder}`}
+        data={sortedShows}
+        renderItem={renderShowCard}
+        keyExtractor={(item, index) => `${item.Id}-${index}`}
+        numColumns={NUM_COLUMNS}
+        columnWrapperStyle={styles.gridRow}
+        contentContainerStyle={styles.gridContent}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={accentColor} />
         }
+        onEndReached={() => hasNextPage && !isFetchingNextPage && fetchNextPage()}
+        onEndReachedThreshold={0.5}
         ListHeaderComponent={
           <Text style={styles.listHeader}>{sortedShows.length} of {totalCount} shows</Text>
         }
         ListFooterComponent={renderFooter}
-        ListEmptyComponent={
-          isLoading ? (
-            <SkeletonGrid count={12} itemWidth={POSTER_WIDTH - 8} itemHeight={POSTER_HEIGHT} />
-          ) : null
-        }
-        initialNumToRender={15}
-        maxToRenderPerBatch={15}
-        windowSize={7}
-        removeClippedSubviews={true}
-        getItemLayout={(data, index) => ({
-          length: SHOW_ROW_HEIGHT,
-          offset: SHOW_ROW_HEIGHT * index,
-          index,
-        })}
+        initialNumToRender={12}
+        maxToRenderPerBatch={12}
+        windowSize={5}
       />
-      <AlphabetScroller
-        availableLetters={availableLetters}
-        onLetterPress={scrollToLetter}
-        accentColor={accentColor}
-      />
-    </View>
-  );
-
-  const renderGridView = () => (
-    <FlatList
-      ref={flatListRef}
-      data={sortedShows}
-      renderItem={renderShowCard}
-      keyExtractor={(item) => item.Id}
-      numColumns={NUM_COLUMNS}
-      columnWrapperStyle={styles.gridRow}
-      contentContainerStyle={styles.gridContent}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={accentColor} />
-      }
-      onEndReached={() => hasNextPage && !isFetchingNextPage && fetchNextPage()}
-      onEndReachedThreshold={0.5}
-      ListHeaderComponent={
-        <Text style={styles.listHeader}>{sortedShows.length} of {totalCount} shows</Text>
-      }
-      ListFooterComponent={renderFooter}
-      ListEmptyComponent={
-        isLoading ? (
-          <SkeletonGrid count={12} itemWidth={POSTER_WIDTH - 8} itemHeight={POSTER_HEIGHT} />
-        ) : null
-      }
-      initialNumToRender={12}
-      maxToRenderPerBatch={12}
-      windowSize={5}
-      removeClippedSubviews={true}
-    />
-  );
+    );
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>

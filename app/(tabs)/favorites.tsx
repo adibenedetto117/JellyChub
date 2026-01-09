@@ -1,7 +1,7 @@
 import { useState, useMemo, useCallback, memo } from 'react';
 import { View, Text, FlatList, Pressable, StyleSheet, Dimensions, ScrollView, RefreshControl } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView } from '@/providers';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -388,13 +388,23 @@ export default function FavoritesScreen() {
             </Animated.View>
           )}
         </ScrollView>
+      ) : filteredItems.length === 0 ? (
+        <Animated.View entering={FadeIn.delay(200).duration(400)} style={styles.emptyContainer}>
+          <View style={[styles.emptyIconContainer, { backgroundColor: accentColor + '20' }]}>
+            <Ionicons name="heart-outline" size={48} color={accentColor} />
+          </View>
+          <Text style={[styles.emptyTitle, { fontSize: fontSize.xl }]}>{t('favorites.noFavorites')}</Text>
+          <Text style={[styles.emptySubtitle, { fontSize: fontSize.sm }]}>
+            {t('favorites.noFavoritesDesc')}
+          </Text>
+        </Animated.View>
       ) : (
         <FlatList
-          data={filteredItems}
-          keyExtractor={(item) => item.Id}
+          key={`favorites-grid-${numColumns}-${activeFilter}`}
+          data={filteredItems.filter((item): item is BaseItem => item != null && item.Id != null)}
+          keyExtractor={(item, index) => `${item.Id}-${index}`}
           renderItem={renderPosterItem}
           numColumns={numColumns}
-          key={numColumns}
           contentContainerStyle={[styles.gridContent, { paddingHorizontal: horizontalPadding }]}
           columnWrapperStyle={styles.gridRow}
           showsVerticalScrollIndicator={false}
@@ -404,7 +414,6 @@ export default function FavoritesScreen() {
           initialNumToRender={9}
           maxToRenderPerBatch={9}
           windowSize={5}
-          removeClippedSubviews={true}
         />
       )}
     </SafeAreaView>

@@ -1,16 +1,21 @@
 import { View, Text, FlatList, ActivityIndicator, StyleSheet, Pressable } from 'react-native';
 import { useLocalSearchParams, Stack, router } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView } from '@/providers';
 import { Ionicons } from '@expo/vector-icons';
 import { useDiscoverByGenre } from '@/hooks';
 import { JellyseerrPosterCard } from '@/components/jellyseerr';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { colors } from '@/theme';
+import { goBack } from '@/utils';
 import type { JellyseerrDiscoverItem } from '@/types/jellyseerr';
 
 export default function GenreBrowseScreen() {
-  const { type, id, name } = useLocalSearchParams<{ type: string; id: string; name: string }>();
+  const { type, id, name, from } = useLocalSearchParams<{ type: string; id: string; name: string; from?: string }>();
   const accentColor = useSettingsStore((s) => s.accentColor);
+
+  const handleGoBack = () => {
+    goBack(from, '/(tabs)/requests');
+  };
 
   const mediaType = type as 'movie' | 'tv';
   const genreId = id ? parseInt(id, 10) : undefined;
@@ -24,15 +29,20 @@ export default function GenreBrowseScreen() {
     isLoading,
   } = useDiscoverByGenre(mediaType, genreId);
 
-  const items = data?.pages.flatMap((page) =>
+  // Filter out null/undefined items and ensure each has a valid id
+  const items = (data?.pages.flatMap((page) =>
     page.results.map((item) => ({
       ...item,
       mediaType: mediaType,
     }))
-  ) ?? [];
+  ) ?? []).filter((item): item is JellyseerrDiscoverItem & { mediaType: 'movie' | 'tv' } =>
+    item != null && item.id != null
+  );
 
   const handleItemPress = (item: JellyseerrDiscoverItem) => {
-    router.push(`/jellyseerr/${item.mediaType}/${item.id}`);
+    // Pass current genre screen as source, so back navigates here
+    const currentPath = `/(tabs)/jellyseerr/genre/${type}/${id}`;
+    router.push(`/(tabs)/jellyseerr/${item.mediaType}/${item.id}?from=${encodeURIComponent(currentPath)}`);
   };
 
   const renderItem = ({ item }: { item: JellyseerrDiscoverItem }) => (
@@ -54,7 +64,7 @@ export default function GenreBrowseScreen() {
           headerStyle: { backgroundColor: colors.background.primary },
           headerTintColor: '#fff',
           headerLeft: () => (
-            <Pressable onPress={() => router.back()} style={{ marginRight: 16 }}>
+            <Pressable onPress={handleGoBack} style={{ marginRight: 16 }}>
               <Ionicons name="arrow-back" size={24} color="#fff" />
             </Pressable>
           ),
@@ -70,10 +80,16 @@ export default function GenreBrowseScreen() {
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={accentColor} />
         </View>
+      ) : items.length === 0 ? (
+        <View style={styles.emptyContainer}>
+          <Ionicons name="film-outline" size={48} color="rgba(255,255,255,0.2)" />
+          <Text style={styles.emptyText}>No {mediaType === 'movie' ? 'movies' : 'shows'} found</Text>
+        </View>
       ) : (
         <FlatList
+          key={`genre-${genreId}-${mediaType}`}
           data={items}
-          keyExtractor={(item) => `${item.mediaType}-${item.id}`}
+          keyExtractor={(item, index) => `${item.mediaType}-${item.id}-${index}`}
           renderItem={renderItem}
           numColumns={3}
           contentContainerStyle={styles.listContent}
@@ -91,12 +107,9 @@ export default function GenreBrowseScreen() {
               </View>
             ) : null
           }
-          ListEmptyComponent={
-            <View style={styles.emptyContainer}>
-              <Ionicons name="film-outline" size={48} color="rgba(255,255,255,0.2)" />
-              <Text style={styles.emptyText}>No {mediaType === 'movie' ? 'movies' : 'shows'} found</Text>
-            </View>
-          }
+          initialNumToRender={12}
+          maxToRenderPerBatch={12}
+          windowSize={5}
         />
       )}
     </SafeAreaView>
@@ -116,13 +129,16 @@ const styles = StyleSheet.create({
   listContent: {
     paddingHorizontal: 12,
     paddingTop: 16,
-    paddingBottom: 32,
+    paddingBottom: 100,
   },
   columnWrapper: {
     justifyContent: 'flex-start',
+    gap: 8,
   },
   itemContainer: {
     marginBottom: 16,
+    flex: 1,
+    maxWidth: '33.33%',
   },
   footerLoader: {
     paddingVertical: 20,

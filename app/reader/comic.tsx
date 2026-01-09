@@ -37,6 +37,7 @@ import { useReadingProgressStore } from '@/stores/readingProgressStore';
 import { useResponsive } from '@/hooks/useResponsive';
 import { downloadManager, encryptionService } from '@/services';
 import { getItem, getBookDownloadUrl, reportPlaybackProgress, generatePlaySessionId } from '@/api';
+import { dismissModal } from '@/utils';
 
 type PageMode = 'single' | 'double' | 'webtoon';
 type ReadDirection = 'ltr' | 'rtl';
@@ -335,7 +336,7 @@ export default function ComicReaderScreen() {
   }, [showControls, resetControlsTimeout]);
 
   const handleClose = () => {
-    router.back();
+    dismissModal();
   };
 
   const toggleControls = useCallback(() => {
@@ -943,21 +944,31 @@ export default function ComicReaderScreen() {
               <Ionicons name="close" size={24} color="#fff" />
             </Pressable>
           </View>
-          <FlatList
-            data={pages}
-            renderItem={renderThumbnail}
-            keyExtractor={(page) => `thumb-${page.index}`}
-            numColumns={4}
-            contentContainerStyle={styles.thumbnailGrid}
-            showsVerticalScrollIndicator={false}
-            initialScrollIndex={Math.max(0, Math.floor(currentPage / 4) * 4)}
-            getItemLayout={(_, index) => ({
-              length: THUMBNAIL_SIZE + 28,
-              offset: (THUMBNAIL_SIZE + 28) * Math.floor(index / 4),
-              index,
-            })}
-            onScrollToIndexFailed={() => {}}
-          />
+          {pages.length === 0 ? (
+            <View style={styles.center}>
+              <ActivityIndicator color={accentColor} />
+            </View>
+          ) : (
+            <FlatList
+              key={`thumbnails-${itemId}-${pages.length}`}
+              data={pages.filter((page): page is ComicPage => page != null && page.index != null)}
+              renderItem={renderThumbnail}
+              keyExtractor={(page, index) => `thumb-${page.index}-${index}`}
+              numColumns={4}
+              contentContainerStyle={styles.thumbnailGrid}
+              showsVerticalScrollIndicator={false}
+              initialScrollIndex={Math.max(0, Math.floor(currentPage / 4) * 4)}
+              getItemLayout={(_, index) => ({
+                length: THUMBNAIL_SIZE + 28,
+                offset: (THUMBNAIL_SIZE + 28) * Math.floor(index / 4),
+                index,
+              })}
+              onScrollToIndexFailed={() => {}}
+              initialNumToRender={16}
+              maxToRenderPerBatch={16}
+              windowSize={5}
+            />
+          )}
         </View>
       </Modal>
     </GestureHandlerRootView>

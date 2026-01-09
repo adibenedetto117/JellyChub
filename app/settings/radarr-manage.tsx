@@ -17,7 +17,7 @@ import {
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView } from '@/providers';
 import { Stack, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, {
@@ -1095,10 +1095,10 @@ export default function RadarrManageScreen() {
             />
           ) : (
             <FlatList
-              data={filteredMovies}
-              keyExtractor={(item) => item.id.toString()}
+              key={`radarr-movies-${numColumns}-${filter}`}
+              data={filteredMovies.filter((item): item is RadarrMovie => item != null && item.id != null)}
+              keyExtractor={(item, index) => `${item.id}-${index}`}
               numColumns={numColumns}
-              key={numColumns}
               contentContainerStyle={styles.movieGrid}
               columnWrapperStyle={styles.movieGridRow}
               renderItem={({ item }) => (
@@ -1112,7 +1112,6 @@ export default function RadarrManageScreen() {
               initialNumToRender={12}
               maxToRenderPerBatch={12}
               windowSize={5}
-              removeClippedSubviews={true}
               scrollEnabled={false}
               nestedScrollEnabled
             />
@@ -1139,8 +1138,8 @@ export default function RadarrManageScreen() {
             />
           ) : (
             <FlatList
-              data={queue}
-              keyExtractor={(item) => item.id.toString()}
+              data={queue.filter((item): item is RadarrQueueItem => item != null && item.id != null)}
+              keyExtractor={(item, index) => `${item.id}-${index}`}
               contentContainerStyle={styles.queueList}
               renderItem={({ item }) => (
                 <QueueCard
@@ -1151,7 +1150,6 @@ export default function RadarrManageScreen() {
               initialNumToRender={10}
               maxToRenderPerBatch={10}
               windowSize={5}
-              removeClippedSubviews={true}
               scrollEnabled={false}
               nestedScrollEnabled
             />
@@ -1181,8 +1179,8 @@ export default function RadarrManageScreen() {
             />
           ) : (
             <FlatList
-              data={searchResults}
-              keyExtractor={(item) => item.tmdbId.toString()}
+              data={searchResults.filter((item): item is RadarrLookupResult => item != null && item.tmdbId != null)}
+              keyExtractor={(item, index) => `${item.tmdbId}-${index}`}
               contentContainerStyle={styles.searchResultsList}
               renderItem={({ item }) => (
                 <SearchResultCard
@@ -1194,7 +1192,6 @@ export default function RadarrManageScreen() {
               initialNumToRender={10}
               maxToRenderPerBatch={10}
               windowSize={5}
-              removeClippedSubviews={true}
               scrollEnabled={false}
               nestedScrollEnabled
             />

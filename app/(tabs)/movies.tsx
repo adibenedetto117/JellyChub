@@ -2,7 +2,7 @@ import { View, Text, SectionList, FlatList, Pressable, RefreshControl, ActivityI
 import { Image } from 'expo-image';
 import { useState, useCallback, useMemo, useRef, memo } from 'react';
 import { useQuery, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView } from '@/providers';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore, useSettingsStore } from '@/stores';
@@ -23,10 +23,6 @@ const POSTER_HEIGHT = POSTER_WIDTH * 1.5;
 
 const ITEMS_PER_PAGE = 100;
 const FULL_ALPHABET = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '#'];
-
-// Row heights for getItemLayout optimization
-const MOVIE_ROW_HEIGHT = 97; // 72px image + 24px padding + 1px border
-const SECTION_HEADER_HEIGHT = 37; // 16px padding + ~20px text + hairline
 
 const MovieCard = memo(function MovieCard({ item, onPress, showRating, hideMedia }: { item: BaseItem; onPress: () => void; showRating?: boolean; hideMedia: boolean }) {
   const rawImageUrl = item.ImageTags?.Primary
@@ -302,80 +298,97 @@ export default function MoviesScreen() {
     </View>
   ), [accentColor]);
 
-  const renderAlphabeticalView = () => (
-    <View style={styles.alphabeticalContainer}>
-      <SectionList
-        ref={sectionListRef}
-        sections={movieSections}
-        contentContainerStyle={styles.sectionListContent}
-        renderItem={renderMovieRow}
-        renderSectionHeader={renderSectionHeader}
-        keyExtractor={(item) => item.Id}
-        stickySectionHeadersEnabled={true}
-        onEndReached={() => hasNextPage && !isFetchingNextPage && fetchNextPage()}
-        onEndReachedThreshold={0.5}
+  // Filter out null/undefined items for alphabetical view
+  const filteredSections = useMemo(() => {
+    return movieSections.map(section => ({
+      ...section,
+      data: section.data.filter((item): item is Movie => item != null),
+    })).filter(section => section.data.length > 0);
+  }, [movieSections]);
+
+  const renderAlphabeticalView = () => {
+    if (isLoading) {
+      return (
+        <View style={styles.alphabeticalContainer}>
+          <View style={styles.sectionListContent}>
+            <SkeletonGrid count={12} itemWidth={POSTER_WIDTH - 8} itemHeight={POSTER_HEIGHT} />
+          </View>
+        </View>
+      );
+    }
+
+    return (
+      <View style={styles.alphabeticalContainer}>
+        <SectionList
+          key={`movies-alphabetical-${userId}-${movieLibraryIds.join(',')}`}
+          ref={sectionListRef}
+          sections={filteredSections}
+          contentContainerStyle={styles.sectionListContent}
+          renderItem={renderMovieRow}
+          renderSectionHeader={renderSectionHeader}
+          keyExtractor={(item, index) => `${item.Id}-${index}`}
+          stickySectionHeadersEnabled={true}
+          onEndReached={() => hasNextPage && !isFetchingNextPage && fetchNextPage()}
+          onEndReachedThreshold={0.5}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={accentColor} />
+          }
+          ListHeaderComponent={
+            <Text style={styles.listHeader}>{sortedMovies.length} of {totalCount} movies</Text>
+          }
+          ListFooterComponent={renderFooter}
+          initialNumToRender={15}
+          maxToRenderPerBatch={15}
+          windowSize={7}
+        />
+        <AlphabetScroller
+          availableLetters={availableLetters}
+          onLetterPress={scrollToLetter}
+          accentColor={accentColor}
+        />
+      </View>
+    );
+  };
+
+  // Filter out null/undefined items for grid view
+  const filteredMovies = useMemo(() => {
+    return sortedMovies.filter((item): item is Movie => item != null);
+  }, [sortedMovies]);
+
+  const renderGridView = () => {
+    if (isLoading) {
+      return (
+        <View style={styles.gridContent}>
+          <SkeletonGrid count={12} itemWidth={POSTER_WIDTH} itemHeight={POSTER_HEIGHT} />
+        </View>
+      );
+    }
+
+    return (
+      <FlatList
+        key={`movies-grid-${userId}-${movieLibraryIds.join(',')}-${filters.sortBy}`}
+        ref={flatListRef}
+        data={filteredMovies}
+        renderItem={renderMovieCard}
+        keyExtractor={(item, index) => `${item.Id}-${index}`}
+        numColumns={NUM_COLUMNS}
+        columnWrapperStyle={styles.gridRow}
+        contentContainerStyle={styles.gridContent}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={accentColor} />
         }
+        onEndReached={() => hasNextPage && !isFetchingNextPage && fetchNextPage()}
+        onEndReachedThreshold={0.5}
         ListHeaderComponent={
-          <Text style={styles.listHeader}>{sortedMovies.length} of {totalCount} movies</Text>
+          <Text style={styles.listHeader}>{filteredMovies.length} of {totalCount} movies</Text>
         }
         ListFooterComponent={renderFooter}
-        ListEmptyComponent={
-          isLoading ? (
-            <SkeletonGrid count={12} itemWidth={POSTER_WIDTH - 8} itemHeight={POSTER_HEIGHT} />
-          ) : null
-        }
-        initialNumToRender={15}
-        maxToRenderPerBatch={15}
-        windowSize={7}
-        removeClippedSubviews={true}
-        getItemLayout={(data, index) => ({
-          length: MOVIE_ROW_HEIGHT,
-          offset: MOVIE_ROW_HEIGHT * index,
-          index,
-        })}
+        initialNumToRender={12}
+        maxToRenderPerBatch={12}
+        windowSize={5}
       />
-      <AlphabetScroller
-        availableLetters={availableLetters}
-        onLetterPress={scrollToLetter}
-        accentColor={accentColor}
-      />
-    </View>
-  );
-
-  const renderGridView = () => (
-    <FlatList
-      ref={flatListRef}
-      data={sortedMovies}
-      renderItem={renderMovieCard}
-      keyExtractor={(item) => item.Id}
-      numColumns={NUM_COLUMNS}
-      columnWrapperStyle={styles.gridRow}
-      contentContainerStyle={styles.gridContent}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={accentColor} />
-      }
-      onEndReached={() => hasNextPage && !isFetchingNextPage && fetchNextPage()}
-      onEndReachedThreshold={0.5}
-      ListHeaderComponent={
-        <Text style={styles.listHeader}>{sortedMovies.length} of {totalCount} movies</Text>
-      }
-      ListFooterComponent={renderFooter}
-      ListEmptyComponent={
-        isLoading ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator color={accentColor} size="large" />
-            <Text style={styles.loadingText}>Loading movies...</Text>
-          </View>
-        ) : null
-      }
-      initialNumToRender={12}
-      maxToRenderPerBatch={12}
-      windowSize={5}
-      removeClippedSubviews={true}
-    />
-  );
+    );
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
