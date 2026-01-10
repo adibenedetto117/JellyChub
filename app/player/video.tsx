@@ -474,9 +474,8 @@ export default function VideoPlayerScreen() {
     }
     activateKeepAwakeAsync();
     return () => {
-      if (!isNavigatingRef.current) {
-        ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
-      }
+      // Always unlock orientation when leaving player
+      ScreenOrientation.unlockAsync();
       deactivateKeepAwake();
     };
   }, [orientationLocked, isPortrait]);
