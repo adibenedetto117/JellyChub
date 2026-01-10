@@ -10,7 +10,7 @@ import { useAuthStore, useSettingsStore } from '@/stores';
 import { jellyfinClient, jellyseerrClient } from '@/api';
 import { notificationService } from '@/services';
 import { useDeepLinking } from '@/hooks';
-import { ErrorBoundary, ConnectionStatusIndicator } from '@/components/ui';
+import { ErrorBoundary } from '@/components/ui';
 import { MiniPlayer } from '@/components/player';
 import { BottomNav } from '@/components/navigation';
 import { TVSidebar } from '@/components/tv';
@@ -169,8 +169,8 @@ function AppContent() {
   return (
     <View style={{ flex: 1, flexDirection: isTV ? 'row' : 'column' }}>
       <StatusBar style="light" />
-      {/* Connection status indicator - shows when API calls fail */}
-      {!isTV && <ConnectionStatusIndicator />}
+      {/* Connection status indicator - disabled */}
+      {/* {!isTV && <ConnectionStatusIndicator />} */}
       {/* TV Sidebar - Left side navigation for TV */}
       {isTV && <TVSidebar />}
       <View style={{ flex: 1 }}>
@@ -207,6 +207,15 @@ function AppContent() {
         {/* Settings screens - native slide animation */}
         <Stack.Screen name="settings/jellyseerr" options={SETTINGS_SCREEN_OPTIONS} />
         <Stack.Screen name="settings/bottom-bar" options={SETTINGS_SCREEN_OPTIONS} />
+        <Stack.Screen name="settings/custom-headers" options={SETTINGS_SCREEN_OPTIONS} />
+        <Stack.Screen name="settings/player-controls" options={SETTINGS_SCREEN_OPTIONS} />
+        <Stack.Screen name="settings/radarr" options={SETTINGS_SCREEN_OPTIONS} />
+        <Stack.Screen name="settings/sonarr" options={SETTINGS_SCREEN_OPTIONS} />
+        <Stack.Screen name="settings/radarr-manage" options={SETTINGS_SCREEN_OPTIONS} />
+        <Stack.Screen name="settings/sonarr-manage" options={SETTINGS_SCREEN_OPTIONS} />
+        <Stack.Screen name="settings/radarr-calendar" options={SETTINGS_SCREEN_OPTIONS} />
+        <Stack.Screen name="settings/sonarr-calendar" options={SETTINGS_SCREEN_OPTIONS} />
+        <Stack.Screen name="settings/arr-queue" options={SETTINGS_SCREEN_OPTIONS} />
 
         {/* Search modal - slide up with vertical swipe to dismiss */}
         <Stack.Screen name="search" options={SEARCH_MODAL_OPTIONS} />

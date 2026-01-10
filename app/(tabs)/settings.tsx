@@ -367,7 +367,7 @@ export default function SettingsScreen() {
             />
             <SettingsRow
               title="Custom Headers"
-              onPress={() => router.push('/settings/custom-headers' as '/settings/jellyseerr')}
+              onPress={() => router.push('/settings/custom-headers' as any)}
               rightElement={
                 <Text className="text-text-tertiary">{'>'}</Text>
               }
