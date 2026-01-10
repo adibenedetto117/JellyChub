@@ -465,20 +465,17 @@ export default function VideoPlayerScreen() {
   }, []);
 
   useEffect(() => {
-    if (isPortrait) {
-      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT);
-    } else if (orientationLocked === 'landscape-left') {
-      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE_LEFT);
-    } else {
-      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE_RIGHT);
-    }
+    return () => {
+      ScreenOrientation.unlockAsync();
+    };
+  }, []);
+
+  useEffect(() => {
     activateKeepAwakeAsync();
     return () => {
-      // Reset to default orientation when leaving player
-      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.DEFAULT);
       deactivateKeepAwake();
     };
-  }, [orientationLocked, isPortrait]);
+  }, []);
 
   const cycleOrientationLock = useCallback(() => {
     setOrientationLocked((current) => {
