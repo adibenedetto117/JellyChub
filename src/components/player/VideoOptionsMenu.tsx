@@ -59,6 +59,7 @@ interface VideoOptionsMenuProps {
   chromecastConnected: boolean;
   onCastPress: () => void;
   onCastRemotePress: () => void;
+  onShowCastDialog: () => void;
   CastButton: React.ComponentType<any> | null;
 }
 
@@ -80,6 +81,7 @@ export const VideoOptionsMenu = memo(function VideoOptionsMenu({
   chromecastConnected,
   onCastPress,
   onCastRemotePress,
+  onShowCastDialog,
   CastButton,
 }: VideoOptionsMenuProps) {
   if (!visible) return null;
@@ -154,16 +156,16 @@ export const VideoOptionsMenu = memo(function VideoOptionsMenu({
               />
 
               {isChromecastSupported && CastButton && (
-                <View className="flex-row items-center py-4 px-4">
+                <Pressable
+                  onPress={chromecastConnected ? undefined : () => { onClose(); onShowCastDialog(); }}
+                  className="flex-row items-center py-4 px-4 active:bg-white/10"
+                  disabled={chromecastConnected}
+                >
                   <View
-                    className="w-10 h-10 rounded-full items-center justify-center mr-4 overflow-hidden"
+                    className="w-10 h-10 rounded-full items-center justify-center mr-4"
                     style={{ backgroundColor: chromecastConnected ? accentColor + '40' : 'rgba(255,255,255,0.1)' }}
                   >
-                    {chromecastConnected ? (
-                      <Ionicons name="tv" size={20} color={accentColor} />
-                    ) : (
-                      <CastButton style={{ width: 40, height: 40, tintColor: '#fff' }} />
-                    )}
+                    <Ionicons name={chromecastConnected ? 'tv' : 'tv-outline'} size={20} color={chromecastConnected ? accentColor : '#fff'} />
                   </View>
                   <View className="flex-1">
                     <Text className="text-white text-base font-medium">Chromecast</Text>
@@ -188,7 +190,7 @@ export const VideoOptionsMenu = memo(function VideoOptionsMenu({
                       </Pressable>
                     </View>
                   )}
-                </View>
+                </Pressable>
               )}
 
               <View className="h-8" />

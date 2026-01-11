@@ -61,7 +61,7 @@ import type { MediaSource, TrickplayInfo } from '@/types/jellyfin';
 import type { VideoSleepTimer, PlayerControlId } from '@/types/player';
 import { DEFAULT_PLAYER_CONTROLS_CONFIG, DEFAULT_PLAYER_CONTROLS_ORDER } from '@/types/player';
 import { isChromecastSupported, type CastMediaInfo } from '@/utils/casting';
-import { useChromecast } from '@/hooks';
+import { useChromecast, useCastButton } from '@/hooks';
 import { CastRemoteControl } from '@/components/player/CastRemoteControl';
 
 interface ControlIconButtonProps {
@@ -158,7 +158,7 @@ export default function VideoPlayerScreen() {
   const getDownloadedItem = useDownloadStore((s) => s.getDownloadedItem);
   const userId = currentUser?.Id ?? '';
   const insets = useSafeAreaInsets();
-  const { height: screenHeight } = useWindowDimensions();
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
 
   const downloadedItem = getDownloadedItem(itemId);
   const [localFilePath, setLocalFilePath] = useState<string | null>(null);
@@ -169,11 +169,25 @@ export default function VideoPlayerScreen() {
         setLocalFilePath(null);
         return;
       }
-      if (downloadedItem.localPath.endsWith('.enc')) {
-        const decryptedPath = await encryptionService.getDecryptedUri(downloadedItem.localPath);
-        setLocalFilePath(decryptedPath);
-      } else {
-        setLocalFilePath(downloadedItem.localPath);
+      try {
+        const fileInfo = await FileSystem.getInfoAsync(downloadedItem.localPath);
+        if (!fileInfo.exists) {
+          setLocalFilePath(null);
+          return;
+        }
+        if (downloadedItem.localPath.endsWith('.enc')) {
+          const decryptedPath = await encryptionService.getDecryptedUri(downloadedItem.localPath);
+          const decryptedInfo = await FileSystem.getInfoAsync(decryptedPath);
+          if (decryptedInfo.exists) {
+            setLocalFilePath(decryptedPath);
+          } else {
+            setLocalFilePath(null);
+          }
+        } else {
+          setLocalFilePath(downloadedItem.localPath);
+        }
+      } catch {
+        setLocalFilePath(null);
       }
     };
     resolveLocalPath();
@@ -224,7 +238,9 @@ export default function VideoPlayerScreen() {
   const [streamUrl, setStreamUrl] = useState<string | null>(null);
   const [orientationLocked, setOrientationLocked] = useState<'landscape-left' | 'landscape-right'>('landscape-right');
   const [isRotationLocked, setIsRotationLocked] = useState(false);
-  const [isPortrait, setIsPortrait] = useState(false);
+  const [isPortraitToggle, setIsPortraitToggle] = useState(false);
+  const isActuallyPortrait = screenHeight > screenWidth;
+  const isPortrait = isPortraitToggle || isActuallyPortrait;
   const [selectedSubtitleIndex, setSelectedSubtitleIndex] = useState<number | undefined>(undefined);
   const [selectedAudioIndex, setSelectedAudioIndex] = useState<number | undefined>(undefined);
   const [jellyfinSubtitleTracks, setJellyfinSubtitleTracks] = useState<any[]>([]);
@@ -255,6 +271,7 @@ export default function VideoPlayerScreen() {
   const [showFrameControls, setShowFrameControls] = useState(false);
 
   const chromecast = useChromecast();
+  const CastButton = useCastButton();
   const [showCastRemote, setShowCastRemote] = useState(false);
   const [castMediaInfo, setCastMediaInfo] = useState<CastMediaInfo | null>(null);
   const wasCasting = useRef(false);
@@ -298,6 +315,9 @@ export default function VideoPlayerScreen() {
   const isPlayerReady = useRef(false);
   const pendingSubtitleLoad = useRef<{ itemId: string; mediaSourceId: string; index: number } | null>(null);
   const pendingSubtitleSelection = useRef<{ itemId: string; mediaSourceId: string; index: number } | null>(null);
+  const currentPositionRef = useRef(0);
+  const mediaSourceRef = useRef<MediaSource | null>(null);
+  const playSessionIdRef = useRef(playSessionId);
 
   const player = useVideoPlayer(streamUrl ?? '', (p) => {
     p.loop = false;
@@ -485,19 +505,22 @@ export default function VideoPlayerScreen() {
   }, []);
 
   const toggleOrientation = useCallback(() => {
-    if (isRotationLocked) return; // Don't toggle if locked
-    setIsPortrait((current) => !current);
+    if (isRotationLocked) return;
+    setIsPortraitToggle((current) => !current);
   }, [isRotationLocked]);
 
   const toggleRotationLock = useCallback(() => {
     setIsRotationLocked((current) => !current);
   }, []);
 
+  const isLocalPathReady = !downloadedItem || localFilePath !== null;
+
   useEffect(() => {
-    if (playbackInfo && item) {
+    if (playbackInfo && item && isLocalPathReady) {
       const source = selectBestMediaSource(playbackInfo.MediaSources);
       if (source) {
         setMediaSource(source);
+        mediaSourceRef.current = source;
 
         const subtitleStreams = getSubtitleStreams(source);
         const subtitles = subtitleStreams.map((s) => ({
@@ -521,7 +544,6 @@ export default function VideoPlayerScreen() {
         }));
         setJellyfinAudioTracks(audioTracks);
 
-        // Auto-select audio based on settings
         const preferredAudioLang = useSettingsStore.getState().player.defaultAudioLanguage || 'eng';
         const preferredAudio = audioTracks.find((a) => a.language?.toLowerCase() === preferredAudioLang.toLowerCase())
           || audioTracks.find((a) => a.isDefault)
@@ -549,8 +571,6 @@ export default function VideoPlayerScreen() {
         const savedPosition = ticksToMs(item.UserData?.PlaybackPositionTicks ?? 0);
         setProgress(0, ticksToMs(item.RunTimeTicks ?? 0), 0);
 
-        // Check for intro chapter as fallback (if media segments didn't provide it)
-        // Only set if not already set by media segments
         if (!introEnd) {
           const chapters = (item as any).Chapters || [];
           const introChapter = chapters.find((c: any) =>
@@ -559,7 +579,6 @@ export default function VideoPlayerScreen() {
             c.Name?.toLowerCase().includes('opening')
           );
           if (introChapter) {
-            // Find intro end - either next chapter or IntroEnd marker
             const introIndex = chapters.indexOf(introChapter);
             const introEndChapter = chapters.find((c: any) => c.MarkerType === 'IntroEnd');
             const nextChapter = chapters[introIndex + 1];
@@ -568,7 +587,7 @@ export default function VideoPlayerScreen() {
               ? ticksToMs(introEndChapter.StartPositionTicks)
               : nextChapter
                 ? ticksToMs(nextChapter.StartPositionTicks)
-                : introStartTime + 90000; // Default 90s intro
+                : introStartTime + 90000;
             setIntroStart(introStartTime);
             setIntroEnd(introEndTime);
           }
@@ -581,7 +600,7 @@ export default function VideoPlayerScreen() {
         }
       }
     }
-  }, [playbackInfo, item]);
+  }, [playbackInfo, item, isLocalPathReady]);
 
   const startPlayback = useCallback((
     source: MediaSource,
@@ -1021,6 +1040,7 @@ export default function VideoPlayerScreen() {
       try {
         const currentPosition = player.currentTime * 1000;
         const duration = player.duration * 1000;
+        currentPositionRef.current = currentPosition;
 
         if (duration > 0) {
           setProgress(currentPosition, duration, 0);
@@ -1126,17 +1146,18 @@ export default function VideoPlayerScreen() {
     return () => clearInterval(interval);
   }, [sleepTimer, player, clearVideoSleepTimer]);
 
-  // Report playback stopped on unmount (handles back button, etc.)
   useEffect(() => {
     return () => {
-      if (mediaSource && player) {
-        try {
-          const currentPosition = player.currentTime * 1000;
-          reportPlaybackStopped(itemId, mediaSource.Id, playSessionId, msToTicks(currentPosition)).catch(() => {});
-        } catch (e) {}
+      if (mediaSourceRef.current) {
+        reportPlaybackStopped(
+          itemId,
+          mediaSourceRef.current.Id,
+          playSessionIdRef.current,
+          msToTicks(currentPositionRef.current)
+        ).catch(() => {});
       }
     };
-  }, [mediaSource, player, itemId, playSessionId]);
+  }, [itemId]);
 
   // Update next episode when data is available
   useEffect(() => {
@@ -1337,6 +1358,8 @@ export default function VideoPlayerScreen() {
   const handlePlayPause = () => {
     if (!player) return;
     try {
+      frameStepTimestamp.current = 0;
+      isFrameStepping.current = false;
       playButtonScale.value = withSequence(
         withSpring(0.85, { damping: 10 }),
         withSpring(1, { damping: 8 })
@@ -1350,6 +1373,8 @@ export default function VideoPlayerScreen() {
   const handleSeek = useCallback((position: number, keepControlsVisible = false) => {
     if (!player) return;
     try {
+      frameStepTimestamp.current = 0;
+      isFrameStepping.current = false;
       const clampedPosition = Math.max(0, Math.min(progress.duration, position));
       setIsBuffering(true);
       player.seekBy((clampedPosition - progress.position) / 1000);
@@ -1550,9 +1575,8 @@ export default function VideoPlayerScreen() {
   }, []);
 
   const gestureZoneWidth = 100;
-  // Center deadzone - 30% of screen width in the middle (for tap only, no horizontal seek)
-  const centerDeadzoneStart = SCREEN_WIDTH * 0.35;
-  const centerDeadzoneEnd = SCREEN_WIDTH * 0.65;
+  const centerDeadzoneStart = screenWidth * 0.35;
+  const centerDeadzoneEnd = screenWidth * 0.65;
 
   const handleHorizontalSeekStart = useCallback((startX: number) => {
     gestureStartX.current = startX;
@@ -1584,7 +1608,7 @@ export default function VideoPlayerScreen() {
     .minDistance(10)
     .onStart((e) => {
       const isInLeftZone = e.x < gestureZoneWidth;
-      const isInRightZone = e.x > SCREEN_WIDTH - gestureZoneWidth;
+      const isInRightZone = e.x > screenWidth - gestureZoneWidth;
       const isInCenterDeadzone = e.x >= centerDeadzoneStart && e.x <= centerDeadzoneEnd;
 
       if (isInLeftZone && !isPortrait) {
@@ -1643,9 +1667,9 @@ export default function VideoPlayerScreen() {
     .numberOfTaps(2)
     .maxDuration(300)
     .onEnd((event) => {
-      if (event.x < SCREEN_WIDTH * 0.35) {
+      if (event.x < screenWidth * 0.35) {
         runOnJS(handleDoubleTapSeek)('left');
-      } else if (event.x > SCREEN_WIDTH * 0.65) {
+      } else if (event.x > screenWidth * 0.65) {
         runOnJS(handleDoubleTapSeek)('right');
       }
     });
@@ -1878,7 +1902,7 @@ export default function VideoPlayerScreen() {
           />
 
           {showLoadingIndicator && (
-            <View className="absolute inset-0 items-center justify-center">
+            <View className="absolute inset-0 items-center justify-center" pointerEvents="none">
               <View className="w-20 h-20 rounded-full bg-black/60 items-center justify-center">
                 <ActivityIndicator color={accentColor} size="large" />
               </View>
@@ -1886,18 +1910,18 @@ export default function VideoPlayerScreen() {
           )}
 
           {!streamUrl && !isLoading && (
-            <View className="absolute inset-0 items-center justify-center">
+            <View className="absolute inset-0 items-center justify-center" pointerEvents="none">
               <Text className="text-white/60 text-lg">No stream available</Text>
             </View>
           )}
 
-          <Animated.View style={[skipLeftStyle, { position: 'absolute', left: '15%', top: '50%', marginTop: -40 }]}>
+          <Animated.View style={[skipLeftStyle, { position: 'absolute', left: '15%', top: '50%', marginTop: -40 }]} pointerEvents="none">
             <View className="w-20 h-20 rounded-full bg-white/20 items-center justify-center">
               <SkipIcon size={28} seconds={10} direction="back" color={accentColor} />
             </View>
           </Animated.View>
 
-          <Animated.View style={[skipRightStyle, { position: 'absolute', right: '15%', top: '50%', marginTop: -40 }]}>
+          <Animated.View style={[skipRightStyle, { position: 'absolute', right: '15%', top: '50%', marginTop: -40 }]} pointerEvents="none">
             <View className="w-20 h-20 rounded-full bg-white/20 items-center justify-center">
               <SkipIcon size={28} seconds={10} direction="forward" color={accentColor} />
             </View>
@@ -2136,7 +2160,7 @@ export default function VideoPlayerScreen() {
                           <ControlIconButton
                             key={controlId}
                             icon={chromecast.isConnected ? 'tv' : 'tv-outline'}
-                            onPress={() => chromecast.isConnected ? setShowCastRemote(true) : handleStartCasting()}
+                            onPress={() => chromecast.isConnected ? setShowCastRemote(true) : chromecast.showCastDialog()}
                             isActive={chromecast.isConnected}
                             accentColor={accentColor}
                           />
@@ -2592,11 +2616,17 @@ export default function VideoPlayerScreen() {
           onPress={() => setShowMoreOptions(false)}
           className="absolute inset-0 bg-black/80 items-center justify-center z-50"
         >
-          <View className="bg-zinc-900 rounded-2xl p-6 w-80">
+          <View
+            className="bg-zinc-900 rounded-2xl p-6 w-80"
+            style={{ maxHeight: screenHeight * 0.8 }}
+          >
             <Text className="text-white text-lg font-bold mb-4 text-center">More Options</Text>
-
-            {/* Render menu controls in order */}
-            {(controlsOrder ?? DEFAULT_PLAYER_CONTROLS_ORDER).map((controlId) => {
+            <ScrollView
+              showsVerticalScrollIndicator={true}
+              style={{ flexGrow: 0 }}
+              contentContainerStyle={{ paddingBottom: 4 }}
+            >
+              {(controlsOrder ?? DEFAULT_PLAYER_CONTROLS_ORDER).map((controlId) => {
               const placement = (controlsConfig ?? DEFAULT_PLAYER_CONTROLS_CONFIG)[controlId];
               if (placement !== 'menu') return null;
 
@@ -2717,7 +2747,7 @@ export default function VideoPlayerScreen() {
                   return (
                     <Pressable
                       key={controlId}
-                      onPress={() => { setShowMoreOptions(false); chromecast.isConnected ? setShowCastRemote(true) : handleStartCasting(); }}
+                      onPress={() => { setShowMoreOptions(false); chromecast.isConnected ? setShowCastRemote(true) : chromecast.showCastDialog(); }}
                       className="flex-row items-center py-3 border-b border-white/10"
                     >
                       <Ionicons name={chromecast.isConnected ? 'tv' : 'tv-outline'} size={20} color={chromecast.isConnected ? accentColor : '#fff'} />
@@ -2741,8 +2771,7 @@ export default function VideoPlayerScreen() {
               }
             })}
 
-            {/* Always show OpenSubtitles search if API key is configured */}
-            {openSubtitlesApiKey && (
+              {openSubtitlesApiKey && (
               <Pressable
                 onPress={() => { setShowMoreOptions(false); setShowOpenSubtitlesSearch(true); }}
                 className="flex-row items-center py-3 border-b border-white/10"
@@ -2750,10 +2779,9 @@ export default function VideoPlayerScreen() {
                 <Ionicons name="search-outline" size={20} color="#fff" />
                 <Text className="text-white ml-3">Search Subtitles</Text>
               </Pressable>
-            )}
+              )}
 
-            {/* Subtitle options when subtitles are active */}
-            {(selectedSubtitleIndex !== undefined || externalSubtitleCues !== null) && (
+              {(selectedSubtitleIndex !== undefined || externalSubtitleCues !== null) && (
               <>
                 <Pressable
                   onPress={() => { setShowMoreOptions(false); setShowSubtitleStyleModal(true); }}
@@ -2772,16 +2800,16 @@ export default function VideoPlayerScreen() {
                   </Text>
                 </Pressable>
               </>
-            )}
+              )}
 
-            {/* Settings link */}
-            <Pressable
-              onPress={() => { setShowMoreOptions(false); router.push('/settings/player-controls' as any); }}
-              className="flex-row items-center py-3 border-b border-white/10"
-            >
-              <Ionicons name="options-outline" size={20} color="#fff" />
-              <Text className="text-white ml-3">Customize Controls</Text>
-            </Pressable>
+              <Pressable
+                onPress={() => { setShowMoreOptions(false); router.push('/settings/player-controls' as any); }}
+                className="flex-row items-center py-3 border-b border-white/10"
+              >
+                <Ionicons name="options-outline" size={20} color="#fff" />
+                <Text className="text-white ml-3">Customize Controls</Text>
+              </Pressable>
+            </ScrollView>
 
             <Pressable
               onPress={() => setShowMoreOptions(false)}
@@ -2899,6 +2927,12 @@ export default function VideoPlayerScreen() {
           tmdbId={item?.ProviderIds?.Tmdb ? parseInt(item.ProviderIds.Tmdb, 10) : undefined}
           imdbId={item?.ProviderIds?.Imdb}
         />
+      )}
+
+      {isChromecastSupported && CastButton && (
+        <View style={{ position: 'absolute', width: 1, height: 1, opacity: 0 }}>
+          <CastButton style={{ width: 1, height: 1 }} />
+        </View>
       )}
     </View>
   );

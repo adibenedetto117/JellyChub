@@ -1,6 +1,7 @@
 import { Platform, Alert } from 'react-native';
 import * as Linking from 'expo-linking';
 import * as IntentLauncher from 'expo-intent-launcher';
+import * as FileSystem from 'expo-file-system/legacy';
 
 export interface ExternalPlayerOptions {
   title?: string;
@@ -69,10 +70,20 @@ async function openInExternalPlayerAndroid(
       extra.position = position;
     }
 
+    const isLocalFile = videoUrl.startsWith('/') || videoUrl.startsWith('file://');
+    let dataUri = videoUrl;
+    let flags = 0x10000000;
+
+    if (isLocalFile) {
+      const filePath = videoUrl.startsWith('file://') ? videoUrl.replace('file://', '') : videoUrl;
+      dataUri = await FileSystem.getContentUriAsync(filePath);
+      flags = flags | 0x00000001;
+    }
+
     await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {
-      data: videoUrl,
+      data: dataUri,
       type: mimeType,
-      flags: 0x10000000,
+      flags,
       extra,
     });
 

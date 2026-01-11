@@ -1,5 +1,4 @@
-import { View, Text, StyleSheet } from 'react-native';
-import { Image } from 'expo-image';
+import { View, Text, StyleSheet, Image } from 'react-native';
 import { memo, useMemo, useState, useEffect, useRef } from 'react';
 import { getTrickplayTileUrl } from '@/api';
 import type { TrickplayInfo } from '@/types/jellyfin';
@@ -146,8 +145,7 @@ export const TrickplayPreview = memo(function TrickplayPreview({
                   ],
                 },
               ]}
-              contentFit="cover"
-              cachePolicy="memory-disk"
+              resizeMode="cover"
               onLoad={() => setLoadedTileIndex(tileIndex)}
               onError={() => setTileLoadError(true)}
             />
