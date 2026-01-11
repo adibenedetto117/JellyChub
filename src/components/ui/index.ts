@@ -6,7 +6,7 @@ export { EmptyState } from './EmptyState';
 export { NetworkError } from './NetworkError';
 export { ConnectionError } from './ConnectionError';
 export { Header } from './Header';
-export { SearchButton } from './SearchButton';
+export { SearchButton, type SearchFilterType } from './SearchButton';
 export { SearchBar } from './SearchBar';
 export { Skeleton, SkeletonCard, SkeletonGrid, SkeletonRow, SkeletonContinueWatching } from './Skeleton';
 export { CachedImage } from './CachedImage';

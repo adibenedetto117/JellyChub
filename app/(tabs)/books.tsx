@@ -563,7 +563,7 @@ export default function BooksScreen() {
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <Text style={styles.headerTitle}>Books</Text>
         </View>
-        <SearchButton />
+        <SearchButton filter="Book" />
       </View>
 
       <View style={styles.tabContainer}>

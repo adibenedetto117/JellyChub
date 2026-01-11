@@ -394,7 +394,7 @@ export default function ShowsScreen() {
               </View>
             )}
           </Pressable>
-          <SearchButton />
+          <SearchButton filter="Series" />
         </View>
       </View>
 

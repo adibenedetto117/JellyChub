@@ -2,11 +2,21 @@ import { View, Pressable } from 'react-native';
 import { router } from 'expo-router';
 import { useSettingsStore } from '@/stores';
 
-export function SearchButton() {
+export type SearchFilterType = 'Movie' | 'Series' | 'Audio' | 'MusicAlbum' | 'MusicArtist' | 'Book' | 'AudioBook' | 'TvChannel' | 'Program';
+
+interface SearchButtonProps {
+  filter?: SearchFilterType;
+}
+
+export function SearchButton({ filter }: SearchButtonProps) {
   const accentColor = useSettingsStore((s) => s.accentColor);
 
   const handlePress = () => {
-    router.push('/search');
+    if (filter) {
+      router.push(`/search?filter=${filter}`);
+    } else {
+      router.push('/search');
+    }
   };
 
   return (

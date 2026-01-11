@@ -1,7 +1,7 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { View, Text, TextInput, FlatList, Pressable, ActivityIndicator, Modal, StyleSheet } from 'react-native';
 import { SafeAreaView } from '@/providers';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Ionicons } from '@expo/vector-icons';
@@ -29,7 +29,7 @@ const FILTER_OPTIONS: FilterOption[] = [
   { value: 'Series', label: 'TV Shows', icon: 'tv-outline' },
   { value: 'TvChannel', label: 'Channels', icon: 'radio-outline' },
   { value: 'Program', label: 'Programs', icon: 'calendar-outline' },
-  { value: 'Audio', label: 'Music', icon: 'musical-notes-outline' },
+  { value: 'Audio', label: 'Songs', icon: 'musical-notes-outline' },
   { value: 'MusicAlbum', label: 'Albums', icon: 'disc-outline' },
   { value: 'MusicArtist', label: 'Artists', icon: 'person-outline' },
   { value: 'Book', label: 'Books', icon: 'book-outline' },
@@ -38,13 +38,25 @@ const FILTER_OPTIONS: FilterOption[] = [
 
 export default function SearchScreen() {
   const { t } = useTranslation();
+  const { filter: filterParam } = useLocalSearchParams<{ filter?: string }>();
   const [query, setQuery] = useState('');
-  const [activeFilter, setActiveFilter] = useState<FilterType>('all');
+  const [activeFilter, setActiveFilter] = useState<FilterType>(() => {
+    if (filterParam && FILTER_OPTIONS.some(f => f.value === filterParam)) {
+      return filterParam as FilterType;
+    }
+    return 'all';
+  });
   const [filterModalVisible, setFilterModalVisible] = useState(false);
   const currentUser = useAuthStore((state) => state.currentUser);
   const accentColor = useSettingsStore((s) => s.accentColor);
   const hideMedia = useSettingsStore((s) => s.hideMedia);
   const userId = currentUser?.Id ?? '';
+
+  useEffect(() => {
+    if (filterParam && FILTER_OPTIONS.some(f => f.value === filterParam)) {
+      setActiveFilter(filterParam as FilterType);
+    }
+  }, [filterParam]);
 
   // Get the currently selected filter option
   const activeFilterOption = FILTER_OPTIONS.find(f => f.value === activeFilter) || FILTER_OPTIONS[0];

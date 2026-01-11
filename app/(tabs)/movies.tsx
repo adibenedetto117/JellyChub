@@ -406,7 +406,7 @@ export default function MoviesScreen() {
               </View>
             )}
           </Pressable>
-          <SearchButton />
+          <SearchButton filter="Movie" />
         </View>
       </View>
 

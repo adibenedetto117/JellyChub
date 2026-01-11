@@ -963,7 +963,7 @@ export default function MusicScreen() {
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <Text style={styles.headerTitle}>Music</Text>
         </View>
-        <SearchButton />
+        <SearchButton filter="Audio" />
       </View>
 
       <View style={styles.tabContainer}>
