@@ -15,6 +15,7 @@ class MediaSessionService {
   private unsubscribe: (() => void) | null = null;
   private onPlayCallback: (() => void) | null = null;
   private onPauseCallback: (() => void) | null = null;
+  private onStopCallback: (() => void) | null = null;
   private onNextCallback: (() => void) | null = null;
   private onPreviousCallback: (() => void) | null = null;
   private onSeekCallback: ((position: number) => void) | null = null;
@@ -62,7 +63,7 @@ class MediaSessionService {
         break;
 
       case Command.STOP:
-        this.onPauseCallback?.();
+        this.onStopCallback?.();
         break;
 
       case Command.NEXT_TRACK:
@@ -96,12 +97,14 @@ class MediaSessionService {
   setCallbacks(callbacks: {
     onPlay?: () => void;
     onPause?: () => void;
+    onStop?: () => void;
     onNext?: () => void;
     onPrevious?: () => void;
     onSeek?: (positionMs: number) => void;
   }) {
     this.onPlayCallback = callbacks.onPlay || null;
     this.onPauseCallback = callbacks.onPause || null;
+    this.onStopCallback = callbacks.onStop || null;
     this.onNextCallback = callbacks.onNext || null;
     this.onPreviousCallback = callbacks.onPrevious || null;
     this.onSeekCallback = callbacks.onSeek || null;
@@ -204,6 +207,7 @@ class MediaSessionService {
     this.isEnabled = false;
     this.onPlayCallback = null;
     this.onPauseCallback = null;
+    this.onStopCallback = null;
     this.onNextCallback = null;
     this.onPreviousCallback = null;
     this.onSeekCallback = null;

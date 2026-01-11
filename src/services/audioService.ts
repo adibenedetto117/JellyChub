@@ -36,6 +36,7 @@ class AudioService {
     mediaSessionService.setCallbacks({
       onPlay: () => this.play(),
       onPause: () => this.pause(),
+      onStop: () => this.stop(),
       onNext: () => this.skipToNext(),
       onPrevious: () => this.skipToPrevious(),
       onSeek: (positionMs) => this.seek(positionMs),

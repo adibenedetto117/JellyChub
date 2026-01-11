@@ -628,9 +628,11 @@ export default function MusicPlayerScreen() {
               {t('player.nowPlaying')}
             </Text>
             {albumName ? (
-              <Text style={{ color: '#fff', fontSize: 13, fontWeight: '600', marginTop: 2 }} numberOfLines={1}>
-                {albumName}
-              </Text>
+              <Pressable onPress={handleGoToAlbum} disabled={!(item as any)?.AlbumId}>
+                <Text style={{ color: '#fff', fontSize: 13, fontWeight: '600', marginTop: 2 }} numberOfLines={1}>
+                  {albumName}
+                </Text>
+              </Pressable>
             ) : null}
             {musicSleepTimer && (
               <View style={{ marginTop: 4 }}>
@@ -722,9 +724,11 @@ export default function MusicPlayerScreen() {
                 <Text style={{ color: '#fff', fontSize: 24, fontWeight: 'bold' }} numberOfLines={1}>
                   {getDisplayName(item, hideMedia) ?? t('player.unknownTrack')}
                 </Text>
-                <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 16, marginTop: 4 }} numberOfLines={1}>
-                  {albumArtist}
-                </Text>
+                <Pressable onPress={handleGoToArtist} disabled={!(item as any)?.ArtistItems?.[0]?.Id}>
+                  <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 16, marginTop: 4 }} numberOfLines={1}>
+                    {albumArtist}
+                  </Text>
+                </Pressable>
               </View>
               <Pressable onPress={handleToggleFavorite} style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}>
                 <Ionicons
