@@ -38,6 +38,9 @@ export type { SecuritySettings, AutoLockTimeout } from './securityStore';
 export { useVideoPreferencesStore, selectSubtitleOffset } from './videoPreferencesStore';
 export type { VideoPreferences } from './videoPreferencesStore';
 export { useConnectionStore, selectConnectionStatus, selectIsDisconnected, selectIsRetrying, selectConsecutiveFailures } from './connectionStore';
+export { useNavigationStore, selectCanGoBack, selectCurrentRoute, selectHistoryLength } from './navigationStore';
+export { useAnnouncementStore, selectActiveAnnouncements, selectAnnouncementHasHydrated } from './announcementStore';
+export type { Announcement } from './announcementStore';
 
 // Storage exports - centralized MMKV storage instances
 export {

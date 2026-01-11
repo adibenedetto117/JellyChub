@@ -32,7 +32,7 @@ export {
   type TVRemoteEventType,
   type TVRemoteHandlerOptions,
 } from './useTVRemoteHandler';
-export { useBackHandler, useFocusedBackHandler } from './useBackHandler';
+export { useBackHandler, useFocusedBackHandler, useGlobalBackHandler } from './useBackHandler';
 export { useChromecast, useCastButton, type UseChromecastReturn } from './useChromecast';
 export {
   useJellyseerrStatus,
@@ -46,6 +46,7 @@ export {
   useJellyseerrSearch,
   useMovieDetails,
   useTvDetails,
+  useSeasonDetails,
   useMyRequests,
   useAllRequests,
   usePendingRequests,
@@ -56,6 +57,25 @@ export {
   useMovieGenres,
   useTvGenres,
   useDiscoverByGenre,
+  useJellyseerrUsers,
+  useJellyseerrUserDetails,
+  useJellyfinUsers,
+  useCreateJellyseerrUser,
+  useUpdateJellyseerrUser,
+  useDeleteJellyseerrUser,
+  useImportJellyfinUsers,
+  useJellyseerrServerStatus,
+  useJellyseerrAbout,
+  useJellyseerrMainSettings,
+  useJellyseerrCacheStats,
+  useFlushCache,
+  useJellyseerrJobs,
+  useRunJob,
+  useCancelJob,
+  useJellyseerrJellyfinSettings,
+  useJellyfinSyncStatus,
+  useStartJellyfinSync,
+  useCancelJellyfinSync,
 } from './useJellyseerr';
 export {
   useToggle,

@@ -1,15 +1,15 @@
 import { useEffect, useState } from 'react';
 import { View, Platform } from 'react-native';
-import { Stack } from 'expo-router';
+import { Stack, usePathname } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
 import * as SplashScreen from 'expo-splash-screen';
 import { QueryProvider } from '@/providers';
-import { useAuthStore, useSettingsStore } from '@/stores';
+import { useAuthStore, useSettingsStore, useNavigationStore } from '@/stores';
 import { jellyfinClient, jellyseerrClient } from '@/api';
 import { notificationService } from '@/services';
-import { useDeepLinking } from '@/hooks';
+import { useDeepLinking, useGlobalBackHandler } from '@/hooks';
 import { ErrorBoundary } from '@/components/ui';
 import { MiniPlayer } from '@/components/player';
 import { BottomNav } from '@/components/navigation';
@@ -117,8 +117,17 @@ function AppContent() {
   const activeServer = useAuthStore((state) => state.getActiveServer());
   const jellyseerrUrl = useSettingsStore((state) => state.jellyseerrUrl);
   const jellyseerrAuthToken = useSettingsStore((state) => state.jellyseerrAuthToken);
+  const pushNavigation = useNavigationStore((state) => state.push);
+  const pathname = usePathname();
 
   useDeepLinking();
+  useGlobalBackHandler();
+
+  useEffect(() => {
+    if (pathname) {
+      pushNavigation(pathname);
+    }
+  }, [pathname, pushNavigation]);
 
   // Initialize API clients immediately when credentials are available
   // This must happen synchronously so queries can execute on first render
