@@ -61,6 +61,7 @@ export interface JellyseerrMedia {
   firstAirDate?: string;
   voteAverage?: number;
   voteCount?: number;
+  requests?: JellyseerrMediaRequest[];
 }
 
 export type MediaStatus = 1 | 2 | 3 | 4 | 5;
@@ -113,6 +114,46 @@ export interface JellyseerrSearchResult {
   results: JellyseerrDiscoverItem[];
 }
 
+export interface JellyseerrCastMember {
+  id: number;
+  castId?: number;
+  character: string;
+  creditId: string;
+  gender?: number;
+  name: string;
+  order: number;
+  profilePath?: string;
+}
+
+export interface JellyseerrCrewMember {
+  id: number;
+  creditId: string;
+  department: string;
+  gender?: number;
+  job: string;
+  name: string;
+  profilePath?: string;
+}
+
+export interface JellyseerrCredits {
+  cast: JellyseerrCastMember[];
+  crew: JellyseerrCrewMember[];
+}
+
+export interface JellyseerrProductionCompany {
+  id: number;
+  logoPath?: string;
+  name: string;
+  originCountry?: string;
+}
+
+export interface JellyseerrRatings {
+  criticsRating?: 'Rotten' | 'Fresh' | 'Certified Fresh';
+  criticsScore?: number;
+  audienceRating?: 'Spilled' | 'Upright';
+  audienceScore?: number;
+}
+
 export interface JellyseerrMovieDetails {
   id: number;
   imdbId?: string;
@@ -136,6 +177,16 @@ export interface JellyseerrMovieDetails {
   voteAverage: number;
   voteCount: number;
   mediaInfo?: JellyseerrMedia;
+  credits?: JellyseerrCredits;
+  productionCompanies?: JellyseerrProductionCompany[];
+  ratings?: JellyseerrRatings;
+}
+
+export interface JellyseerrNetwork {
+  id: number;
+  logoPath?: string;
+  name: string;
+  originCountry?: string;
 }
 
 export interface JellyseerrTvDetails {
@@ -165,6 +216,10 @@ export interface JellyseerrTvDetails {
   voteCount: number;
   seasons: JellyseerrSeason[];
   mediaInfo?: JellyseerrMedia;
+  credits?: JellyseerrCredits;
+  networks?: JellyseerrNetwork[];
+  productionCompanies?: JellyseerrProductionCompany[];
+  ratings?: JellyseerrRatings;
 }
 
 export interface JellyseerrSeason {
@@ -175,6 +230,31 @@ export interface JellyseerrSeason {
   overview?: string;
   posterPath?: string;
   seasonNumber: number;
+}
+
+export interface JellyseerrEpisode {
+  id: number;
+  name: string;
+  airDate?: string;
+  episodeNumber: number;
+  overview?: string;
+  productionCode?: string;
+  seasonNumber: number;
+  showId: number;
+  stillPath?: string;
+  voteAverage?: number;
+  voteCount?: number;
+}
+
+export interface JellyseerrSeasonDetails {
+  id: number;
+  airDate?: string;
+  episodeCount: number;
+  name: string;
+  overview?: string;
+  posterPath?: string;
+  seasonNumber: number;
+  episodes: JellyseerrEpisode[];
 }
 
 export interface JellyseerrAuthResponse {
@@ -276,4 +356,167 @@ export function getMediaStatusLabel(status: MediaStatus): string {
     default:
       return 'Unknown';
   }
+}
+
+export interface JellyseerrUserDetails extends JellyseerrUser {
+  userType: number;
+  movieQuotaLimit?: number;
+  movieQuotaDays?: number;
+  tvQuotaLimit?: number;
+  tvQuotaDays?: number;
+  requests?: JellyseerrMediaRequest[];
+}
+
+export interface JellyseerrUsersResponse {
+  pageInfo: {
+    pages: number;
+    page: number;
+    results: number;
+  };
+  results: JellyseerrUserDetails[];
+}
+
+export interface JellyseerrCreateUserBody {
+  email: string;
+  username?: string;
+  permissions?: number;
+}
+
+export interface JellyseerrUpdateUserBody {
+  displayName?: string;
+  email?: string;
+  permissions?: number;
+  movieQuotaLimit?: number;
+  movieQuotaDays?: number;
+  tvQuotaLimit?: number;
+  tvQuotaDays?: number;
+}
+
+export interface JellyseerrJellyfinUser {
+  id: string;
+  name: string;
+}
+
+export const USER_TYPE = {
+  PLEX: 1,
+  LOCAL: 2,
+  JELLYFIN: 3,
+  EMBY: 4,
+} as const;
+
+export function getUserTypeLabel(userType: number): string {
+  switch (userType) {
+    case USER_TYPE.PLEX:
+      return 'Plex';
+    case USER_TYPE.LOCAL:
+      return 'Local';
+    case USER_TYPE.JELLYFIN:
+      return 'Jellyfin';
+    case USER_TYPE.EMBY:
+      return 'Emby';
+    default:
+      return 'Unknown';
+  }
+}
+
+export function getPermissionsList(permissions: number): string[] {
+  const list: string[] = [];
+  if (permissions & JELLYSEERR_PERMISSIONS.ADMIN) list.push('Admin');
+  if (permissions & JELLYSEERR_PERMISSIONS.MANAGE_USERS) list.push('Manage Users');
+  if (permissions & JELLYSEERR_PERMISSIONS.MANAGE_REQUESTS) list.push('Manage Requests');
+  if (permissions & JELLYSEERR_PERMISSIONS.MANAGE_SETTINGS) list.push('Manage Settings');
+  if (permissions & JELLYSEERR_PERMISSIONS.REQUEST) list.push('Request');
+  if (permissions & JELLYSEERR_PERMISSIONS.REQUEST_4K) list.push('Request 4K');
+  if (permissions & JELLYSEERR_PERMISSIONS.AUTO_APPROVE) list.push('Auto Approve');
+  if (permissions & JELLYSEERR_PERMISSIONS.AUTO_APPROVE_4K) list.push('Auto Approve 4K');
+  if (permissions & JELLYSEERR_PERMISSIONS.MANAGE_ISSUES) list.push('Manage Issues');
+  if (permissions & JELLYSEERR_PERMISSIONS.VIEW_ISSUES) list.push('View Issues');
+  if (permissions & JELLYSEERR_PERMISSIONS.CREATE_ISSUES) list.push('Create Issues');
+  return list;
+}
+
+export interface JellyseerrServerStatus {
+  version: string;
+  commitTag: string;
+  updateAvailable: boolean;
+  commitsBehind: number;
+}
+
+export interface JellyseerrAboutInfo {
+  version: string;
+  totalRequests: number;
+  totalMediaItems: number;
+  tz?: string;
+  appDataPath?: string;
+}
+
+export interface JellyseerrMainSettings {
+  apiKey: string;
+  applicationTitle: string;
+  applicationUrl: string;
+  csrfProtection: boolean;
+  cacheImages: boolean;
+  defaultPermissions: number;
+  defaultQuotas: {
+    movie: {
+      quotaLimit: number | null;
+      quotaDays: number | null;
+    };
+    tv: {
+      quotaLimit: number | null;
+      quotaDays: number | null;
+    };
+  };
+  hideAvailable: boolean;
+  localLogin: boolean;
+  newPlexLogin: boolean;
+  region: string;
+  originalLanguage: string;
+  trustProxy: boolean;
+  partialRequestsEnabled: boolean;
+  locale: string;
+}
+
+export interface JellyseerrCacheStats {
+  apiCacheHits: number;
+  apiCacheMisses: number;
+  imageCache: {
+    tmdb: {
+      total: number;
+      size: number;
+    };
+  };
+}
+
+export interface JellyseerrJob {
+  id: string;
+  type: 'process' | 'command';
+  interval: 'seconds' | 'minutes' | 'hours' | 'fixed';
+  cronSchedule: string;
+  name: string;
+  nextExecutionTime: string;
+  running: boolean;
+}
+
+export interface JellyseerrLibrary {
+  id: string;
+  name: string;
+  enabled: boolean;
+  type: 'movie' | 'show';
+  lastScan?: string;
+}
+
+export interface JellyseerrJellyfinSettings {
+  name: string;
+  hostname: string;
+  serverId?: string;
+  externalHostname?: string;
+  libraries: JellyseerrLibrary[];
+}
+
+export interface JellyseerrSyncStatus {
+  running: boolean;
+  progress: number;
+  total: number;
+  currentLibrary?: JellyseerrLibrary;
 }

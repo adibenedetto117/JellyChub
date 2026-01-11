@@ -1,21 +1,62 @@
 import { View, Text, Pressable, ScrollView, Modal, StyleSheet } from 'react-native';
-import { memo, useState, useCallback } from 'react';
+import { memo, useState, useCallback, useMemo, useEffect } from 'react';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/theme';
-import type { JellyseerrSeason } from '@/types/jellyseerr';
+import type { JellyseerrSeason, JellyseerrMedia, RequestStatus } from '@/types/jellyseerr';
+import { REQUEST_STATUS } from '@/types/jellyseerr';
 
 const JELLYSEERR_PURPLE = '#6366f1';
 const JELLYSEERR_PURPLE_DARK = '#4f46e5';
+
+type SeasonStatusType = 'available' | 'requested' | 'processing' | 'not_requested' | 'declined';
+
+interface SeasonWithStatus extends JellyseerrSeason {
+  status: SeasonStatusType;
+  requestStatus?: RequestStatus;
+}
+
+const statusConfig: Record<SeasonStatusType, { label: string; color: string; bgColor: string; icon: string }> = {
+  available: {
+    label: 'Available',
+    color: '#22c55e',
+    bgColor: 'rgba(34, 197, 94, 0.15)',
+    icon: 'checkmark-circle',
+  },
+  requested: {
+    label: 'Pending',
+    color: '#3b82f6',
+    bgColor: 'rgba(59, 130, 246, 0.15)',
+    icon: 'time',
+  },
+  processing: {
+    label: 'Processing',
+    color: '#f97316',
+    bgColor: 'rgba(249, 115, 22, 0.15)',
+    icon: 'sync',
+  },
+  not_requested: {
+    label: 'Not Requested',
+    color: '#6b7280',
+    bgColor: 'rgba(107, 114, 128, 0.15)',
+    icon: 'add-circle-outline',
+  },
+  declined: {
+    label: 'Declined',
+    color: '#ef4444',
+    bgColor: 'rgba(239, 68, 68, 0.15)',
+    icon: 'close-circle',
+  },
+};
 
 interface Props {
   visible: boolean;
   onClose: () => void;
   onConfirm: (seasonNumbers: number[]) => void;
   seasons: JellyseerrSeason[];
+  mediaInfo?: JellyseerrMedia;
   isLoading?: boolean;
 }
 
@@ -24,35 +65,57 @@ function SeasonItem({
   isSelected,
   onToggle,
   delay,
+  isSelectable,
 }: {
-  season: JellyseerrSeason;
+  season: SeasonWithStatus;
   isSelected: boolean;
   onToggle: () => void;
   delay: number;
+  isSelectable: boolean;
 }) {
+  const config = statusConfig[season.status];
+  const canSelect = isSelectable && (season.status === 'not_requested' || season.status === 'declined');
+
   return (
     <Animated.View entering={FadeInDown.delay(delay).duration(200)}>
-      <Pressable onPress={onToggle} style={styles.seasonItem}>
+      <Pressable
+        onPress={canSelect ? onToggle : undefined}
+        style={[
+          styles.seasonItem,
+          !canSelect && styles.seasonItemDisabled,
+          isSelected && styles.seasonItemSelected,
+        ]}
+      >
         <View style={styles.seasonInfo}>
-          <Text style={styles.seasonName}>{season.name}</Text>
+          <View style={styles.seasonNameRow}>
+            <Text style={[styles.seasonName, !canSelect && styles.seasonNameDisabled]}>
+              {season.name}
+            </Text>
+            <View style={[styles.statusBadge, { backgroundColor: config.bgColor }]}>
+              <Ionicons name={config.icon as any} size={10} color={config.color} />
+              <Text style={[styles.statusText, { color: config.color }]}>{config.label}</Text>
+            </View>
+          </View>
           <View style={styles.seasonMeta}>
             <Ionicons name="play-circle-outline" size={12} color={colors.text.tertiary} />
             <Text style={styles.seasonEpisodes}>{season.episodeCount} episodes</Text>
           </View>
         </View>
 
-        <Pressable onPress={onToggle}>
-          {isSelected ? (
-            <LinearGradient
-              colors={[JELLYSEERR_PURPLE, JELLYSEERR_PURPLE_DARK]}
-              style={styles.checkbox}
-            >
-              <Ionicons name="checkmark" size={14} color="#fff" />
-            </LinearGradient>
-          ) : (
-            <View style={styles.checkboxEmpty} />
-          )}
-        </Pressable>
+        {canSelect && (
+          <Pressable onPress={onToggle}>
+            {isSelected ? (
+              <LinearGradient
+                colors={[JELLYSEERR_PURPLE, JELLYSEERR_PURPLE_DARK]}
+                style={styles.checkbox}
+              >
+                <Ionicons name="checkmark" size={14} color="#fff" />
+              </LinearGradient>
+            ) : (
+              <View style={styles.checkboxEmpty} />
+            )}
+          </Pressable>
+        )}
       </Pressable>
     </Animated.View>
   );
@@ -63,12 +126,71 @@ export const SeasonSelector = memo(function SeasonSelector({
   onClose,
   onConfirm,
   seasons,
+  mediaInfo,
   isLoading = false,
 }: Props) {
   const [selectedSeasons, setSelectedSeasons] = useState<number[]>([]);
   const insets = useSafeAreaInsets();
 
-  const validSeasons = seasons.filter((s) => s.seasonNumber > 0);
+  const seasonsWithStatus = useMemo(() => {
+    const validSeasons = seasons.filter((s) => s.seasonNumber > 0);
+    const requests = mediaInfo?.requests || [];
+
+    const requestedSeasons = new Map<number, { status: RequestStatus }>();
+
+    requests.forEach((request) => {
+      if (request.seasons) {
+        request.seasons.forEach((seasonReq) => {
+          const existing = requestedSeasons.get(seasonReq.seasonNumber);
+          if (!existing || seasonReq.status > existing.status) {
+            requestedSeasons.set(seasonReq.seasonNumber, { status: seasonReq.status });
+          }
+        });
+      }
+    });
+
+    return validSeasons.map((season): SeasonWithStatus => {
+      const requestInfo = requestedSeasons.get(season.seasonNumber);
+
+      if (!requestInfo) {
+        return {
+          ...season,
+          status: 'not_requested',
+        };
+      }
+
+      let status: SeasonStatusType = 'not_requested';
+      if (requestInfo.status === REQUEST_STATUS.AVAILABLE) {
+        status = 'available';
+      } else if (requestInfo.status === REQUEST_STATUS.APPROVED) {
+        status = 'processing';
+      } else if (requestInfo.status === REQUEST_STATUS.PENDING) {
+        status = 'requested';
+      } else if (requestInfo.status === REQUEST_STATUS.PARTIALLY_AVAILABLE) {
+        status = 'processing';
+      } else if (requestInfo.status === REQUEST_STATUS.DECLINED) {
+        status = 'declined';
+      }
+
+      return {
+        ...season,
+        status,
+        requestStatus: requestInfo.status,
+      };
+    });
+  }, [seasons, mediaInfo]);
+
+  const selectableSeasons = useMemo(() => {
+    return seasonsWithStatus.filter(
+      (s) => s.status === 'not_requested' || s.status === 'declined'
+    );
+  }, [seasonsWithStatus]);
+
+  useEffect(() => {
+    if (!visible) {
+      setSelectedSeasons([]);
+    }
+  }, [visible]);
 
   const toggleSeason = useCallback((seasonNumber: number) => {
     setSelectedSeasons((prev) =>
@@ -79,8 +201,8 @@ export const SeasonSelector = memo(function SeasonSelector({
   }, []);
 
   const selectAll = useCallback(() => {
-    setSelectedSeasons(validSeasons.map((s) => s.seasonNumber));
-  }, [validSeasons]);
+    setSelectedSeasons(selectableSeasons.map((s) => s.seasonNumber));
+  }, [selectableSeasons]);
 
   const clearAll = useCallback(() => {
     setSelectedSeasons([]);
@@ -96,7 +218,18 @@ export const SeasonSelector = memo(function SeasonSelector({
     onClose();
   };
 
-  const allSelected = selectedSeasons.length === validSeasons.length;
+  const allSelectableSelected =
+    selectableSeasons.length > 0 &&
+    selectedSeasons.length === selectableSeasons.length;
+
+  const summary = useMemo(() => {
+    const available = seasonsWithStatus.filter((s) => s.status === 'available').length;
+    const processing = seasonsWithStatus.filter((s) => s.status === 'processing').length;
+    const requested = seasonsWithStatus.filter((s) => s.status === 'requested').length;
+    const notRequested = seasonsWithStatus.filter((s) => s.status === 'not_requested').length;
+    const declined = seasonsWithStatus.filter((s) => s.status === 'declined').length;
+    return { available, processing, requested, notRequested, declined };
+  }, [seasonsWithStatus]);
 
   return (
     <Modal
@@ -128,38 +261,75 @@ export const SeasonSelector = memo(function SeasonSelector({
               </View>
               <View style={styles.headerText}>
                 <Text style={styles.headerTitle}>Select Seasons</Text>
-                <Text style={styles.headerSubtitle}>Choose which seasons to request</Text>
+                <Text style={styles.headerSubtitle}>
+                  {selectableSeasons.length > 0
+                    ? `${selectableSeasons.length} season${selectableSeasons.length !== 1 ? 's' : ''} available to request`
+                    : 'All seasons already requested'}
+                </Text>
               </View>
               <Pressable onPress={handleClose} style={styles.closeButton} hitSlop={12}>
                 <Ionicons name="close" size={22} color={colors.text.tertiary} />
               </Pressable>
             </View>
 
-            <View style={styles.quickActions}>
-              <Pressable
-                onPress={allSelected ? clearAll : selectAll}
-                style={[styles.quickActionButton, allSelected && styles.quickActionButtonActive]}
-              >
-                <Ionicons
-                  name={allSelected ? 'checkbox' : 'checkbox-outline'}
-                  size={16}
-                  color={allSelected ? JELLYSEERR_PURPLE : colors.text.secondary}
-                />
-                <Text
-                  style={[styles.quickActionText, allSelected && styles.quickActionTextActive]}
-                >
-                  {allSelected ? 'Deselect All' : 'Select All'}
-                </Text>
-              </Pressable>
-
-              {selectedSeasons.length > 0 && !allSelected && (
-                <View style={styles.selectedCount}>
-                  <Text style={styles.selectedCountText}>
-                    {selectedSeasons.length} selected
+            <View style={styles.summaryRow}>
+              {summary.available > 0 && (
+                <View style={[styles.summaryChip, { backgroundColor: statusConfig.available.bgColor }]}>
+                  <Text style={[styles.summaryChipText, { color: statusConfig.available.color }]}>
+                    {summary.available} Available
+                  </Text>
+                </View>
+              )}
+              {summary.processing > 0 && (
+                <View style={[styles.summaryChip, { backgroundColor: statusConfig.processing.bgColor }]}>
+                  <Text style={[styles.summaryChipText, { color: statusConfig.processing.color }]}>
+                    {summary.processing} Processing
+                  </Text>
+                </View>
+              )}
+              {summary.requested > 0 && (
+                <View style={[styles.summaryChip, { backgroundColor: statusConfig.requested.bgColor }]}>
+                  <Text style={[styles.summaryChipText, { color: statusConfig.requested.color }]}>
+                    {summary.requested} Pending
+                  </Text>
+                </View>
+              )}
+              {summary.notRequested > 0 && (
+                <View style={[styles.summaryChip, { backgroundColor: statusConfig.not_requested.bgColor }]}>
+                  <Text style={[styles.summaryChipText, { color: statusConfig.not_requested.color }]}>
+                    {summary.notRequested} Not Requested
                   </Text>
                 </View>
               )}
             </View>
+
+            {selectableSeasons.length > 0 && (
+              <View style={styles.quickActions}>
+                <Pressable
+                  onPress={allSelectableSelected ? clearAll : selectAll}
+                  style={[styles.quickActionButton, allSelectableSelected && styles.quickActionButtonActive]}
+                >
+                  <Ionicons
+                    name={allSelectableSelected ? 'checkbox' : 'checkbox-outline'}
+                    size={16}
+                    color={allSelectableSelected ? JELLYSEERR_PURPLE : colors.text.secondary}
+                  />
+                  <Text
+                    style={[styles.quickActionText, allSelectableSelected && styles.quickActionTextActive]}
+                  >
+                    {allSelectableSelected ? 'Deselect All' : 'Select All'}
+                  </Text>
+                </Pressable>
+
+                {selectedSeasons.length > 0 && !allSelectableSelected && (
+                  <View style={styles.selectedCount}>
+                    <Text style={styles.selectedCountText}>
+                      {selectedSeasons.length} selected
+                    </Text>
+                  </View>
+                )}
+              </View>
+            )}
           </View>
 
           <ScrollView
@@ -167,13 +337,14 @@ export const SeasonSelector = memo(function SeasonSelector({
             contentContainerStyle={styles.seasonsContent}
             showsVerticalScrollIndicator={false}
           >
-            {validSeasons.map((season, index) => (
+            {seasonsWithStatus.map((season, index) => (
               <SeasonItem
                 key={season.id}
                 season={season}
                 isSelected={selectedSeasons.includes(season.seasonNumber)}
                 onToggle={() => toggleSeason(season.seasonNumber)}
                 delay={index * 30}
+                isSelectable={selectableSeasons.some((s) => s.seasonNumber === season.seasonNumber)}
               />
             ))}
           </ScrollView>
@@ -288,10 +459,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  summaryRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 12,
+  },
+  summaryChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  summaryChipText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
   quickActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 16,
+    marginTop: 12,
     gap: 12,
   },
   quickActionButton: {
@@ -346,12 +532,39 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border.subtle,
   },
+  seasonItemDisabled: {
+    opacity: 0.6,
+  },
+  seasonItemSelected: {
+    borderColor: JELLYSEERR_PURPLE,
+    backgroundColor: `${JELLYSEERR_PURPLE}10`,
+  },
   seasonInfo: {
     flex: 1,
+  },
+  seasonNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   seasonName: {
     color: '#fff',
     fontSize: 15,
+    fontWeight: '600',
+  },
+  seasonNameDisabled: {
+    color: colors.text.secondary,
+  },
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  statusText: {
+    fontSize: 9,
     fontWeight: '600',
   },
   seasonMeta: {

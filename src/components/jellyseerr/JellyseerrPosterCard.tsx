@@ -55,7 +55,8 @@ export const JellyseerrPosterCard = memo(function JellyseerrPosterCard({
   const titleIndex = Math.abs(item?.id || 0) % PLACEHOLDER_TITLES.length;
   const title = hideMedia ? PLACEHOLDER_TITLES[titleIndex] : rawTitle;
 
-  const rawYear = item?.releaseDate?.split('-')[0] || item?.firstAirDate?.split('-')[0];
+  const releaseDate = item?.releaseDate || item?.firstAirDate;
+  const rawYear = releaseDate?.split('-')[0];
   const year = hideMedia ? '2024' : rawYear;
 
   const mediaStatus = item?.mediaInfo?.status;
@@ -82,7 +83,7 @@ export const JellyseerrPosterCard = memo(function JellyseerrPosterCard({
 
           {hasStatus && (
             <View style={styles.statusBadge}>
-              <StatusBadge status={mediaStatus} type="media" size="small" variant="overlay" mediaType={mediaType} />
+              <StatusBadge status={mediaStatus} type="media" size="small" variant="overlay" mediaType={mediaType} releaseDate={releaseDate} />
             </View>
           )}
 

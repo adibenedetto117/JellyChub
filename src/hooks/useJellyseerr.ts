@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tansta
 import { useEffect, useRef } from 'react';
 import { useSettingsStore, selectHasJellyseerr } from '@/stores/settingsStore';
 import { jellyseerrClient } from '@/api/jellyseerr';
-import type { JellyseerrRequestBody } from '@/types/jellyseerr';
+import type { JellyseerrRequestBody, JellyseerrCreateUserBody, JellyseerrUpdateUserBody } from '@/types/jellyseerr';
 
 // Auto-initialize client from stored credentials
 function useJellyseerrInit() {
@@ -166,6 +166,17 @@ export function useTvDetails(tmdbId: number | undefined) {
   });
 }
 
+export function useSeasonDetails(tmdbId: number | undefined, seasonNumber: number | undefined) {
+  const { isReady } = useJellyseerrStatus();
+
+  return useQuery({
+    queryKey: ['jellyseerr', 'tv', tmdbId, 'season', seasonNumber],
+    queryFn: () => jellyseerrClient.getSeasonDetails(tmdbId!, seasonNumber!),
+    enabled: isReady && !!tmdbId && seasonNumber !== undefined,
+    staleTime: 15 * 60 * 1000,
+  });
+}
+
 export function useMyRequests() {
   const { isReady } = useJellyseerrStatus();
   const { data: user } = useJellyseerrUser();
@@ -297,5 +308,228 @@ export function useDiscoverByGenre(mediaType: 'movie' | 'tv', genreId: number | 
       lastPage.page < lastPage.totalPages ? lastPage.page + 1 : undefined,
     enabled: isReady && !!genreId,
     staleTime: 10 * 60 * 1000,
+  });
+}
+
+export function useJellyseerrUsers() {
+  const { isReady } = useJellyseerrStatus();
+
+  return useInfiniteQuery({
+    queryKey: ['jellyseerr', 'users'],
+    queryFn: ({ pageParam = 0 }) =>
+      jellyseerrClient.getUsers({ take: 50, skip: pageParam }),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, allPages) => {
+      const totalFetched = allPages.reduce((sum, p) => sum + p.results.length, 0);
+      return totalFetched < lastPage.pageInfo.results ? totalFetched : undefined;
+    },
+    enabled: isReady,
+    staleTime: 60 * 1000,
+  });
+}
+
+export function useJellyseerrUserDetails(userId: number | undefined) {
+  const { isReady } = useJellyseerrStatus();
+
+  return useQuery({
+    queryKey: ['jellyseerr', 'user', userId],
+    queryFn: () => jellyseerrClient.getUser(userId!),
+    enabled: isReady && !!userId,
+    staleTime: 2 * 60 * 1000,
+  });
+}
+
+export function useJellyfinUsers() {
+  const { isReady } = useJellyseerrStatus();
+
+  return useQuery({
+    queryKey: ['jellyseerr', 'jellyfin-users'],
+    queryFn: () => jellyseerrClient.getJellyfinUsers(),
+    enabled: isReady,
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useCreateJellyseerrUser() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (body: JellyseerrCreateUserBody) => jellyseerrClient.createUser(body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['jellyseerr', 'users'] });
+    },
+  });
+}
+
+export function useUpdateJellyseerrUser() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ userId, body }: { userId: number; body: JellyseerrUpdateUserBody }) =>
+      jellyseerrClient.updateUser(userId, body),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['jellyseerr', 'users'] });
+      queryClient.invalidateQueries({ queryKey: ['jellyseerr', 'user', variables.userId] });
+    },
+  });
+}
+
+export function useDeleteJellyseerrUser() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (userId: number) => jellyseerrClient.deleteUser(userId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['jellyseerr', 'users'] });
+    },
+  });
+}
+
+export function useImportJellyfinUsers() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (jellyfinUserIds: string[]) => jellyseerrClient.importUsersFromJellyfin(jellyfinUserIds),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['jellyseerr', 'users'] });
+      queryClient.invalidateQueries({ queryKey: ['jellyseerr', 'jellyfin-users'] });
+    },
+  });
+}
+
+export function useJellyseerrServerStatus() {
+  const { isReady } = useJellyseerrStatus();
+
+  return useQuery({
+    queryKey: ['jellyseerr', 'status'],
+    queryFn: () => jellyseerrClient.getServerStatus(),
+    enabled: isReady,
+    staleTime: 60 * 1000,
+  });
+}
+
+export function useJellyseerrAbout() {
+  const { isReady } = useJellyseerrStatus();
+
+  return useQuery({
+    queryKey: ['jellyseerr', 'about'],
+    queryFn: () => jellyseerrClient.getAboutInfo(),
+    enabled: isReady,
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useJellyseerrMainSettings() {
+  const { isReady } = useJellyseerrStatus();
+
+  return useQuery({
+    queryKey: ['jellyseerr', 'settings', 'main'],
+    queryFn: () => jellyseerrClient.getMainSettings(),
+    enabled: isReady,
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useJellyseerrCacheStats() {
+  const { isReady } = useJellyseerrStatus();
+
+  return useQuery({
+    queryKey: ['jellyseerr', 'cache'],
+    queryFn: () => jellyseerrClient.getCacheStats(),
+    enabled: isReady,
+    staleTime: 30 * 1000,
+  });
+}
+
+export function useFlushCache() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (cacheId: string) => jellyseerrClient.flushCache(cacheId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['jellyseerr', 'cache'] });
+    },
+  });
+}
+
+export function useJellyseerrJobs() {
+  const { isReady } = useJellyseerrStatus();
+
+  return useQuery({
+    queryKey: ['jellyseerr', 'jobs'],
+    queryFn: () => jellyseerrClient.getJobs(),
+    enabled: isReady,
+    staleTime: 30 * 1000,
+    refetchInterval: 30 * 1000,
+  });
+}
+
+export function useRunJob() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (jobId: string) => jellyseerrClient.runJob(jobId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['jellyseerr', 'jobs'] });
+    },
+  });
+}
+
+export function useCancelJob() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (jobId: string) => jellyseerrClient.cancelJob(jobId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['jellyseerr', 'jobs'] });
+    },
+  });
+}
+
+export function useJellyseerrJellyfinSettings() {
+  const { isReady } = useJellyseerrStatus();
+
+  return useQuery({
+    queryKey: ['jellyseerr', 'settings', 'jellyfin'],
+    queryFn: () => jellyseerrClient.getJellyfinSettings(),
+    enabled: isReady,
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useJellyfinSyncStatus() {
+  const { isReady } = useJellyseerrStatus();
+
+  return useQuery({
+    queryKey: ['jellyseerr', 'jellyfin', 'sync'],
+    queryFn: () => jellyseerrClient.getJellyfinSyncStatus(),
+    enabled: isReady,
+    staleTime: 10 * 1000,
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      return data?.running ? 5 * 1000 : 30 * 1000;
+    },
+  });
+}
+
+export function useStartJellyfinSync() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () => jellyseerrClient.startJellyfinSync(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['jellyseerr', 'jellyfin', 'sync'] });
+    },
+  });
+}
+
+export function useCancelJellyfinSync() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () => jellyseerrClient.cancelJellyfinSync(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['jellyseerr', 'jellyfin', 'sync'] });
+    },
   });
 }

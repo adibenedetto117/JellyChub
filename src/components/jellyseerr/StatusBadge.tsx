@@ -11,6 +11,7 @@ interface Props {
   size?: 'small' | 'medium';
   variant?: 'default' | 'overlay';
   mediaType?: 'movie' | 'tv';
+  releaseDate?: string;
 }
 
 const requestStatusConfig: Record<RequestStatus, { label: string; color: string; bgColor: string; gradientColors: [string, string]; icon: string }> = {
@@ -89,7 +90,14 @@ const mediaStatusConfig: Record<MediaStatus, { label: string; color: string; bgC
   },
 };
 
-export const StatusBadge = memo(function StatusBadge({ status, type, size = 'small', variant = 'default', mediaType }: Props) {
+function isNotYetReleased(releaseDate?: string): boolean {
+  if (!releaseDate) return false;
+  const release = new Date(releaseDate);
+  const now = new Date();
+  return release > now;
+}
+
+export const StatusBadge = memo(function StatusBadge({ status, type, size = 'small', variant = 'default', mediaType, releaseDate }: Props) {
   let config = type === 'request'
     ? requestStatusConfig[status as RequestStatus]
     : mediaStatusConfig[status as MediaStatus];
@@ -103,6 +111,10 @@ export const StatusBadge = memo(function StatusBadge({ status, type, size = 'sma
     config = type === 'request'
       ? requestStatusConfig[REQUEST_STATUS.AVAILABLE]
       : mediaStatusConfig[MEDIA_STATUS.AVAILABLE];
+  }
+
+  if (type === 'media' && status === MEDIA_STATUS.PROCESSING && isNotYetReleased(releaseDate)) {
+    config = mediaStatusConfig[MEDIA_STATUS.PENDING];
   }
 
   const isSmall = size === 'small';

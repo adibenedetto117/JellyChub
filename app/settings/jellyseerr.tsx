@@ -3,6 +3,7 @@ import { View, Text, TextInput, Pressable, Alert, ActivityIndicator, ScrollView,
 import { SafeAreaView } from '@/providers';
 import { Stack, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useAuthStore } from '@/stores';
 import { jellyseerrClient } from '@/api/jellyseerr';
@@ -11,6 +12,8 @@ import { goBack } from '@/utils';
 
 type AuthMethod = 'apikey' | 'jellyfin' | 'local';
 const DEFAULT_PORT = '5055';
+const JELLYSEERR_PURPLE = '#6366f1';
+const JELLYSEERR_PURPLE_DARK = '#4f46e5';
 
 export default function JellyseerrSettingsScreen() {
   const {
@@ -301,53 +304,122 @@ export default function JellyseerrSettingsScreen() {
       />
 
       <ScrollView style={styles.scrollView} keyboardShouldPersistTaps="handled">
+        <View style={styles.brandingSection}>
+          <LinearGradient
+            colors={[JELLYSEERR_PURPLE, JELLYSEERR_PURPLE_DARK]}
+            style={styles.brandingIcon}
+          >
+            <Ionicons name="film" size={28} color="#fff" />
+          </LinearGradient>
+          <Text style={styles.brandingTitle}>Jellyseerr</Text>
+          <Text style={styles.brandingSubtitle}>
+            Request movies and TV shows from your media server
+          </Text>
+        </View>
+
         {isConnected ? (
           <View style={styles.content}>
             <View style={styles.card}>
-              <View style={styles.statusRow}>
-                <View style={[styles.statusDot, { backgroundColor: connectionStatus === 'connected' ? '#22c55e' : connectionStatus === 'error' ? '#ef4444' : '#f59e0b' }]} />
-                <Text style={styles.statusText}>
-                  {isTesting ? 'Checking...' : connectionStatus === 'connected' ? 'Connected' : connectionStatus === 'error' ? 'Connection Error' : 'Unknown'}
-                </Text>
+              <View style={styles.cardHeader}>
+                <Text style={styles.cardTitle}>Connection Status</Text>
+                <View style={[
+                  styles.statusPill,
+                  { backgroundColor: connectionStatus === 'connected' ? 'rgba(34, 197, 94, 0.15)' : connectionStatus === 'error' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(245, 158, 11, 0.15)' }
+                ]}>
+                  <View style={[styles.statusDot, { backgroundColor: connectionStatus === 'connected' ? '#22c55e' : connectionStatus === 'error' ? '#ef4444' : '#f59e0b' }]} />
+                  <Text style={[
+                    styles.statusPillText,
+                    { color: connectionStatus === 'connected' ? '#22c55e' : connectionStatus === 'error' ? '#ef4444' : '#f59e0b' }
+                  ]}>
+                    {isTesting ? 'Checking...' : connectionStatus === 'connected' ? 'Connected' : connectionStatus === 'error' ? 'Error' : 'Unknown'}
+                  </Text>
+                </View>
               </View>
 
-              <View style={styles.infoRow}>
-                <Ionicons name="server-outline" size={16} color="rgba(255,255,255,0.5)" />
-                <Text style={styles.infoText}>{jellyseerrUrl}</Text>
-              </View>
+              <View style={styles.infoSection}>
+                <View style={styles.infoItem}>
+                  <View style={styles.infoIconContainer}>
+                    <Ionicons name="server-outline" size={16} color={JELLYSEERR_PURPLE} />
+                  </View>
+                  <View style={styles.infoContent}>
+                    <Text style={styles.infoLabel}>Server</Text>
+                    <Text style={styles.infoValue} numberOfLines={1}>{jellyseerrUrl}</Text>
+                  </View>
+                </View>
 
-              <View style={styles.infoRow}>
-                <Ionicons name="person-outline" size={16} color="rgba(255,255,255,0.5)" />
-                <Text style={styles.infoText}>{jellyseerrUsername}</Text>
+                <View style={styles.infoItem}>
+                  <View style={styles.infoIconContainer}>
+                    <Ionicons name="person-outline" size={16} color={JELLYSEERR_PURPLE} />
+                  </View>
+                  <View style={styles.infoContent}>
+                    <Text style={styles.infoLabel}>Logged in as</Text>
+                    <Text style={styles.infoValue}>{jellyseerrUsername}</Text>
+                  </View>
+                </View>
               </View>
             </View>
 
             <Pressable style={styles.testButton} onPress={testExistingConnection} disabled={isTesting}>
               {isTesting ? (
-                <ActivityIndicator color={accentColor} size="small" />
+                <ActivityIndicator color={JELLYSEERR_PURPLE} size="small" />
               ) : (
                 <>
-                  <Ionicons name="refresh-outline" size={18} color={accentColor} />
-                  <Text style={[styles.testButtonText, { color: accentColor }]}>Test Connection</Text>
+                  <Ionicons name="refresh-outline" size={18} color={JELLYSEERR_PURPLE} />
+                  <Text style={[styles.testButtonText, { color: JELLYSEERR_PURPLE }]}>Test Connection</Text>
                 </>
               )}
             </Pressable>
 
+            <Pressable style={styles.navButton} onPress={() => router.push('/(tabs)/requests')}>
+              <View style={styles.navButtonContent}>
+                <View style={[styles.navButtonIcon, { backgroundColor: `${JELLYSEERR_PURPLE}20` }]}>
+                  <Ionicons name="film-outline" size={18} color={JELLYSEERR_PURPLE} />
+                </View>
+                <View style={styles.navButtonText}>
+                  <Text style={styles.navButtonTitle}>Open Requests</Text>
+                  <Text style={styles.navButtonSubtitle}>Browse and request content</Text>
+                </View>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.3)" />
+            </Pressable>
+
+            <Pressable style={styles.navButton} onPress={() => router.push('/settings/jellyseerr-users' as any)}>
+              <View style={styles.navButtonContent}>
+                <View style={[styles.navButtonIcon, { backgroundColor: `${JELLYSEERR_PURPLE}20` }]}>
+                  <Ionicons name="people-outline" size={18} color={JELLYSEERR_PURPLE} />
+                </View>
+                <View style={styles.navButtonText}>
+                  <Text style={styles.navButtonTitle}>User Management</Text>
+                  <Text style={styles.navButtonSubtitle}>Manage users, permissions, and quotas</Text>
+                </View>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.3)" />
+            </Pressable>
+
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Advanced</Text>
+            </View>
+
             <View style={styles.optionRow}>
               <View style={styles.optionInfo}>
                 <Text style={styles.optionTitle}>Use Custom Headers</Text>
+                <Text style={styles.optionSubtitle}>Apply headers from Settings to API requests</Text>
               </View>
               <Switch
                 value={jellyseerrUseCustomHeaders}
                 onValueChange={setJellyseerrUseCustomHeaders}
-                trackColor={{ false: 'rgba(255,255,255,0.2)', true: accentColor + '80' }}
-                thumbColor={jellyseerrUseCustomHeaders ? accentColor : '#f4f3f4'}
+                trackColor={{ false: 'rgba(255,255,255,0.2)', true: JELLYSEERR_PURPLE + '80' }}
+                thumbColor={jellyseerrUseCustomHeaders ? JELLYSEERR_PURPLE : '#f4f3f4'}
               />
             </View>
 
-            <Pressable style={styles.disconnectButton} onPress={handleDisconnect}>
-              <Text style={styles.disconnectButtonText}>Disconnect</Text>
-            </Pressable>
+            <View style={styles.dangerZone}>
+              <Text style={styles.dangerZoneTitle}>Danger Zone</Text>
+              <Pressable style={styles.disconnectButton} onPress={handleDisconnect}>
+                <Ionicons name="log-out-outline" size={18} color="#ef4444" />
+                <Text style={styles.disconnectButtonText}>Disconnect from Jellyseerr</Text>
+              </Pressable>
+            </View>
           </View>
         ) : (
           <View style={styles.content}>
@@ -512,41 +584,101 @@ const styles = StyleSheet.create({
   scrollView: {
     flex: 1,
   },
+  brandingSection: {
+    alignItems: 'center',
+    paddingVertical: 24,
+    paddingHorizontal: 16,
+  },
+  brandingIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  brandingTitle: {
+    color: '#fff',
+    fontSize: 22,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  brandingSubtitle: {
+    color: colors.text.tertiary,
+    fontSize: 14,
+    textAlign: 'center',
+  },
   content: {
     padding: 16,
+    paddingTop: 0,
   },
   card: {
     backgroundColor: colors.surface.default,
-    borderRadius: 12,
+    borderRadius: 14,
     padding: 16,
-    marginBottom: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: colors.border.subtle,
   },
-  statusRow: {
+  cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: 16,
   },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 8,
+  cardTitle: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '600',
   },
-  statusText: {
+  statusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+    gap: 6,
+  },
+  statusPillText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  infoSection: {
+    gap: 12,
+  },
+  infoItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  infoIconContainer: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: `${JELLYSEERR_PURPLE}15`,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  infoContent: {
+    flex: 1,
+  },
+  infoLabel: {
+    color: colors.text.tertiary,
+    fontSize: 11,
+    fontWeight: '500',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 2,
+  },
+  infoValue: {
     color: '#fff',
     fontSize: 14,
     fontWeight: '500',
-  },
-  infoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  infoText: {
-    color: 'rgba(255,255,255,0.7)',
-    fontSize: 14,
-    marginLeft: 8,
-    flex: 1,
   },
   label: {
     color: 'rgba(255,255,255,0.7)',
@@ -641,16 +773,84 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface.default,
     marginBottom: 12,
     gap: 8,
+    borderWidth: 1,
+    borderColor: colors.border.subtle,
   },
   testButtonText: {
     fontSize: 14,
     fontWeight: '500',
   },
+  navButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.surface.default,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: colors.border.subtle,
+  },
+  navButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  navButtonIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  navButtonText: {
+    flex: 1,
+  },
+  navButtonTitle: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  navButtonSubtitle: {
+    color: colors.text.tertiary,
+    fontSize: 12,
+    marginTop: 2,
+  },
+  sectionHeader: {
+    marginBottom: 12,
+  },
+  sectionTitle: {
+    color: colors.text.tertiary,
+    fontSize: 12,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  dangerZone: {
+    marginTop: 24,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: colors.border.subtle,
+  },
+  dangerZoneTitle: {
+    color: '#ef4444',
+    fontSize: 12,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 12,
+  },
   disconnectButton: {
-    backgroundColor: 'rgba(239,68,68,0.15)',
+    backgroundColor: 'rgba(239,68,68,0.1)',
     borderRadius: 10,
     paddingVertical: 14,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(239,68,68,0.2)',
   },
   disconnectButtonText: {
     color: '#ef4444',
@@ -692,6 +892,8 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 14,
     marginBottom: 12,
+    borderWidth: 1,
+    borderColor: colors.border.subtle,
   },
   optionInfo: {
     flex: 1,

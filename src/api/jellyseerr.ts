@@ -9,6 +9,20 @@ import type {
   JellyseerrRequestBody,
   JellyseerrAuthResponse,
   JellyseerrRequestsResponse,
+  JellyseerrRatings,
+  JellyseerrUsersResponse,
+  JellyseerrUserDetails,
+  JellyseerrCreateUserBody,
+  JellyseerrUpdateUserBody,
+  JellyseerrJellyfinUser,
+  JellyseerrSeasonDetails,
+  JellyseerrServerStatus,
+  JellyseerrAboutInfo,
+  JellyseerrMainSettings,
+  JellyseerrCacheStats,
+  JellyseerrJob,
+  JellyseerrJellyfinSettings,
+  JellyseerrSyncStatus,
 } from '@/types/jellyseerr';
 import { apiCache } from '@/utils';
 import { useSettingsStore, useAuthStore } from '@/stores';
@@ -581,6 +595,26 @@ class JellyseerrClient {
 
   // ==================== Details ====================
 
+  async getMovieRatings(tmdbId: number): Promise<JellyseerrRatings | null> {
+    if (!this.api) return null;
+    try {
+      const response = await this.api.get<JellyseerrRatings>(`/movie/${tmdbId}/ratings`);
+      return response.data;
+    } catch {
+      return null;
+    }
+  }
+
+  async getTvRatings(tmdbId: number): Promise<JellyseerrRatings | null> {
+    if (!this.api) return null;
+    try {
+      const response = await this.api.get<JellyseerrRatings>(`/tv/${tmdbId}/ratings`);
+      return response.data;
+    } catch {
+      return null;
+    }
+  }
+
   async getMovieDetails(tmdbId: number, skipCache = false): Promise<JellyseerrMovieDetails> {
     if (!this.api) throw new Error('Jellyseerr client not initialized');
     const cacheKey = `jellyseerr:movie:${tmdbId}`;
@@ -588,9 +622,16 @@ class JellyseerrClient {
       const cached = apiCache.get<JellyseerrMovieDetails>(cacheKey);
       if (cached) return cached;
     }
-    const response = await this.api.get<JellyseerrMovieDetails>(`/movie/${tmdbId}`);
-    apiCache.set(cacheKey, response.data, CACHE_TTL.details);
-    return response.data;
+    const [detailsResponse, ratings] = await Promise.all([
+      this.api.get<JellyseerrMovieDetails>(`/movie/${tmdbId}`),
+      this.getMovieRatings(tmdbId),
+    ]);
+    const result: JellyseerrMovieDetails = {
+      ...detailsResponse.data,
+      ratings: detailsResponse.data.ratings ?? ratings ?? undefined,
+    };
+    apiCache.set(cacheKey, result, CACHE_TTL.details);
+    return result;
   }
 
   async getTvDetails(tmdbId: number, skipCache = false): Promise<JellyseerrTvDetails> {
@@ -600,7 +641,26 @@ class JellyseerrClient {
       const cached = apiCache.get<JellyseerrTvDetails>(cacheKey);
       if (cached) return cached;
     }
-    const response = await this.api.get<JellyseerrTvDetails>(`/tv/${tmdbId}`);
+    const [detailsResponse, ratings] = await Promise.all([
+      this.api.get<JellyseerrTvDetails>(`/tv/${tmdbId}`),
+      this.getTvRatings(tmdbId),
+    ]);
+    const result: JellyseerrTvDetails = {
+      ...detailsResponse.data,
+      ratings: detailsResponse.data.ratings ?? ratings ?? undefined,
+    };
+    apiCache.set(cacheKey, result, CACHE_TTL.details);
+    return result;
+  }
+
+  async getSeasonDetails(tmdbId: number, seasonNumber: number, skipCache = false): Promise<JellyseerrSeasonDetails> {
+    if (!this.api) throw new Error('Jellyseerr client not initialized');
+    const cacheKey = `jellyseerr:tv:${tmdbId}:season:${seasonNumber}`;
+    if (!skipCache) {
+      const cached = apiCache.get<JellyseerrSeasonDetails>(cacheKey);
+      if (cached) return cached;
+    }
+    const response = await this.api.get<JellyseerrSeasonDetails>(`/tv/${tmdbId}/season/${seasonNumber}`);
     apiCache.set(cacheKey, response.data, CACHE_TTL.details);
     return response.data;
   }
@@ -698,6 +758,128 @@ class JellyseerrClient {
 
   invalidateCache(): void {
     apiCache.invalidatePattern('^jellyseerr:');
+  }
+
+  async getUsers(
+    params: {
+      take?: number;
+      skip?: number;
+      sort?: 'created' | 'updated' | 'requests' | 'displayname';
+    } = {}
+  ): Promise<JellyseerrUsersResponse> {
+    if (!this.api) throw new Error('Jellyseerr client not initialized');
+    const response = await this.api.get<JellyseerrUsersResponse>('/user', {
+      params: { take: 50, ...params },
+    });
+    return response.data;
+  }
+
+  async getUser(userId: number): Promise<JellyseerrUserDetails> {
+    if (!this.api) throw new Error('Jellyseerr client not initialized');
+    const response = await this.api.get<JellyseerrUserDetails>(`/user/${userId}`);
+    return response.data;
+  }
+
+  async createUser(body: JellyseerrCreateUserBody): Promise<JellyseerrUserDetails> {
+    if (!this.api) throw new Error('Jellyseerr client not initialized');
+    const response = await this.api.post<JellyseerrUserDetails>('/user', body);
+    return response.data;
+  }
+
+  async updateUser(userId: number, body: JellyseerrUpdateUserBody): Promise<JellyseerrUserDetails> {
+    if (!this.api) throw new Error('Jellyseerr client not initialized');
+    const response = await this.api.put<JellyseerrUserDetails>(`/user/${userId}`, body);
+    return response.data;
+  }
+
+  async deleteUser(userId: number): Promise<void> {
+    if (!this.api) throw new Error('Jellyseerr client not initialized');
+    await this.api.delete(`/user/${userId}`);
+  }
+
+  async getJellyfinUsers(): Promise<JellyseerrJellyfinUser[]> {
+    if (!this.api) throw new Error('Jellyseerr client not initialized');
+    const response = await this.api.get<JellyseerrJellyfinUser[]>('/settings/jellyfin/users');
+    return response.data;
+  }
+
+  async importUsersFromJellyfin(jellyfinUserIds: string[]): Promise<JellyseerrUserDetails[]> {
+    if (!this.api) throw new Error('Jellyseerr client not initialized');
+    const response = await this.api.post<JellyseerrUserDetails[]>('/user/import-from-jellyfin', {
+      jellyfinUserIds,
+    });
+    return response.data;
+  }
+
+  async getServerStatus(): Promise<JellyseerrServerStatus> {
+    if (!this.api) throw new Error('Jellyseerr client not initialized');
+    const response = await this.api.get<JellyseerrServerStatus>('/status');
+    return response.data;
+  }
+
+  async getAboutInfo(): Promise<JellyseerrAboutInfo> {
+    if (!this.api) throw new Error('Jellyseerr client not initialized');
+    const response = await this.api.get<JellyseerrAboutInfo>('/settings/about');
+    return response.data;
+  }
+
+  async getMainSettings(): Promise<JellyseerrMainSettings> {
+    if (!this.api) throw new Error('Jellyseerr client not initialized');
+    const response = await this.api.get<JellyseerrMainSettings>('/settings/main');
+    return response.data;
+  }
+
+  async getCacheStats(): Promise<JellyseerrCacheStats> {
+    if (!this.api) throw new Error('Jellyseerr client not initialized');
+    const response = await this.api.get<JellyseerrCacheStats>('/settings/cache');
+    return response.data;
+  }
+
+  async flushCache(cacheId: string): Promise<void> {
+    if (!this.api) throw new Error('Jellyseerr client not initialized');
+    await this.api.post(`/settings/cache/${cacheId}/flush`);
+  }
+
+  async getJobs(): Promise<JellyseerrJob[]> {
+    if (!this.api) throw new Error('Jellyseerr client not initialized');
+    const response = await this.api.get<JellyseerrJob[]>('/settings/jobs');
+    return response.data;
+  }
+
+  async runJob(jobId: string): Promise<JellyseerrJob> {
+    if (!this.api) throw new Error('Jellyseerr client not initialized');
+    const response = await this.api.post<JellyseerrJob>(`/settings/jobs/${jobId}/run`);
+    return response.data;
+  }
+
+  async cancelJob(jobId: string): Promise<JellyseerrJob> {
+    if (!this.api) throw new Error('Jellyseerr client not initialized');
+    const response = await this.api.post<JellyseerrJob>(`/settings/jobs/${jobId}/cancel`);
+    return response.data;
+  }
+
+  async getJellyfinSettings(): Promise<JellyseerrJellyfinSettings> {
+    if (!this.api) throw new Error('Jellyseerr client not initialized');
+    const response = await this.api.get<JellyseerrJellyfinSettings>('/settings/jellyfin');
+    return response.data;
+  }
+
+  async getJellyfinSyncStatus(): Promise<JellyseerrSyncStatus> {
+    if (!this.api) throw new Error('Jellyseerr client not initialized');
+    const response = await this.api.get<JellyseerrSyncStatus>('/settings/jellyfin/sync');
+    return response.data;
+  }
+
+  async startJellyfinSync(): Promise<JellyseerrSyncStatus> {
+    if (!this.api) throw new Error('Jellyseerr client not initialized');
+    const response = await this.api.post<JellyseerrSyncStatus>('/settings/jellyfin/sync');
+    return response.data;
+  }
+
+  async cancelJellyfinSync(): Promise<JellyseerrSyncStatus> {
+    if (!this.api) throw new Error('Jellyseerr client not initialized');
+    const response = await this.api.post<JellyseerrSyncStatus>('/settings/jellyfin/sync', { cancel: true });
+    return response.data;
   }
 }
 

@@ -8,7 +8,7 @@ import Animated, { FadeIn, FadeInDown, FadeInUp, SlideInRight } from 'react-nati
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useMovieDetails, useTvDetails, useCreateRequest } from '@/hooks';
 import { jellyseerrClient } from '@/api/jellyseerr';
-import { StatusBadge, SeasonSelector } from '@/components/jellyseerr';
+import { StatusBadge, SeasonSelector, SeasonRequestBreakdown } from '@/components/jellyseerr';
 import { CachedImage } from '@/components/ui/CachedImage';
 import { AddToArrModal } from '@/components/media/AddToArrModal';
 import { radarrService, sonarrService } from '@/services';
@@ -157,12 +157,13 @@ export default function JellyseerrDetailsScreen() {
   const titleIndex = Math.abs(numericTmdbId || 0) % PLACEHOLDER_TITLES.length;
   const title = hideMedia ? PLACEHOLDER_TITLES[titleIndex] : rawTitle;
 
-  const rawYear = useMemo(() => {
-    if (!details) return '';
-    const date = (details as JellyseerrMovieDetails).releaseDate ||
+  const releaseDate = useMemo(() => {
+    if (!details) return undefined;
+    return (details as JellyseerrMovieDetails).releaseDate ||
       (details as JellyseerrTvDetails).firstAirDate;
-    return date?.split('-')[0] || '';
   }, [details]);
+
+  const rawYear = releaseDate?.split('-')[0] || '';
 
   const year = hideMedia ? '2024' : rawYear;
 
@@ -237,10 +238,13 @@ export default function JellyseerrDetailsScreen() {
     }
   }, [numericTmdbId, createRequest]);
 
+  const isNotYetReleased = releaseDate ? new Date(releaseDate) > new Date() : false;
+
   const getStatusInfo = () => {
     if (isAvailable) return { icon: 'checkmark-done-circle', label: 'Available in Library', color: '#22c55e' };
     if (isPartiallyAvailable) return { icon: 'pie-chart', label: 'Partially Available', color: '#f97316' };
     if (isPending) return { icon: 'time', label: 'Request Pending', color: '#fbbf24' };
+    if (isProcessing && isNotYetReleased) return { icon: 'time', label: 'Requested', color: '#fbbf24' };
     if (isProcessing) return { icon: 'sync', label: 'Processing', color: '#8b5cf6' };
     return null;
   };
@@ -340,7 +344,7 @@ export default function JellyseerrDetailsScreen() {
               />
               {mediaStatus !== MEDIA_STATUS.UNKNOWN && (
                 <View style={styles.posterBadge}>
-                  <StatusBadge status={mediaStatus} type="media" size="small" variant="overlay" />
+                  <StatusBadge status={mediaStatus} type="media" size="small" variant="overlay" releaseDate={releaseDate} />
                 </View>
               )}
             </View>
@@ -394,6 +398,16 @@ export default function JellyseerrDetailsScreen() {
             </Animated.View>
           )}
 
+          {type === 'tv' && tvData.seasons && tvData.seasons.length > 0 && (
+            <Animated.View entering={FadeInDown.delay(125).duration(400)} style={styles.seasonBreakdownSection}>
+              <SeasonRequestBreakdown
+                seasons={tvData.seasons}
+                mediaInfo={details.mediaInfo}
+                tmdbId={numericTmdbId!}
+              />
+            </Animated.View>
+          )}
+
           {details.genres && details.genres.length > 0 && (
             <Animated.View entering={FadeInDown.delay(150).duration(400)} style={styles.genresContainer}>
               {details.genres.slice(0, 4).map((genre) => (
@@ -412,6 +426,132 @@ export default function JellyseerrDetailsScreen() {
                   ? 'A captivating story that takes viewers on an unforgettable journey through extraordinary circumstances and compelling characters.'
                   : details.overview}
               </Text>
+            </Animated.View>
+          )}
+
+          {(details.ratings || details.voteAverage > 0) && (
+            <Animated.View entering={FadeInDown.delay(225).duration(400)} style={styles.scoresSection}>
+              <Text style={styles.sectionTitle}>Ratings</Text>
+              <View style={styles.scoresRow}>
+                {details.ratings?.criticsScore !== undefined && (
+                  <View style={styles.scoreCard}>
+                    <View style={[styles.scoreIconContainer, { backgroundColor: details.ratings.criticsRating === 'Rotten' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(34, 197, 94, 0.15)' }]}>
+                      <Ionicons name="newspaper" size={20} color={details.ratings.criticsRating === 'Rotten' ? '#ef4444' : '#22c55e'} />
+                    </View>
+                    <Text style={styles.scoreValue}>{details.ratings.criticsScore}%</Text>
+                    <Text style={styles.scoreLabel}>Critics</Text>
+                    {details.ratings.criticsRating && (
+                      <Text style={[styles.scoreSubLabel, { color: details.ratings.criticsRating === 'Rotten' ? '#ef4444' : '#22c55e' }]}>
+                        {details.ratings.criticsRating}
+                      </Text>
+                    )}
+                  </View>
+                )}
+                {details.ratings?.audienceScore !== undefined && (
+                  <View style={styles.scoreCard}>
+                    <View style={[styles.scoreIconContainer, { backgroundColor: details.ratings.audienceRating === 'Spilled' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(251, 191, 36, 0.15)' }]}>
+                      <Ionicons name="people" size={20} color={details.ratings.audienceRating === 'Spilled' ? '#ef4444' : '#fbbf24'} />
+                    </View>
+                    <Text style={styles.scoreValue}>{details.ratings.audienceScore}%</Text>
+                    <Text style={styles.scoreLabel}>Audience</Text>
+                    {details.ratings.audienceRating && (
+                      <Text style={[styles.scoreSubLabel, { color: details.ratings.audienceRating === 'Spilled' ? '#ef4444' : '#22c55e' }]}>
+                        {details.ratings.audienceRating}
+                      </Text>
+                    )}
+                  </View>
+                )}
+                {details.voteAverage > 0 && (
+                  <View style={styles.scoreCard}>
+                    <View style={[styles.scoreIconContainer, { backgroundColor: 'rgba(99, 102, 241, 0.15)' }]}>
+                      <Ionicons name="film" size={20} color="#6366f1" />
+                    </View>
+                    <Text style={styles.scoreValue}>{details.voteAverage.toFixed(1)}</Text>
+                    <Text style={styles.scoreLabel}>TMDB</Text>
+                    <Text style={styles.scoreSubLabel}>{details.voteCount?.toLocaleString()} votes</Text>
+                  </View>
+                )}
+              </View>
+            </Animated.View>
+          )}
+
+          {type === 'movie' && (details as JellyseerrMovieDetails).budget > 0 && !hideMedia && (
+            <Animated.View entering={FadeInDown.delay(250).duration(400)} style={styles.budgetSection}>
+              <View style={styles.budgetRow}>
+                <View style={styles.budgetItem}>
+                  <Ionicons name="wallet-outline" size={18} color={colors.text.secondary} />
+                  <View style={styles.budgetTextContainer}>
+                    <Text style={styles.budgetLabel}>Budget</Text>
+                    <Text style={styles.budgetValue}>${((details as JellyseerrMovieDetails).budget / 1000000).toFixed(0)}M</Text>
+                  </View>
+                </View>
+                {(details as JellyseerrMovieDetails).revenue > 0 && (
+                  <View style={styles.budgetItem}>
+                    <Ionicons name="trending-up" size={18} color="#22c55e" />
+                    <View style={styles.budgetTextContainer}>
+                      <Text style={styles.budgetLabel}>Revenue</Text>
+                      <Text style={[styles.budgetValue, { color: '#22c55e' }]}>${((details as JellyseerrMovieDetails).revenue / 1000000).toFixed(0)}M</Text>
+                    </View>
+                  </View>
+                )}
+              </View>
+            </Animated.View>
+          )}
+
+          {((type === 'movie' && (details as JellyseerrMovieDetails).productionCompanies?.length) ||
+            (type === 'tv' && ((details as JellyseerrTvDetails).networks?.length || (details as JellyseerrTvDetails).productionCompanies?.length))) && !hideMedia && (
+            <Animated.View entering={FadeInDown.delay(275).duration(400)} style={styles.studiosSection}>
+              <Text style={styles.sectionTitle}>{type === 'tv' ? 'Networks & Studios' : 'Studios'}</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.studiosScroll}>
+                {type === 'tv' && (details as JellyseerrTvDetails).networks?.map((network) => (
+                  <View key={network.id} style={styles.studioCard}>
+                    {network.logoPath ? (
+                      <CachedImage
+                        uri={jellyseerrClient.getImageUrl(network.logoPath, 'w185') || ''}
+                        style={styles.studioLogo}
+                        contentFit="contain"
+                      />
+                    ) : (
+                      <View style={styles.studioLogoPlaceholder}>
+                        <Ionicons name="business" size={24} color={colors.text.tertiary} />
+                      </View>
+                    )}
+                    <Text style={styles.studioName} numberOfLines={2}>{network.name}</Text>
+                  </View>
+                ))}
+                {details.productionCompanies?.map((company) => (
+                  <View key={company.id} style={styles.studioCard}>
+                    {company.logoPath ? (
+                      <CachedImage
+                        uri={jellyseerrClient.getImageUrl(company.logoPath, 'w185') || ''}
+                        style={styles.studioLogo}
+                        contentFit="contain"
+                      />
+                    ) : (
+                      <View style={styles.studioLogoPlaceholder}>
+                        <Ionicons name="business" size={24} color={colors.text.tertiary} />
+                      </View>
+                    )}
+                    <Text style={styles.studioName} numberOfLines={2}>{company.name}</Text>
+                  </View>
+                ))}
+              </ScrollView>
+            </Animated.View>
+          )}
+
+          {details.credits?.cast && details.credits.cast.length > 0 && !hideMedia && (
+            <Animated.View entering={FadeInDown.delay(300).duration(400)} style={styles.castSection}>
+              <Text style={styles.sectionTitle}>Cast</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.castScroll}>
+                {details.credits.cast.slice(0, 15).map((member) => (
+                  <CastMember
+                    key={member.creditId}
+                    name={member.name}
+                    character={member.character}
+                    image={member.profilePath ? jellyseerrClient.getImageUrl(member.profilePath, 'w185') || undefined : undefined}
+                  />
+                ))}
+              </ScrollView>
             </Animated.View>
           )}
 
@@ -463,6 +603,8 @@ export default function JellyseerrDetailsScreen() {
                       ? 'Request More'
                       : isPending
                       ? 'Pending'
+                      : isProcessing && isNotYetReleased
+                      ? 'Requested'
                       : isProcessing
                       ? 'Processing'
                       : type === 'tv'
@@ -498,6 +640,7 @@ export default function JellyseerrDetailsScreen() {
           onClose={() => setShowSeasonSelector(false)}
           onConfirm={handleSeasonRequest}
           seasons={tvData.seasons}
+          mediaInfo={details.mediaInfo}
           isLoading={createRequest.isPending}
         />
       )}
@@ -704,6 +847,9 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
   },
+  seasonBreakdownSection: {
+    marginTop: 16,
+  },
   genresContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -877,5 +1023,107 @@ const styles = StyleSheet.create({
     color: 'rgba(239, 68, 68, 0.7)',
     fontSize: 13,
     marginTop: 2,
+  },
+  scoresSection: {
+    marginTop: 24,
+  },
+  scoresRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  scoreCard: {
+    flex: 1,
+    backgroundColor: colors.surface.elevated,
+    borderRadius: 14,
+    padding: 14,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.border.subtle,
+  },
+  scoreIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  scoreValue: {
+    color: '#fff',
+    fontSize: 20,
+    fontWeight: '800',
+  },
+  scoreLabel: {
+    color: colors.text.secondary,
+    fontSize: 12,
+    fontWeight: '500',
+    marginTop: 4,
+  },
+  scoreSubLabel: {
+    color: colors.text.tertiary,
+    fontSize: 10,
+    marginTop: 2,
+  },
+  budgetSection: {
+    marginTop: 20,
+  },
+  budgetRow: {
+    flexDirection: 'row',
+    gap: 16,
+    backgroundColor: colors.surface.elevated,
+    borderRadius: 14,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: colors.border.subtle,
+  },
+  budgetItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  budgetTextContainer: {
+    gap: 2,
+  },
+  budgetLabel: {
+    color: colors.text.tertiary,
+    fontSize: 11,
+    fontWeight: '500',
+    textTransform: 'uppercase',
+  },
+  budgetValue: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  studiosSection: {
+    marginTop: 24,
+  },
+  studiosScroll: {
+    marginTop: 12,
+  },
+  studioCard: {
+    width: 100,
+    marginRight: 12,
+    alignItems: 'center',
+  },
+  studioLogo: {
+    width: 80,
+    height: 40,
+    marginBottom: 8,
+  },
+  studioLogoPlaceholder: {
+    width: 80,
+    height: 40,
+    backgroundColor: colors.surface.elevated,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  studioName: {
+    color: colors.text.secondary,
+    fontSize: 11,
+    fontWeight: '500',
+    textAlign: 'center',
   },
 });
