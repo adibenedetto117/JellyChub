@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef, memo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, memo, lazy, Suspense } from 'react';
 import {
   View,
   Text,
@@ -12,7 +12,7 @@ import {
   Modal,
   useWindowDimensions,
   ScrollView,
-  Animated as RNAnimated,
+  InteractionManager,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -24,12 +24,11 @@ import Animated, {
   FadeIn,
   FadeInDown,
   FadeInUp,
-  SlideInRight,
   useSharedValue,
   useAnimatedStyle,
   withSpring,
-  withTiming,
-  interpolate,
+  SlideInRight,
+  SlideOutLeft,
 } from 'react-native-reanimated';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { radarrService } from '@/services';
@@ -46,11 +45,11 @@ import { formatBytes } from '@/utils';
 import { Skeleton } from '@/components/ui';
 
 const RADARR_ORANGE = '#ffc230';
-const RADARR_DARK = '#1a1a1a';
-const RADARR_GRADIENT = ['#ffc230', '#f5a623', '#e8941f'];
+const RADARR_GRADIENT = ['#ffc230', '#f5a623', '#e8941f'] as const;
 
 type TabType = 'library' | 'queue' | 'search';
 type FilterType = 'all' | 'downloaded' | 'missing' | 'unmonitored';
+type SortType = 'title' | 'added' | 'year' | 'size';
 
 interface Stats {
   total: number;
@@ -76,21 +75,15 @@ function StarRating({ rating, size = 12 }: { rating: number; size?: number }) {
   );
 }
 
-function StatCard({ label, value, icon, color, delay }: { label: string; value: number; icon: string; color: string; delay: number }) {
+function StatCard({ label, value, icon, color, onPress }: { label: string; value: number; icon: string; color: string; onPress?: () => void }) {
   return (
-    <Animated.View entering={FadeInUp.delay(delay).springify()} style={styles.statCard}>
-      <LinearGradient
-        colors={[`${color}20`, `${color}05`]}
-        style={styles.statGradient}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-      />
-      <View style={[styles.statIconContainer, { backgroundColor: `${color}25` }]}>
-        <Ionicons name={icon as any} size={20} color={color} />
+    <Pressable onPress={onPress} style={({ pressed }) => [styles.statCard, pressed && onPress && { opacity: 0.8 }]}>
+      <View style={[styles.statIconBg, { backgroundColor: `${color}15` }]}>
+        <Ionicons name={icon as any} size={18} color={color} />
       </View>
       <Text style={styles.statValue}>{value}</Text>
       <Text style={styles.statLabel}>{label}</Text>
-    </Animated.View>
+    </Pressable>
   );
 }
 
@@ -106,65 +99,65 @@ function getQualityBadgeColor(quality: string): string {
 const MovieCard = memo(function MovieCard({
   movie,
   onPress,
+  cardWidth,
 }: {
   movie: RadarrMovie;
   onPress: () => void;
+  cardWidth: number;
 }) {
   const poster = movie.images.find((i) => i.coverType === 'poster');
   const posterUrl = poster?.remoteUrl || poster?.url;
   const rating = movie.ratings?.tmdb?.value || movie.ratings?.imdb?.value || 0;
 
   const getStatusInfo = () => {
-    if (movie.hasFile) return { color: colors.status.success, label: 'Downloaded', icon: 'checkmark-circle' };
-    if (movie.monitored) return { color: colors.status.warning, label: 'Missing', icon: 'time' };
-    return { color: colors.text.muted, label: 'Unmonitored', icon: 'eye-off' };
+    if (movie.hasFile) return { color: colors.status.success, text: 'Done', icon: 'checkmark-circle' };
+    if (movie.monitored) return { color: colors.status.warning, text: 'Missing', icon: 'time' };
+    return { color: colors.text.muted, text: 'Off', icon: 'eye-off' };
   };
 
   const status = getStatusInfo();
+  const posterHeight = cardWidth * 1.5;
 
   return (
-    <Pressable
-      style={({ pressed }) => [styles.movieCard, pressed && styles.movieCardPressed]}
-      onPress={onPress}
-    >
-        <View style={styles.moviePosterContainer}>
+    <Animated.View entering={FadeInUp.delay(0).springify()}>
+      <Pressable
+        onPress={onPress}
+        style={({ pressed }) => [styles.gridCard, { width: cardWidth, opacity: pressed ? 0.8 : 1 }]}
+      >
+        <View style={[styles.gridPosterContainer, { height: posterHeight }]}>
           {posterUrl ? (
-            <Image source={{ uri: posterUrl }} style={styles.moviePoster} contentFit="cover" />
+            <Image source={{ uri: posterUrl }} style={styles.gridPoster} contentFit="cover" recyclingKey={`poster-${movie.id}`} />
           ) : (
-            <View style={[styles.moviePoster, styles.noPoster]}>
-              <Ionicons name="film-outline" size={40} color={colors.text.muted} />
+            <LinearGradient colors={[colors.surface.elevated, colors.surface.default]} style={styles.noPosterGrid}>
+              <Ionicons name="film-outline" size={32} color={colors.text.muted} />
+            </LinearGradient>
+          )}
+          <LinearGradient colors={['transparent', 'rgba(0,0,0,0.8)']} style={styles.gridOverlay} />
+          <View style={[styles.gridStatusBadge, { backgroundColor: status.color }]}>
+            <Text style={styles.gridStatusText}>{status.text}</Text>
+          </View>
+          {!movie.monitored && (
+            <View style={styles.unmonitoredBadge}>
+              <Ionicons name="eye-off" size={12} color="#fff" />
             </View>
           )}
-          <LinearGradient
-            colors={['transparent', 'rgba(0,0,0,0.95)']}
-            style={styles.posterGradient}
-          />
-          <View style={styles.posterOverlay}>
-            <View style={styles.yearBadge}>
-              <Text style={styles.yearText}>{movie.year}</Text>
-            </View>
-            {movie.sizeOnDisk > 0 && (
-              <View style={styles.sizeBadge}>
-                <Ionicons name="folder" size={10} color="#fff" />
-                <Text style={styles.sizeText}>{formatBytes(movie.sizeOnDisk)}</Text>
-              </View>
-            )}
-          </View>
-          <View style={[styles.statusIndicator, { backgroundColor: status.color }]}>
-            <Ionicons name={status.icon as any} size={10} color="#fff" />
+          <View style={styles.gridProgressContainer}>
+            <View style={[styles.gridProgressFill, { width: movie.hasFile ? '100%' : '0%', backgroundColor: status.color }]} />
           </View>
         </View>
-        <View style={styles.movieInfo}>
-          <Text style={styles.movieTitle} numberOfLines={1}>{movie.title}</Text>
-          <View style={styles.movieMeta}>
-            {rating > 0 && <StarRating rating={rating} size={10} />}
-          </View>
-          <View style={styles.statusBadge}>
-            <View style={[styles.statusDot, { backgroundColor: status.color }]} />
-            <Text style={[styles.statusLabel, { color: status.color }]}>{status.label}</Text>
-          </View>
+        <Text style={styles.gridTitle} numberOfLines={2}>{movie.title}</Text>
+        <View style={styles.gridMeta}>
+          <Text style={styles.gridYear}>{movie.year}</Text>
+          {rating > 0 && (
+            <>
+              <View style={styles.gridDot} />
+              <Ionicons name="star" size={10} color={RADARR_ORANGE} />
+              <Text style={styles.gridRating}>{rating.toFixed(1)}</Text>
+            </>
+          )}
         </View>
       </Pressable>
+    </Animated.View>
   );
 });
 
@@ -199,55 +192,34 @@ const QueueCard = memo(function QueueCard({
 
   return (
     <View style={styles.queueCard}>
-      <LinearGradient
-        colors={[`${status.color}08`, 'transparent']}
-        style={styles.queueGradientBg}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
-      />
       <View style={styles.queueHeader}>
-        <View style={styles.queueTitleContainer}>
+        <View style={styles.queueTitleRow}>
           <Text style={styles.queueTitle} numberOfLines={1}>{item.movie?.title || item.title}</Text>
+          <Pressable onPress={onRemove} hitSlop={8}>
+            <Ionicons name="close-circle" size={22} color={colors.text.muted} />
+          </Pressable>
+        </View>
+        <View style={styles.queueMeta}>
           {item.quality?.quality?.name && (
-            <View style={[styles.qualityBadge, { backgroundColor: `${qualityColor}20`, borderColor: qualityColor }]}>
+            <View style={[styles.qualityBadge, { borderColor: qualityColor }]}>
               <Text style={[styles.qualityText, { color: qualityColor }]}>{item.quality.quality.name}</Text>
             </View>
           )}
+          <View style={[styles.statusDot, { backgroundColor: status.color }]} />
+          <Text style={[styles.queueStatusText, { color: status.color }]}>{status.label}</Text>
         </View>
-        <Pressable onPress={onRemove} style={styles.queueRemoveBtn}>
-          <Ionicons name="close-circle" size={24} color={colors.text.tertiary} />
-        </Pressable>
-      </View>
-
-      <View style={styles.queueStatus}>
-        <View style={[styles.statusDot, { backgroundColor: status.color }]} />
-        <Text style={[styles.queueStatusText, { color: status.color }]}>{status.label}</Text>
-        {item.timeleft && (
-          <Text style={styles.queueTimeLeft}>{item.timeleft} left</Text>
-        )}
       </View>
 
       <View style={styles.progressContainer}>
         <View style={styles.progressTrack}>
-          <Animated.View style={[styles.progressBar, { backgroundColor: status.color }, progressStyle]}>
-            <LinearGradient
-              colors={[`${status.color}`, `${status.color}cc`]}
-              style={StyleSheet.absoluteFill}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-            />
-          </Animated.View>
+          <Animated.View style={[styles.progressBar, { backgroundColor: status.color }, progressStyle]} />
         </View>
-        <Text style={styles.progressPercent}>{Math.round(progress)}%</Text>
+        <Text style={styles.progressText}>{Math.round(progress)}%</Text>
       </View>
 
       <View style={styles.queueFooter}>
-        <Text style={styles.queueSize}>
-          {formatBytes(item.size - item.sizeleft)} / {formatBytes(item.size)}
-        </Text>
-        {item.indexer && (
-          <Text style={styles.queueIndexer}>{item.indexer}</Text>
-        )}
+        <Text style={styles.queueSize}>{formatBytes(item.size - item.sizeleft)} / {formatBytes(item.size)}</Text>
+        {item.timeleft && <Text style={styles.queueTime}>{item.timeleft}</Text>}
       </View>
     </View>
   );
@@ -273,7 +245,7 @@ const SearchResultCard = memo(function SearchResultCard({
           <Image source={{ uri: posterUrl }} style={styles.searchPoster} contentFit="cover" />
         ) : (
           <View style={[styles.searchPoster, styles.noPoster]}>
-            <Ionicons name="film-outline" size={32} color={colors.text.muted} />
+            <Ionicons name="film-outline" size={24} color={colors.text.muted} />
           </View>
         )}
       </View>
@@ -281,33 +253,34 @@ const SearchResultCard = memo(function SearchResultCard({
         <Text style={styles.searchTitle} numberOfLines={2}>{result.title}</Text>
         <View style={styles.searchMeta}>
           <Text style={styles.searchYear}>{result.year}</Text>
-          {result.runtime > 0 && (
-            <Text style={styles.searchRuntime}>{result.runtime} min</Text>
+          {result.runtime > 0 && <Text style={styles.searchRuntime}>{result.runtime} min</Text>}
+          {rating > 0 && (
+            <View style={styles.searchRating}>
+              <Ionicons name="star" size={10} color={RADARR_ORANGE} />
+              <Text style={styles.searchRatingText}>{rating.toFixed(1)}</Text>
+            </View>
           )}
         </View>
-        {rating > 0 && <StarRating rating={rating} />}
         {result.overview && (
           <Text style={styles.searchOverview} numberOfLines={2}>{result.overview}</Text>
         )}
         {result.genres.length > 0 && (
-          <View style={styles.genreContainer}>
-            {result.genres.slice(0, 3).map((genre) => (
-              <View key={genre} style={styles.genreChip}>
-                <Text style={styles.genreText}>{genre}</Text>
+          <View style={styles.genreRow}>
+            {result.genres.slice(0, 2).map((g) => (
+              <View key={g} style={styles.genreChip}>
+                <Text style={styles.genreText}>{g}</Text>
               </View>
             ))}
           </View>
         )}
       </View>
       {existingMovie ? (
-        <View style={styles.inLibraryBadge}>
-          <Ionicons name="checkmark-circle" size={24} color={colors.status.success} />
+        <View style={styles.inLibraryIcon}>
+          <Ionicons name="checkmark-circle" size={28} color={colors.status.success} />
         </View>
       ) : (
-        <Pressable style={styles.addBtn} onPress={onAdd}>
-          <LinearGradient colors={RADARR_GRADIENT} style={styles.addBtnGradient}>
-            <Ionicons name="add" size={24} color="#000" />
-          </LinearGradient>
+        <Pressable style={styles.addButton} onPress={onAdd}>
+          <Ionicons name="add" size={24} color="#000" />
         </Pressable>
       )}
     </View>
@@ -359,12 +332,12 @@ function MovieDetailModal({
               <Image source={{ uri: fanartUrl }} style={styles.detailFanart} contentFit="cover" />
             )}
             <LinearGradient
-              colors={['transparent', 'rgba(0,0,0,0.9)', colors.background.secondary]}
-              style={styles.detailFanartGradient}
+              colors={['transparent', 'rgba(0,0,0,0.85)', colors.background.secondary]}
+              style={styles.detailGradient}
             />
-            <Pressable style={styles.detailCloseBtn} onPress={onClose}>
-              <BlurView intensity={80} style={styles.blurBtn}>
-                <Ionicons name="close" size={24} color="#fff" />
+            <Pressable style={styles.closeBtn} onPress={onClose}>
+              <BlurView intensity={60} style={styles.closeBtnBlur}>
+                <Ionicons name="close" size={22} color="#fff" />
               </BlurView>
             </Pressable>
             <View style={styles.detailHeaderContent}>
@@ -372,20 +345,18 @@ function MovieDetailModal({
                 <Image source={{ uri: posterUrl }} style={styles.detailPoster} contentFit="cover" />
               ) : (
                 <View style={[styles.detailPoster, styles.noPoster]}>
-                  <Ionicons name="film-outline" size={40} color={colors.text.muted} />
+                  <Ionicons name="film-outline" size={32} color={colors.text.muted} />
                 </View>
               )}
               <View style={styles.detailHeaderInfo}>
-                <Text style={styles.detailTitle}>{movie.title}</Text>
+                <Text style={styles.detailTitle} numberOfLines={2}>{movie.title}</Text>
                 <View style={styles.detailMetaRow}>
                   <Text style={styles.detailYear}>{movie.year}</Text>
-                  {movie.runtime > 0 && (
-                    <Text style={styles.detailRuntime}>{movie.runtime} min</Text>
-                  )}
+                  {movie.runtime > 0 && <Text style={styles.detailRuntime}>{movie.runtime} min</Text>}
                 </View>
-                {rating > 0 && <StarRating rating={rating} size={14} />}
-                <View style={[styles.detailStatusBadge, { backgroundColor: `${status.color}20` }]}>
-                  <Ionicons name={status.icon as any} size={14} color={status.color} />
+                {rating > 0 && <StarRating rating={rating} size={12} />}
+                <View style={[styles.detailStatus, { backgroundColor: `${status.color}20` }]}>
+                  <Ionicons name={status.icon as any} size={12} color={status.color} />
                   <Text style={[styles.detailStatusText, { color: status.color }]}>{status.label}</Text>
                 </View>
               </View>
@@ -394,19 +365,19 @@ function MovieDetailModal({
 
           <ScrollView style={styles.detailContent} showsVerticalScrollIndicator={false}>
             {movie.overview && (
-              <View style={styles.detailSection}>
-                <Text style={styles.detailSectionTitle}>Overview</Text>
-                <Text style={styles.detailOverview}>{movie.overview}</Text>
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Overview</Text>
+                <Text style={styles.overview}>{movie.overview}</Text>
               </View>
             )}
 
             {movie.genres.length > 0 && (
-              <View style={styles.detailSection}>
-                <Text style={styles.detailSectionTitle}>Genres</Text>
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Genres</Text>
                 <View style={styles.genreContainer}>
-                  {movie.genres.map((genre) => (
-                    <View key={genre} style={styles.genreChip}>
-                      <Text style={styles.genreText}>{genre}</Text>
+                  {movie.genres.map((g) => (
+                    <View key={g} style={styles.genreChipLg}>
+                      <Text style={styles.genreTextLg}>{g}</Text>
                     </View>
                   ))}
                 </View>
@@ -414,54 +385,36 @@ function MovieDetailModal({
             )}
 
             {movie.hasFile && movie.sizeOnDisk > 0 && (
-              <View style={styles.detailSection}>
-                <Text style={styles.detailSectionTitle}>File Info</Text>
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>File</Text>
                 <View style={styles.fileInfoCard}>
-                  <View style={styles.fileInfoRow}>
-                    <Ionicons name="folder" size={16} color={RADARR_ORANGE} />
-                    <Text style={styles.fileInfoText}>{formatBytes(movie.sizeOnDisk)}</Text>
-                  </View>
-                  {movie.path && (
-                    <Text style={styles.filePath} numberOfLines={2}>{movie.path}</Text>
-                  )}
+                  <Ionicons name="folder" size={16} color={RADARR_ORANGE} />
+                  <Text style={styles.fileSize}>{formatBytes(movie.sizeOnDisk)}</Text>
                 </View>
               </View>
             )}
 
-            <View style={styles.detailActions}>
-              <Pressable
-                style={[styles.actionBtn, movie.monitored && styles.actionBtnActive]}
-                onPress={onToggleMonitored}
-              >
-                <Ionicons
-                  name={movie.monitored ? 'eye' : 'eye-off'}
-                  size={20}
-                  color={movie.monitored ? RADARR_ORANGE : colors.text.tertiary}
-                />
-                <Text style={[styles.actionBtnText, movie.monitored && { color: RADARR_ORANGE }]}>
-                  {movie.monitored ? 'Monitored' : 'Unmonitored'}
-                </Text>
+            <View style={styles.actionGrid}>
+              <Pressable style={[styles.actionBtn, movie.monitored && styles.actionBtnActive]} onPress={onToggleMonitored}>
+                <Ionicons name={movie.monitored ? 'eye' : 'eye-off'} size={18} color={movie.monitored ? RADARR_ORANGE : colors.text.tertiary} />
+                <Text style={[styles.actionBtnText, movie.monitored && { color: RADARR_ORANGE }]}>{movie.monitored ? 'Monitored' : 'Unmonitored'}</Text>
               </Pressable>
-
-              <Pressable style={styles.actionBtn} onPress={onRefresh}>
-                <Ionicons name="refresh" size={20} color={colors.text.secondary} />
-                <Text style={styles.actionBtnText}>Refresh</Text>
-              </Pressable>
-
               {!movie.hasFile && movie.monitored && (
                 <Pressable style={styles.actionBtn} onPress={onSearch}>
-                  <Ionicons name="search" size={20} color={colors.text.secondary} />
-                  <Text style={styles.actionBtnText}>Auto Search</Text>
+                  <Ionicons name="flash" size={18} color={RADARR_ORANGE} />
+                  <Text style={[styles.actionBtnText, { color: RADARR_ORANGE }]}>Auto Search</Text>
                 </Pressable>
               )}
-
               <Pressable style={styles.actionBtn} onPress={onManualSearch}>
-                <Ionicons name="list" size={20} color={colors.text.secondary} />
-                <Text style={styles.actionBtnText}>Manual Search</Text>
+                <Ionicons name="albums-outline" size={18} color={colors.text.secondary} />
+                <Text style={styles.actionBtnText}>Browse Releases</Text>
               </Pressable>
-
+              <Pressable style={styles.actionBtn} onPress={onRefresh}>
+                <Ionicons name="sync-outline" size={18} color={colors.text.secondary} />
+                <Text style={styles.actionBtnText}>Refresh Metadata</Text>
+              </Pressable>
               <Pressable style={[styles.actionBtn, styles.deleteBtn]} onPress={onDelete}>
-                <Ionicons name="trash" size={20} color={colors.status.error} />
+                <Ionicons name="trash" size={18} color={colors.status.error} />
                 <Text style={[styles.actionBtnText, { color: colors.status.error }]}>Delete</Text>
               </Pressable>
             </View>
@@ -472,13 +425,28 @@ function MovieDetailModal({
   );
 }
 
-function ManualSearchModal({
+type SortReleaseType = 'seeders' | 'size' | 'age' | 'quality';
+
+const SIZE_RANGES = [
+  { label: 'All', min: 0, max: Infinity },
+  { label: '<1 GB', min: 0, max: 1024 * 1024 * 1024 },
+  { label: '1-5 GB', min: 1024 * 1024 * 1024, max: 5 * 1024 * 1024 * 1024 },
+  { label: '5-15 GB', min: 5 * 1024 * 1024 * 1024, max: 15 * 1024 * 1024 * 1024 },
+  { label: '15-50 GB', min: 15 * 1024 * 1024 * 1024, max: 50 * 1024 * 1024 * 1024 },
+  { label: '>50 GB', min: 50 * 1024 * 1024 * 1024, max: Infinity },
+];
+
+const ManualSearchModal = memo(function ManualSearchModal({
   visible,
   movie,
   releases,
   isLoading,
   onClose,
   onDownload,
+  indexerFilter,
+  setIndexerFilter,
+  qualityFilter,
+  setQualityFilter,
 }: {
   visible: boolean;
   movie: RadarrMovie | null;
@@ -486,79 +454,298 @@ function ManualSearchModal({
   isLoading: boolean;
   onClose: () => void;
   onDownload: (release: RadarrRelease) => void;
+  indexerFilter: string;
+  setIndexerFilter: (v: string) => void;
+  qualityFilter: string;
+  setQualityFilter: (v: string) => void;
 }) {
+  const [sortBy, setSortBy] = useState<SortReleaseType>('seeders');
+  const [hideRejected, setHideRejected] = useState(false);
+  const [minSeeders, setMinSeeders] = useState(0);
+
   if (!movie) return null;
+
+  const indexers = useMemo(() => {
+    const counts = new Map<string, number>();
+    releases.forEach((r) => {
+      counts.set(r.indexer, (counts.get(r.indexer) || 0) + 1);
+    });
+    return [{ name: 'All', count: releases.length }, ...Array.from(counts.entries()).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count)];
+  }, [releases]);
+
+  const qualities = useMemo(() => {
+    const counts = new Map<string, number>();
+    releases.forEach((r) => {
+      const q = r.quality?.quality?.name;
+      if (q) counts.set(q, (counts.get(q) || 0) + 1);
+    });
+    const qualityOrder = ['2160p', '1080p', '720p', '480p'];
+    return [
+      { name: 'All', count: releases.length },
+      ...Array.from(counts.entries())
+        .map(([name, count]) => ({ name, count }))
+        .sort((a, b) => {
+          const aIdx = qualityOrder.findIndex((q) => a.name.includes(q));
+          const bIdx = qualityOrder.findIndex((q) => b.name.includes(q));
+          if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx;
+          if (aIdx !== -1) return -1;
+          if (bIdx !== -1) return 1;
+          return b.count - a.count;
+        }),
+    ];
+  }, [releases]);
+
+  const filteredAndSortedReleases = useMemo(() => {
+    let result = releases.filter((r) => {
+      if (indexerFilter !== 'All' && r.indexer !== indexerFilter) return false;
+      if (qualityFilter !== 'All' && r.quality?.quality?.name !== qualityFilter) return false;
+      if (hideRejected && r.rejected) return false;
+      if (minSeeders > 0 && (r.seeders ?? 0) < minSeeders) return false;
+      return true;
+    });
+
+    result.sort((a, b) => {
+      switch (sortBy) {
+        case 'seeders':
+          return (b.seeders ?? 0) - (a.seeders ?? 0);
+        case 'size':
+          return b.size - a.size;
+        case 'age':
+          return a.age - b.age;
+        case 'quality': {
+          const order = ['2160p', '1080p', '720p', '480p'];
+          const aQ = a.quality?.quality?.name || '';
+          const bQ = b.quality?.quality?.name || '';
+          const aIdx = order.findIndex((q) => aQ.includes(q));
+          const bIdx = order.findIndex((q) => bQ.includes(q));
+          return (aIdx === -1 ? 999 : aIdx) - (bIdx === -1 ? 999 : bIdx);
+        }
+        default:
+          return 0;
+      }
+    });
+
+    return result;
+  }, [releases, indexerFilter, qualityFilter, sortBy, hideRejected, minSeeders]);
+
+  const totalResults = releases.length;
+  const filteredCount = filteredAndSortedReleases.length;
+  const rejectedCount = releases.filter((r) => r.rejected).length;
 
   return (
     <Modal visible={visible} animationType="slide" transparent>
       <View style={styles.modalOverlay}>
         <Pressable style={styles.modalBackdrop} onPress={onClose} />
-        <View style={styles.manualSearchModal}>
-          <View style={styles.manualSearchHeader}>
-            <Text style={styles.manualSearchTitle}>Manual Search</Text>
-            <Text style={styles.manualSearchSubtitle}>{movie.title}</Text>
-            <Pressable style={styles.manualSearchClose} onPress={onClose}>
-              <Ionicons name="close" size={24} color="#fff" />
-            </Pressable>
+        <View style={styles.manualModal}>
+          <View style={styles.manualHeader}>
+            <View style={styles.manualHeaderLeft}>
+              <Text style={styles.manualTitle}>Browse Releases</Text>
+              <Text style={styles.manualSubtitle} numberOfLines={1}>{movie.title}</Text>
+            </View>
+            <View style={styles.manualHeaderRight}>
+              {!isLoading && totalResults > 0 && (
+                <View style={styles.resultCountBadge}>
+                  <Text style={styles.resultCountText}>{filteredCount}/{totalResults}</Text>
+                </View>
+              )}
+              <Pressable onPress={onClose} hitSlop={8} style={styles.manualCloseBtn}>
+                <Ionicons name="close" size={24} color="#fff" />
+              </Pressable>
+            </View>
           </View>
 
-          {isLoading ? (
-            <View style={styles.manualSearchLoading}>
-              <ActivityIndicator size="large" color={RADARR_ORANGE} />
-              <Text style={styles.manualSearchLoadingText}>Searching indexers...</Text>
+          {!isLoading && releases.length > 0 && (
+            <View style={styles.filterSection}>
+              <View style={styles.filterHeader}>
+                <Text style={styles.filterSectionTitle}>Filters</Text>
+                <View style={styles.filterActions}>
+                  <Pressable
+                    style={[styles.filterToggle, hideRejected && styles.filterToggleActive]}
+                    onPress={() => setHideRejected(!hideRejected)}
+                  >
+                    <Ionicons name={hideRejected ? 'eye-off' : 'eye'} size={14} color={hideRejected ? '#000' : colors.text.tertiary} />
+                    <Text style={[styles.filterToggleText, hideRejected && styles.filterToggleTextActive]}>
+                      Hide Rejected ({rejectedCount})
+                    </Text>
+                  </Pressable>
+                </View>
+              </View>
+
+              <View style={styles.filterGroup}>
+                <Text style={styles.filterLabel}>Indexer</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
+                  {indexers.map((idx) => (
+                    <Pressable
+                      key={idx.name}
+                      style={[styles.filterChip, indexerFilter === idx.name && styles.filterChipActive]}
+                      onPress={() => setIndexerFilter(idx.name)}
+                    >
+                      <Text style={[styles.filterChipText, indexerFilter === idx.name && styles.filterChipTextActive]}>
+                        {idx.name}
+                      </Text>
+                      <View style={[styles.filterChipCount, indexerFilter === idx.name && styles.filterChipCountActive]}>
+                        <Text style={[styles.filterChipCountText, indexerFilter === idx.name && styles.filterChipCountTextActive]}>
+                          {idx.count}
+                        </Text>
+                      </View>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              </View>
+
+              <View style={styles.filterGroup}>
+                <Text style={styles.filterLabel}>Quality</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
+                  {qualities.map((q) => (
+                    <Pressable
+                      key={q.name}
+                      style={[styles.filterChip, qualityFilter === q.name && styles.filterChipActive]}
+                      onPress={() => setQualityFilter(q.name)}
+                    >
+                      <Text style={[styles.filterChipText, qualityFilter === q.name && styles.filterChipTextActive]}>
+                        {q.name}
+                      </Text>
+                      <View style={[styles.filterChipCount, qualityFilter === q.name && styles.filterChipCountActive]}>
+                        <Text style={[styles.filterChipCountText, qualityFilter === q.name && styles.filterChipCountTextActive]}>
+                          {q.count}
+                        </Text>
+                      </View>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              </View>
+
+              <View style={styles.sortSection}>
+                <Text style={styles.filterLabel}>Sort By</Text>
+                <View style={styles.sortOptions}>
+                  {([
+                    { key: 'seeders', label: 'Seeders', icon: 'arrow-up' },
+                    { key: 'size', label: 'Size', icon: 'server' },
+                    { key: 'age', label: 'Age', icon: 'time' },
+                    { key: 'quality', label: 'Quality', icon: 'film' },
+                  ] as const).map((opt) => (
+                    <Pressable
+                      key={opt.key}
+                      style={[styles.sortOption, sortBy === opt.key && styles.sortOptionActive]}
+                      onPress={() => setSortBy(opt.key)}
+                    >
+                      <Ionicons
+                        name={opt.icon as any}
+                        size={12}
+                        color={sortBy === opt.key ? '#000' : colors.text.tertiary}
+                      />
+                      <Text style={[styles.sortOptionText, sortBy === opt.key && styles.sortOptionTextActive]}>
+                        {opt.label}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
             </View>
-          ) : releases.length === 0 ? (
-            <View style={styles.manualSearchEmpty}>
-              <Ionicons name="search-outline" size={48} color={colors.text.muted} />
-              <Text style={styles.manualSearchEmptyText}>No releases found</Text>
+          )}
+
+          {isLoading ? (
+            <View style={styles.manualLoading}>
+              <View style={styles.loadingSpinner}>
+                <ActivityIndicator size="large" color={RADARR_ORANGE} />
+              </View>
+              <Text style={styles.manualLoadingText}>Searching indexers...</Text>
+              <Text style={styles.manualLoadingSubtext}>This may take a moment</Text>
+            </View>
+          ) : filteredAndSortedReleases.length === 0 ? (
+            <View style={styles.manualEmpty}>
+              <View style={styles.emptyIconContainer}>
+                <Ionicons name="search-outline" size={48} color={colors.text.muted} />
+              </View>
+              <Text style={styles.manualEmptyText}>
+                {releases.length > 0 ? 'No results match your filters' : 'No releases found'}
+              </Text>
+              {releases.length > 0 && (
+                <Pressable
+                  style={styles.clearFiltersBtn}
+                  onPress={() => {
+                    setIndexerFilter('All');
+                    setQualityFilter('All');
+                    setHideRejected(false);
+                    setMinSeeders(0);
+                  }}
+                >
+                  <Text style={styles.clearFiltersBtnText}>Clear Filters</Text>
+                </Pressable>
+              )}
             </View>
           ) : (
             <FlatList
-              data={releases}
+              data={filteredAndSortedReleases}
               keyExtractor={(item) => item.guid}
               contentContainerStyle={styles.releaseList}
-              renderItem={({ item }) => {
-                const qualityColor = getQualityBadgeColor(item.quality?.quality?.name || '');
+              renderItem={({ item, index }) => {
+                const qColor = getQualityBadgeColor(item.quality?.quality?.name || '');
+                const isTopResult = index < 3 && !item.rejected;
                 return (
                   <Pressable
-                    style={[styles.releaseCard, item.rejected && styles.releaseCardRejected]}
-                    onPress={() => !item.rejected && onDownload(item)}
-                    disabled={item.rejected}
+                    style={[
+                      styles.releaseCard,
+                      item.rejected && styles.releaseRejected,
+                      isTopResult && styles.releaseTopResult,
+                    ]}
+                    onPress={() => onDownload(item)}
                   >
-                    <View style={styles.releaseHeader}>
-                      <View style={[styles.qualityBadge, { backgroundColor: `${qualityColor}20`, borderColor: qualityColor }]}>
-                        <Text style={[styles.qualityText, { color: qualityColor }]}>{item.quality?.quality?.name}</Text>
+                    <View style={styles.releaseTop}>
+                      <View style={styles.releaseTopLeft}>
+                        <View style={[styles.releaseBadge, { borderColor: qColor, backgroundColor: `${qColor}15` }]}>
+                          <Text style={[styles.releaseBadgeText, { color: qColor }]}>{item.quality?.quality?.name}</Text>
+                        </View>
+                        {isTopResult && (
+                          <View style={styles.topResultBadge}>
+                            <Ionicons name="star" size={10} color="#000" />
+                          </View>
+                        )}
                       </View>
-                      <Text style={styles.releaseSize}>{formatBytes(item.size)}</Text>
+                      <View style={styles.releaseStats}>
+                        {item.seeders !== undefined && (
+                          <View style={styles.statItem}>
+                            <Ionicons name="arrow-up" size={10} color={colors.status.success} />
+                            <Text style={styles.statText}>{item.seeders}</Text>
+                          </View>
+                        )}
+                        <Text style={styles.releaseSize}>{formatBytes(item.size)}</Text>
+                      </View>
                     </View>
                     <Text style={styles.releaseTitle} numberOfLines={2}>{item.title}</Text>
                     <View style={styles.releaseMeta}>
-                      <Text style={styles.releaseIndexer}>{item.indexer}</Text>
-                      {item.seeders !== undefined && (
-                        <View style={styles.seedersContainer}>
-                          <Ionicons name="arrow-up" size={12} color={colors.status.success} />
-                          <Text style={styles.seedersText}>{item.seeders}</Text>
-                        </View>
-                      )}
-                      <Text style={styles.releaseAge}>{item.age}d ago</Text>
+                      <View style={styles.indexerBadge}>
+                        <Ionicons name="server-outline" size={10} color={RADARR_ORANGE} />
+                        <Text style={styles.releaseIndexer}>{item.indexer}</Text>
+                      </View>
+                      <Text style={styles.releaseAge}>{item.age}d old</Text>
                     </View>
-                    {item.rejected && item.rejections && (
-                      <Text style={styles.rejectionText} numberOfLines={1}>
-                        {item.rejections[0]}
-                      </Text>
+                    {item.rejected && item.rejections?.[0] && (
+                      <View style={styles.rejectionBanner}>
+                        <Ionicons name="warning" size={12} color={colors.status.error} />
+                        <Text style={styles.rejectionText} numberOfLines={1}>{item.rejections[0]}</Text>
+                        <Text style={styles.forceDownloadHint}>Tap to force</Text>
+                      </View>
                     )}
                   </Pressable>
                 );
               }}
+              initialNumToRender={10}
+              maxToRenderPerBatch={10}
+              windowSize={5}
+              removeClippedSubviews
+              getItemLayout={(_, index) => ({ length: 120, offset: 120 * index, index })}
             />
           )}
         </View>
       </View>
     </Modal>
   );
-}
+});
 
-function AddMovieModal({
+type AddMovieStep = 'preview' | 'settings' | 'confirm';
+
+const AddMovieModal = memo(function AddMovieModal({
   visible,
   movie,
   rootFolders,
@@ -572,126 +759,281 @@ function AddMovieModal({
   rootFolders: RadarrRootFolder[];
   qualityProfiles: RadarrQualityProfile[];
   onClose: () => void;
-  onAdd: (options: { qualityProfileId: number; rootFolderPath: string; searchForMovie: boolean }) => void;
+  onAdd: (opts: { qualityProfileId: number; rootFolderPath: string; searchForMovie: boolean }) => void;
   isAdding: boolean;
 }) {
-  const [selectedQuality, setSelectedQuality] = useState<number>(0);
-  const [selectedFolder, setSelectedFolder] = useState<string>('');
-  const [searchForMovie, setSearchForMovie] = useState(true);
+  const [step, setStep] = useState<AddMovieStep>('preview');
+  const [quality, setQuality] = useState<number>(0);
+  const [folder, setFolder] = useState<string>('');
+  const [autoSearch, setAutoSearch] = useState(true);
 
   useEffect(() => {
-    if (qualityProfiles.length > 0 && !selectedQuality) {
-      setSelectedQuality(qualityProfiles[0].id);
-    }
-    if (rootFolders.length > 0 && !selectedFolder) {
-      setSelectedFolder(rootFolders[0].path);
-    }
+    if (qualityProfiles.length > 0 && !quality) setQuality(qualityProfiles[0].id);
+    if (rootFolders.length > 0 && !folder) setFolder(rootFolders[0].path);
   }, [qualityProfiles, rootFolders]);
+
+  useEffect(() => {
+    if (visible) {
+      setStep('preview');
+    }
+  }, [visible]);
 
   if (!movie) return null;
 
   const poster = movie.images.find((i) => i.coverType === 'poster');
+  const fanart = movie.images.find((i) => i.coverType === 'fanart');
   const posterUrl = movie.remotePoster || poster?.remoteUrl || poster?.url;
+  const fanartUrl = fanart?.remoteUrl || fanart?.url;
+  const rating = movie.ratings?.tmdb?.value || movie.ratings?.imdb?.value || 0;
+  const selectedProfile = qualityProfiles.find((p) => p.id === quality);
+  const selectedFolder = rootFolders.find((f) => f.path === folder);
+
+  const stepIndex = step === 'preview' ? 0 : step === 'settings' ? 1 : 2;
+
+  const handleNext = () => {
+    if (step === 'preview') setStep('settings');
+    else if (step === 'settings') setStep('confirm');
+    else onAdd({ qualityProfileId: quality, rootFolderPath: folder, searchForMovie: autoSearch });
+  };
+
+  const handleBack = () => {
+    if (step === 'settings') setStep('preview');
+    else if (step === 'confirm') setStep('settings');
+    else onClose();
+  };
 
   return (
     <Modal visible={visible} animationType="slide" transparent>
       <View style={styles.modalOverlay}>
         <Pressable style={styles.modalBackdrop} onPress={onClose} />
         <Animated.View entering={FadeInUp.springify()} style={styles.addModal}>
-          <View style={styles.addModalHeader}>
-            <LinearGradient colors={RADARR_GRADIENT} style={styles.addModalHeaderGradient}>
-              <Text style={styles.addModalTitle}>Add Movie</Text>
-              <Pressable style={styles.addModalClose} onPress={onClose}>
-                <Ionicons name="close" size={24} color="#000" />
+          <View style={styles.addModalHeaderContainer}>
+            {fanartUrl && (
+              <Image source={{ uri: fanartUrl }} style={styles.addModalBg} contentFit="cover" />
+            )}
+            <LinearGradient
+              colors={['transparent', 'rgba(0,0,0,0.8)', colors.background.secondary]}
+              style={styles.addModalBgGradient}
+            />
+            <View style={styles.addModalHeader}>
+              <Pressable onPress={handleBack} style={styles.addModalBackBtn}>
+                <Ionicons name={step === 'preview' ? 'close' : 'arrow-back'} size={22} color="#fff" />
               </Pressable>
-            </LinearGradient>
+              <View style={styles.stepIndicator}>
+                {(['preview', 'settings', 'confirm'] as const).map((s, i) => (
+                  <View
+                    key={s}
+                    style={[
+                      styles.stepDot,
+                      i <= stepIndex && styles.stepDotActive,
+                      i === stepIndex && styles.stepDotCurrent,
+                    ]}
+                  />
+                ))}
+              </View>
+              <View style={styles.addModalHeaderSpacer} />
+            </View>
           </View>
 
           <ScrollView style={styles.addModalContent} showsVerticalScrollIndicator={false}>
-            <View style={styles.addMoviePreview}>
-              {posterUrl ? (
-                <Image source={{ uri: posterUrl }} style={styles.addPreviewPoster} contentFit="cover" />
-              ) : (
-                <View style={[styles.addPreviewPoster, styles.noPoster]}>
-                  <Ionicons name="film-outline" size={32} color={colors.text.muted} />
+            {step === 'preview' && (
+              <Animated.View entering={FadeIn.duration(200)} style={styles.stepContent}>
+                <View style={styles.addPreviewLarge}>
+                  {posterUrl ? (
+                    <Image source={{ uri: posterUrl }} style={styles.addPosterLarge} contentFit="cover" />
+                  ) : (
+                    <View style={[styles.addPosterLarge, styles.noPoster]}>
+                      <Ionicons name="film-outline" size={48} color={colors.text.muted} />
+                    </View>
+                  )}
                 </View>
-              )}
-              <View style={styles.addPreviewInfo}>
-                <Text style={styles.addPreviewTitle}>{movie.title}</Text>
-                <Text style={styles.addPreviewYear}>{movie.year}</Text>
-              </View>
-            </View>
-
-            <Text style={styles.addSectionLabel}>Quality Profile</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.optionScroll}>
-              {qualityProfiles.map((profile) => (
-                <Pressable
-                  key={profile.id}
-                  style={[styles.optionChip, selectedQuality === profile.id && styles.optionChipActive]}
-                  onPress={() => setSelectedQuality(profile.id)}
-                >
-                  <Text style={[styles.optionChipText, selectedQuality === profile.id && styles.optionChipTextActive]}>
-                    {profile.name}
-                  </Text>
-                </Pressable>
-              ))}
-            </ScrollView>
-
-            <Text style={styles.addSectionLabel}>Root Folder</Text>
-            {rootFolders.map((folder) => (
-              <Pressable
-                key={folder.id}
-                style={[styles.folderOption, selectedFolder === folder.path && styles.folderOptionActive]}
-                onPress={() => setSelectedFolder(folder.path)}
-              >
-                <View style={styles.folderRadio}>
-                  <Ionicons
-                    name={selectedFolder === folder.path ? 'radio-button-on' : 'radio-button-off'}
-                    size={22}
-                    color={selectedFolder === folder.path ? RADARR_ORANGE : colors.text.tertiary}
-                  />
-                  <Text style={styles.folderPath} numberOfLines={1}>{folder.path}</Text>
+                <Text style={styles.addPreviewTitleLarge}>{movie.title}</Text>
+                <View style={styles.addPreviewMeta}>
+                  <View style={styles.yearBadgeLarge}>
+                    <Text style={styles.yearBadgeLargeText}>{movie.year}</Text>
+                  </View>
+                  {movie.runtime > 0 && (
+                    <Text style={styles.runtimeText}>{movie.runtime} min</Text>
+                  )}
+                  {rating > 0 && (
+                    <View style={styles.ratingBadge}>
+                      <Ionicons name="star" size={12} color={RADARR_ORANGE} />
+                      <Text style={styles.ratingBadgeText}>{rating.toFixed(1)}</Text>
+                    </View>
+                  )}
                 </View>
-                <Text style={styles.folderSpace}>{formatBytes(folder.freeSpace)} free</Text>
-              </Pressable>
-            ))}
+                {movie.genres.length > 0 && (
+                  <View style={styles.genreRowLarge}>
+                    {movie.genres.slice(0, 3).map((g) => (
+                      <View key={g} style={styles.genreChipLarge}>
+                        <Text style={styles.genreChipTextLarge}>{g}</Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+                {movie.overview && (
+                  <Text style={styles.overviewText} numberOfLines={4}>{movie.overview}</Text>
+                )}
+              </Animated.View>
+            )}
 
-            <Pressable style={styles.searchToggle} onPress={() => setSearchForMovie(!searchForMovie)}>
-              <View style={[styles.checkbox, searchForMovie && styles.checkboxActive]}>
-                {searchForMovie && <Ionicons name="checkmark" size={16} color="#000" />}
-              </View>
-              <Text style={styles.searchToggleText}>Search for movie after adding</Text>
-            </Pressable>
+            {step === 'settings' && (
+              <Animated.View entering={SlideInRight.duration(200)} style={styles.stepContent}>
+                <Text style={styles.stepTitle}>Configure Settings</Text>
+                <Text style={styles.stepSubtitle}>Choose how to add this movie</Text>
+
+                <View style={styles.settingSection}>
+                  <View style={styles.settingSectionHeader}>
+                    <Ionicons name="speedometer-outline" size={18} color={RADARR_ORANGE} />
+                    <Text style={styles.settingSectionTitle}>Quality Profile</Text>
+                  </View>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.optionScroll}>
+                    {qualityProfiles.map((p) => (
+                      <Pressable
+                        key={p.id}
+                        style={[styles.optionChip, quality === p.id && styles.optionChipActive]}
+                        onPress={() => setQuality(p.id)}
+                      >
+                        <Text style={[styles.optionChipText, quality === p.id && styles.optionChipTextActive]}>{p.name}</Text>
+                      </Pressable>
+                    ))}
+                  </ScrollView>
+                </View>
+
+                <View style={styles.settingSection}>
+                  <View style={styles.settingSectionHeader}>
+                    <Ionicons name="folder-outline" size={18} color={RADARR_ORANGE} />
+                    <Text style={styles.settingSectionTitle}>Root Folder</Text>
+                  </View>
+                  {rootFolders.map((f) => (
+                    <Pressable
+                      key={f.id}
+                      style={[styles.folderOption, folder === f.path && styles.folderOptionActive]}
+                      onPress={() => setFolder(f.path)}
+                    >
+                      <View style={styles.folderRadio}>
+                        <View style={[styles.radioOuter, folder === f.path && styles.radioOuterActive]}>
+                          {folder === f.path && <View style={styles.radioInner} />}
+                        </View>
+                        <View style={styles.folderInfo}>
+                          <Text style={styles.folderPath} numberOfLines={1}>{f.path}</Text>
+                          <View style={styles.folderFreeRow}>
+                            <View style={styles.freeSpaceBar}>
+                              <View
+                                style={[
+                                  styles.freeSpaceFill,
+                                  { width: `${Math.min(100, Math.max(10, (f.freeSpace / (f.freeSpace + 1000000000000)) * 100))}%` },
+                                ]}
+                              />
+                            </View>
+                            <Text style={styles.folderFree}>{formatBytes(f.freeSpace)} free</Text>
+                          </View>
+                        </View>
+                      </View>
+                    </Pressable>
+                  ))}
+                </View>
+
+                <View style={styles.settingSection}>
+                  <Pressable style={styles.toggleRow} onPress={() => setAutoSearch(!autoSearch)}>
+                    <View style={styles.toggleInfo}>
+                      <Ionicons name="search-outline" size={18} color={autoSearch ? RADARR_ORANGE : colors.text.muted} />
+                      <View>
+                        <Text style={styles.toggleLabel}>Search After Adding</Text>
+                        <Text style={styles.toggleHint}>Automatically search for this movie</Text>
+                      </View>
+                    </View>
+                    <View style={[styles.toggleSwitch, autoSearch && styles.toggleSwitchActive]}>
+                      <View style={[styles.toggleKnob, autoSearch && styles.toggleKnobActive]} />
+                    </View>
+                  </Pressable>
+                </View>
+              </Animated.View>
+            )}
+
+            {step === 'confirm' && (
+              <Animated.View entering={SlideInRight.duration(200)} style={styles.stepContent}>
+                <Text style={styles.stepTitle}>Confirm Addition</Text>
+                <Text style={styles.stepSubtitle}>Review your settings</Text>
+
+                <View style={styles.confirmCard}>
+                  <View style={styles.confirmRow}>
+                    {posterUrl && (
+                      <Image source={{ uri: posterUrl }} style={styles.confirmPoster} contentFit="cover" />
+                    )}
+                    <View style={styles.confirmInfo}>
+                      <Text style={styles.confirmTitle}>{movie.title}</Text>
+                      <Text style={styles.confirmYear}>{movie.year}</Text>
+                    </View>
+                  </View>
+                </View>
+
+                <View style={styles.confirmSummary}>
+                  <View style={styles.summaryItem}>
+                    <Ionicons name="speedometer-outline" size={16} color={colors.text.muted} />
+                    <Text style={styles.summaryLabel}>Quality</Text>
+                    <Text style={styles.summaryValue}>{selectedProfile?.name || 'Not selected'}</Text>
+                  </View>
+                  <View style={styles.summaryItem}>
+                    <Ionicons name="folder-outline" size={16} color={colors.text.muted} />
+                    <Text style={styles.summaryLabel}>Folder</Text>
+                    <Text style={styles.summaryValue} numberOfLines={1}>
+                      {selectedFolder?.path || 'Not selected'}
+                    </Text>
+                  </View>
+                  <View style={styles.summaryItem}>
+                    <Ionicons name="search-outline" size={16} color={colors.text.muted} />
+                    <Text style={styles.summaryLabel}>Auto Search</Text>
+                    <Text style={[styles.summaryValue, { color: autoSearch ? colors.status.success : colors.text.muted }]}>
+                      {autoSearch ? 'Yes' : 'No'}
+                    </Text>
+                  </View>
+                </View>
+              </Animated.View>
+            )}
           </ScrollView>
 
-          <Pressable
-            style={styles.addMovieBtn}
-            onPress={() => onAdd({ qualityProfileId: selectedQuality, rootFolderPath: selectedFolder, searchForMovie })}
-            disabled={isAdding}
-          >
-            <LinearGradient colors={RADARR_GRADIENT} style={styles.addMovieBtnGradient}>
-              {isAdding ? (
-                <ActivityIndicator color="#000" />
-              ) : (
-                <>
-                  <Ionicons name="add-circle" size={20} color="#000" />
-                  <Text style={styles.addMovieBtnText}>Add to Radarr</Text>
-                </>
-              )}
-            </LinearGradient>
-          </Pressable>
+          <View style={styles.addModalFooter}>
+            <Pressable
+              style={styles.addSubmitBtn}
+              onPress={handleNext}
+              disabled={isAdding || (step === 'settings' && (!quality || !folder))}
+            >
+              <LinearGradient
+                colors={RADARR_GRADIENT}
+                style={[
+                  styles.addSubmitGradient,
+                  (step === 'settings' && (!quality || !folder)) && styles.addSubmitDisabled,
+                ]}
+              >
+                {isAdding ? (
+                  <ActivityIndicator color="#000" />
+                ) : (
+                  <>
+                    <Text style={styles.addSubmitText}>
+                      {step === 'preview' ? 'Continue' : step === 'settings' ? 'Review' : 'Add to Radarr'}
+                    </Text>
+                    <Ionicons
+                      name={step === 'confirm' ? 'add-circle' : 'arrow-forward'}
+                      size={18}
+                      color="#000"
+                    />
+                  </>
+                )}
+              </LinearGradient>
+            </Pressable>
+          </View>
         </Animated.View>
       </View>
     </Modal>
   );
-}
+});
 
 function EmptyState({ icon, title, subtitle }: { icon: string; title: string; subtitle: string }) {
   return (
     <Animated.View entering={FadeIn.delay(200)} style={styles.emptyState}>
-      <View style={styles.emptyIconContainer}>
-        <LinearGradient colors={[`${RADARR_ORANGE}20`, 'transparent']} style={styles.emptyIconGradient} />
-        <Ionicons name={icon as any} size={56} color={RADARR_ORANGE} />
+      <View style={styles.emptyIcon}>
+        <Ionicons name={icon as any} size={48} color={RADARR_ORANGE} />
       </View>
       <Text style={styles.emptyTitle}>{title}</Text>
       <Text style={styles.emptySubtitle}>{subtitle}</Text>
@@ -702,7 +1044,7 @@ function EmptyState({ icon, title, subtitle }: { icon: string; title: string; su
 export default function RadarrManageScreen() {
   const { width: screenWidth } = useWindowDimensions();
   const isConfigured = radarrService.isConfigured();
-  const scrollY = useRef(new RNAnimated.Value(0)).current;
+  const listRef = useRef<FlatList>(null);
 
   const [activeTab, setActiveTab] = useState<TabType>('library');
   const [isLoading, setIsLoading] = useState(true);
@@ -710,6 +1052,8 @@ export default function RadarrManageScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [filter, setFilter] = useState<FilterType>('all');
+  const [sortBy, setSortBy] = useState<SortType>('title');
+  const [sortAsc, setSortAsc] = useState(true);
 
   const [movies, setMovies] = useState<RadarrMovie[]>([]);
   const [searchResults, setSearchResults] = useState<RadarrLookupResult[]>([]);
@@ -722,13 +1066,14 @@ export default function RadarrManageScreen() {
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showManualSearch, setShowManualSearch] = useState(false);
-  const [manualSearchReleases, setManualSearchReleases] = useState<RadarrRelease[]>([]);
-  const [isManualSearchLoading, setIsManualSearchLoading] = useState(false);
+  const [manualReleases, setManualReleases] = useState<RadarrRelease[]>([]);
+  const [isManualLoading, setIsManualLoading] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
-  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [indexerFilter, setIndexerFilter] = useState('All');
+  const [qualityFilter, setQualityFilter] = useState('All');
 
   const numColumns = screenWidth > 600 ? 4 : 3;
-  const cardWidth = (screenWidth - spacing[4] * 2 - spacing[3] * (numColumns - 1)) / numColumns;
+  const cardWidth = (screenWidth - spacing[4] * 2 - spacing[2] * (numColumns - 1)) / numColumns;
 
   const stats: Stats = useMemo(() => ({
     total: movies.length,
@@ -738,20 +1083,32 @@ export default function RadarrManageScreen() {
   }), [movies, queue]);
 
   const filteredMovies = useMemo(() => {
-    return movies.filter((movie) => {
-      if (filter === 'downloaded') return movie.hasFile;
-      if (filter === 'missing') return movie.monitored && !movie.hasFile;
-      if (filter === 'unmonitored') return !movie.monitored;
+    let result = movies.filter((m) => {
+      if (filter === 'downloaded') return m.hasFile;
+      if (filter === 'missing') return m.monitored && !m.hasFile;
+      if (filter === 'unmonitored') return !m.monitored;
       return true;
     });
-  }, [movies, filter]);
+
+    result.sort((a, b) => {
+      let cmp = 0;
+      switch (sortBy) {
+        case 'title': cmp = a.title.localeCompare(b.title); break;
+        case 'added': cmp = new Date(b.added).getTime() - new Date(a.added).getTime(); break;
+        case 'year': cmp = b.year - a.year; break;
+        case 'size': cmp = b.sizeOnDisk - a.sizeOnDisk; break;
+      }
+      return sortAsc ? cmp : -cmp;
+    });
+
+    return result;
+  }, [movies, filter, sortBy, sortAsc]);
 
   const loadData = useCallback(async (showLoader = true) => {
     if (!isConfigured) {
       setIsLoading(false);
       return;
     }
-
     if (showLoader) setIsLoading(true);
 
     try {
@@ -761,7 +1118,6 @@ export default function RadarrManageScreen() {
         radarrService.getRootFolders(),
         radarrService.getQualityProfiles(),
       ]);
-
       setMovies(moviesData);
       setQueue(queueData.records);
       setRootFolders(foldersData);
@@ -785,7 +1141,6 @@ export default function RadarrManageScreen() {
 
   const handleSearch = useCallback(async () => {
     if (!searchQuery.trim()) return;
-
     setIsSearching(true);
     try {
       const results = await radarrService.searchMovies(searchQuery.trim());
@@ -804,84 +1159,69 @@ export default function RadarrManageScreen() {
 
   const handleToggleMonitored = useCallback(async () => {
     if (!selectedMovie) return;
-    setActionLoading('monitored');
     try {
       const updated = await radarrService.toggleMonitored(selectedMovie.id, !selectedMovie.monitored);
       setMovies((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
       setSelectedMovie(updated);
     } catch (e: any) {
       Alert.alert('Error', e?.message || 'Failed to update');
-    } finally {
-      setActionLoading(null);
     }
   }, [selectedMovie]);
 
   const handleDeleteMovie = useCallback(async () => {
     if (!selectedMovie) return;
-
-    Alert.alert(
-      'Delete Movie',
-      `Are you sure you want to delete "${selectedMovie.title}"?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            setActionLoading('delete');
-            try {
-              await radarrService.deleteMovie(selectedMovie.id, false);
-              setMovies((prev) => prev.filter((m) => m.id !== selectedMovie.id));
-              setShowDetailModal(false);
-              setSelectedMovie(null);
-            } catch (e: any) {
-              Alert.alert('Error', e?.message || 'Failed to delete');
-            } finally {
-              setActionLoading(null);
-            }
-          },
+    Alert.alert('Delete Movie', `Delete "${selectedMovie.title}"?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await radarrService.deleteMovie(selectedMovie.id, false);
+            setMovies((prev) => prev.filter((m) => m.id !== selectedMovie.id));
+            setShowDetailModal(false);
+            setSelectedMovie(null);
+          } catch (e: any) {
+            Alert.alert('Error', e?.message || 'Failed to delete');
+          }
         },
-      ]
-    );
+      },
+    ]);
   }, [selectedMovie]);
 
   const handleRefreshMovie = useCallback(async () => {
     if (!selectedMovie) return;
-    setActionLoading('refresh');
     try {
       await radarrService.refreshMovie(selectedMovie.id);
-      Alert.alert('Success', 'Refresh command sent');
+      Alert.alert('Success', 'Refresh started');
     } catch (e: any) {
       Alert.alert('Error', e?.message || 'Failed to refresh');
-    } finally {
-      setActionLoading(null);
     }
   }, [selectedMovie]);
 
   const handleAutoSearch = useCallback(async () => {
     if (!selectedMovie) return;
-    setActionLoading('search');
     try {
       await radarrService.triggerMovieSearch(selectedMovie.id);
       Alert.alert('Success', 'Search started');
     } catch (e: any) {
       Alert.alert('Error', e?.message || 'Failed to search');
-    } finally {
-      setActionLoading(null);
     }
   }, [selectedMovie]);
 
   const handleManualSearch = useCallback(async () => {
     if (!selectedMovie) return;
     setShowManualSearch(true);
-    setIsManualSearchLoading(true);
+    setIsManualLoading(true);
+    setIndexerFilter('All');
+    setQualityFilter('All');
     try {
       const releases = await radarrService.manualSearchMovie(selectedMovie.id);
-      setManualSearchReleases(releases);
+      setManualReleases(releases);
     } catch (e: any) {
-      Alert.alert('Error', e?.message || 'Failed to search');
+      Alert.alert('Error', e?.message || 'Search failed');
     } finally {
-      setIsManualSearchLoading(false);
+      setIsManualLoading(false);
     }
   }, [selectedMovie]);
 
@@ -892,7 +1232,7 @@ export default function RadarrManageScreen() {
       setShowManualSearch(false);
       loadData(false);
     } catch (e: any) {
-      Alert.alert('Error', e?.message || 'Failed to download');
+      Alert.alert('Error', e?.message || 'Download failed');
     }
   }, [loadData]);
 
@@ -901,28 +1241,23 @@ export default function RadarrManageScreen() {
     setShowAddModal(true);
   }, []);
 
-  const handleConfirmAdd = useCallback(async (options: {
-    qualityProfileId: number;
-    rootFolderPath: string;
-    searchForMovie: boolean;
-  }) => {
+  const handleConfirmAdd = useCallback(async (opts: { qualityProfileId: number; rootFolderPath: string; searchForMovie: boolean }) => {
     if (!selectedSearchResult) return;
-
     setIsAdding(true);
     try {
       await radarrService.addMovie({
         tmdbId: selectedSearchResult.tmdbId,
         title: selectedSearchResult.title,
-        qualityProfileId: options.qualityProfileId,
-        rootFolderPath: options.rootFolderPath,
-        searchForMovie: options.searchForMovie,
+        qualityProfileId: opts.qualityProfileId,
+        rootFolderPath: opts.rootFolderPath,
+        searchForMovie: opts.searchForMovie,
       });
-      Alert.alert('Success', `${selectedSearchResult.title} added to Radarr`);
+      Alert.alert('Success', `${selectedSearchResult.title} added`);
       setShowAddModal(false);
       setSelectedSearchResult(null);
       loadData(false);
     } catch (e: any) {
-      Alert.alert('Error', e?.message || 'Failed to add movie');
+      Alert.alert('Error', e?.message || 'Failed to add');
     } finally {
       setIsAdding(false);
     }
@@ -931,32 +1266,43 @@ export default function RadarrManageScreen() {
   const handleRemoveFromQueue = useCallback(async (id: number) => {
     try {
       await radarrService.removeFromQueue(id);
-      setQueue((prev) => prev.filter((item) => item.id !== id));
+      setQueue((prev) => prev.filter((i) => i.id !== id));
     } catch (e: any) {
       Alert.alert('Error', e?.message || 'Failed to remove');
     }
   }, []);
 
-  const headerOpacity = scrollY.interpolate({
-    inputRange: [0, 100],
-    outputRange: [1, 0],
-    extrapolate: 'clamp',
-  });
+  const renderMovieItem = useCallback(({ item }: { item: RadarrMovie }) => (
+    <MovieCard movie={item} onPress={() => handleMoviePress(item)} cardWidth={cardWidth} />
+  ), [cardWidth, handleMoviePress]);
+
+  const renderQueueItem = useCallback(({ item }: { item: RadarrQueueItem }) => (
+    <QueueCard item={item} onRemove={() => handleRemoveFromQueue(item.id)} />
+  ), [handleRemoveFromQueue]);
+
+  const renderSearchItem = useCallback(({ item }: { item: RadarrLookupResult }) => (
+    <SearchResultCard
+      result={item}
+      onAdd={() => handleAddMovie(item)}
+      existingMovie={movies.find((m) => m.tmdbId === item.tmdbId)}
+    />
+  ), [movies, handleAddMovie]);
 
   if (!isConfigured) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <Stack.Screen options={{ headerShown: false }} />
         <View style={styles.notConfigured}>
-          <LinearGradient colors={[`${RADARR_ORANGE}30`, 'transparent']} style={styles.notConfiguredGradient} />
           <View style={styles.notConfiguredIcon}>
-            <Ionicons name="film" size={64} color={RADARR_ORANGE} />
+            <LinearGradient colors={RADARR_GRADIENT} style={styles.notConfiguredIconGradient}>
+              <Ionicons name="film" size={48} color="#000" />
+            </LinearGradient>
           </View>
           <Text style={styles.notConfiguredTitle}>Radarr Not Configured</Text>
-          <Text style={styles.notConfiguredSubtitle}>Set up Radarr to manage your movie library</Text>
+          <Text style={styles.notConfiguredSubtitle}>Connect to manage movies</Text>
           <Pressable style={styles.configureBtn} onPress={() => router.push('/settings/radarr')}>
             <LinearGradient colors={RADARR_GRADIENT} style={styles.configureBtnGradient}>
-              <Text style={styles.configureBtnText}>Configure Radarr</Text>
+              <Text style={styles.configureBtnText}>Configure</Text>
             </LinearGradient>
           </Pressable>
         </View>
@@ -968,244 +1314,207 @@ export default function RadarrManageScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <Stack.Screen options={{ headerShown: false }} />
 
-      <RNAnimated.View style={[styles.header, { opacity: headerOpacity }]}>
-        <LinearGradient colors={[RADARR_ORANGE, '#f5a623']} style={styles.headerGradient}>
-          <View style={styles.headerTop}>
-            <Pressable style={styles.backBtn} onPress={() => router.back()}>
-              <Ionicons name="chevron-back" size={24} color="#000" />
-            </Pressable>
-            <View style={styles.headerTitleContainer}>
-              <Ionicons name="film" size={24} color="#000" />
-              <Text style={styles.headerTitle}>Radarr</Text>
-            </View>
-            <Pressable
-              style={styles.calendarBtn}
-              onPress={() => router.push('/settings/radarr-calendar')}
-            >
-              <Ionicons name="calendar" size={22} color="#000" />
-            </Pressable>
+      <View style={styles.header}>
+        <Pressable onPress={() => router.back()} style={styles.backBtn}>
+          <Ionicons name="chevron-back" size={24} color="#fff" />
+        </Pressable>
+        <View style={styles.headerTitleRow}>
+          <View style={styles.radarrIcon}>
+            <LinearGradient colors={RADARR_GRADIENT} style={styles.radarrIconGradient}>
+              <Ionicons name="film" size={16} color="#000" />
+            </LinearGradient>
           </View>
-        </LinearGradient>
-      </RNAnimated.View>
-
-      <RNAnimated.ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-        onScroll={RNAnimated.event(
-          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-          { useNativeDriver: true }
-        )}
-        scrollEventThrottle={16}
-        refreshControl={
-          <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={RADARR_ORANGE} />
-        }
-      >
-        <View style={styles.statsContainer}>
-          <StatCard label="Movies" value={stats.total} icon="film" color={RADARR_ORANGE} delay={0} />
-          <StatCard label="Have" value={stats.downloaded} icon="checkmark-circle" color={colors.status.success} delay={50} />
-          <StatCard label="Missing" value={stats.missing} icon="time" color={colors.status.warning} delay={100} />
-          <StatCard label="Queue" value={stats.queue} icon="cloud-download" color={colors.status.info} delay={150} />
+          <Text style={styles.headerTitle}>Radarr</Text>
         </View>
+        <Pressable onPress={() => router.push('/settings/radarr-calendar')} style={styles.calendarBtn}>
+          <Ionicons name="calendar-outline" size={22} color="#fff" />
+        </Pressable>
+      </View>
 
-        <View style={styles.tabsWrapper}>
-          <View style={styles.tabs}>
-            {(['library', 'queue', 'search'] as TabType[]).map((tab) => (
-              <Pressable
-                key={tab}
-                style={[styles.tab, activeTab === tab && styles.tabActive]}
-                onPress={() => setActiveTab(tab)}
-              >
-                <Ionicons
-                  name={tab === 'library' ? 'library' : tab === 'queue' ? 'cloud-download' : 'search'}
-                  size={18}
-                  color={activeTab === tab ? RADARR_ORANGE : colors.text.tertiary}
-                />
-                <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>
-                  {tab.charAt(0).toUpperCase() + tab.slice(1)}
-                </Text>
+      <View style={styles.statsRow}>
+        <StatCard label="Total" value={stats.total} icon="film" color={RADARR_ORANGE} onPress={() => setFilter('all')} />
+        <StatCard label="Have" value={stats.downloaded} icon="checkmark-circle" color={colors.status.success} onPress={() => setFilter('downloaded')} />
+        <StatCard label="Missing" value={stats.missing} icon="time" color={colors.status.warning} onPress={() => setFilter('missing')} />
+        <StatCard label="Queue" value={stats.queue} icon="cloud-download" color={colors.status.info} onPress={() => setActiveTab('queue')} />
+      </View>
+
+      <View style={styles.tabRow}>
+        {(['library', 'queue', 'search'] as TabType[]).map((t) => (
+          <Pressable
+            key={t}
+            style={[styles.tabBtn, activeTab === t && styles.tabBtnActive]}
+            onPress={() => setActiveTab(t)}
+          >
+            <Ionicons
+              name={t === 'library' ? 'library' : t === 'queue' ? 'cloud-download' : 'search'}
+              size={16}
+              color={activeTab === t ? RADARR_ORANGE : colors.text.muted}
+            />
+            <Text style={[styles.tabText, activeTab === t && styles.tabTextActive]}>{t.charAt(0).toUpperCase() + t.slice(1)}</Text>
+          </Pressable>
+        ))}
+      </View>
+
+      {activeTab === 'search' && (
+        <View style={styles.searchRow}>
+          <View style={styles.searchInputWrap}>
+            <Ionicons name="search" size={18} color={colors.text.muted} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search movies..."
+              placeholderTextColor={colors.text.muted}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              onSubmitEditing={handleSearch}
+              returnKeyType="search"
+            />
+            {searchQuery.length > 0 && (
+              <Pressable onPress={() => setSearchQuery('')} hitSlop={8}>
+                <Ionicons name="close-circle" size={18} color={colors.text.muted} />
               </Pressable>
-            ))}
+            )}
           </View>
-        </View>
-
-        {activeTab === 'search' && (
-          <View style={styles.searchContainer}>
-            <View style={styles.searchInputWrapper}>
-              <Ionicons name="search" size={20} color={colors.text.tertiary} />
-              <TextInput
-                style={styles.searchInput}
-                placeholder="Search movies..."
-                placeholderTextColor={colors.text.muted}
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-                onSubmitEditing={handleSearch}
-                returnKeyType="search"
-              />
-              {searchQuery.length > 0 && (
-                <Pressable onPress={() => setSearchQuery('')}>
-                  <Ionicons name="close-circle" size={20} color={colors.text.tertiary} />
-                </Pressable>
-              )}
-            </View>
-            <Pressable style={styles.searchBtn} onPress={handleSearch} disabled={isSearching}>
+          <Pressable style={styles.searchBtn} onPress={handleSearch} disabled={isSearching}>
+            {isSearching ? (
+              <ActivityIndicator color="#000" size="small" />
+            ) : (
               <LinearGradient colors={RADARR_GRADIENT} style={styles.searchBtnGradient}>
-                {isSearching ? (
-                  <ActivityIndicator color="#000" size="small" />
-                ) : (
-                  <Ionicons name="search" size={20} color="#000" />
-                )}
+                <Ionicons name="search" size={18} color="#000" />
               </LinearGradient>
-            </Pressable>
-          </View>
-        )}
+            )}
+          </Pressable>
+        </View>
+      )}
 
-        {activeTab === 'library' && (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
+      {activeTab === 'library' && (
+        <View style={styles.libraryControls}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
             {(['all', 'downloaded', 'missing', 'unmonitored'] as FilterType[]).map((f) => (
               <Pressable
                 key={f}
-                style={[styles.filterChip, filter === f && styles.filterChipActive]}
+                style={[styles.filterPill, filter === f && styles.filterPillActive]}
                 onPress={() => setFilter(f)}
               >
-                <Text style={[styles.filterChipText, filter === f && styles.filterChipTextActive]}>
-                  {f === 'all' ? 'All Movies' : f.charAt(0).toUpperCase() + f.slice(1)}
+                <Text style={[styles.filterPillText, filter === f && styles.filterPillTextActive]}>
+                  {f === 'all' ? 'All' : f.charAt(0).toUpperCase() + f.slice(1)}
                 </Text>
               </Pressable>
             ))}
           </ScrollView>
-        )}
+          <View style={styles.sortRow}>
+            <Pressable style={styles.sortBtn} onPress={() => {
+              const sorts: SortType[] = ['title', 'added', 'year', 'size'];
+              const idx = sorts.indexOf(sortBy);
+              setSortBy(sorts[(idx + 1) % sorts.length]);
+            }}>
+              <Ionicons name="swap-vertical" size={14} color={colors.text.secondary} />
+              <Text style={styles.sortText}>{sortBy}</Text>
+            </Pressable>
+            <Pressable onPress={() => setSortAsc(!sortAsc)} hitSlop={8}>
+              <Ionicons name={sortAsc ? 'arrow-up' : 'arrow-down'} size={14} color={colors.text.secondary} />
+            </Pressable>
+          </View>
+        </View>
+      )}
 
-        {activeTab === 'library' && (
-          isLoading ? (
-            <View style={styles.skeletonGrid}>
-              {Array.from({ length: 9 }).map((_, i) => (
-                <View key={i} style={[styles.skeletonCard, { width: cardWidth }]}>
-                  <Skeleton width={cardWidth} height={cardWidth * 1.5} borderRadius={12} />
-                  <Skeleton width="80%" height={14} borderRadius={4} style={{ marginTop: 8 }} />
-                  <Skeleton width="50%" height={12} borderRadius={4} style={{ marginTop: 4 }} />
-                </View>
-              ))}
-            </View>
-          ) : filteredMovies.length === 0 ? (
-            <EmptyState
-              icon="film-outline"
-              title="No movies found"
-              subtitle={filter !== 'all' ? 'Try changing your filter' : 'Add movies from the search tab'}
-            />
-          ) : (
-            <FlatList
-              key={`radarr-movies-${numColumns}-${filter}`}
-              data={filteredMovies.filter((item): item is RadarrMovie => item != null && item.id != null)}
-              keyExtractor={(item, index) => `${item.id}-${index}`}
-              numColumns={numColumns}
-              contentContainerStyle={styles.movieGrid}
-              columnWrapperStyle={styles.movieGridRow}
-              renderItem={({ item }) => (
-                <View style={{ width: cardWidth }}>
-                  <MovieCard
-                    movie={item}
-                    onPress={() => handleMoviePress(item)}
-                  />
-                </View>
-              )}
-              initialNumToRender={12}
-              maxToRenderPerBatch={12}
-              windowSize={5}
-              scrollEnabled={false}
-              nestedScrollEnabled
-            />
-          )
-        )}
+      {activeTab === 'library' && (
+        isLoading ? (
+          <View style={styles.skeletonGrid}>
+            {Array.from({ length: 9 }).map((_, i) => (
+              <View key={i} style={{ width: cardWidth, marginRight: i % numColumns < numColumns - 1 ? spacing[2] : 0, marginBottom: spacing[3] }}>
+                <Skeleton width={cardWidth} height={cardWidth * 1.5} borderRadius={12} />
+                <Skeleton width="80%" height={12} borderRadius={4} style={{ marginTop: 8 }} />
+              </View>
+            ))}
+          </View>
+        ) : filteredMovies.length === 0 ? (
+          <EmptyState icon="film-outline" title="No movies" subtitle={filter !== 'all' ? 'Change filter' : 'Add movies'} />
+        ) : (
+          <FlatList
+            ref={listRef}
+            key={`movies-${numColumns}`}
+            data={filteredMovies}
+            keyExtractor={(item) => String(item.id)}
+            numColumns={numColumns}
+            contentContainerStyle={styles.movieGrid}
+            columnWrapperStyle={styles.movieGridRow}
+            renderItem={renderMovieItem}
+            initialNumToRender={15}
+            maxToRenderPerBatch={15}
+            windowSize={7}
+            removeClippedSubviews
+            refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={RADARR_ORANGE} />}
+            getItemLayout={(_, index) => ({
+              length: cardWidth * 1.5 + spacing[3] + 40,
+              offset: (cardWidth * 1.5 + spacing[3] + 40) * Math.floor(index / numColumns),
+              index,
+            })}
+          />
+        )
+      )}
 
-        {activeTab === 'queue' && (
-          isLoading ? (
-            <View style={styles.skeletonList}>
-              {Array.from({ length: 4 }).map((_, i) => (
-                <View key={i} style={styles.skeletonQueueCard}>
-                  <Skeleton width="70%" height={18} borderRadius={4} />
-                  <Skeleton width="40%" height={14} borderRadius={4} style={{ marginTop: 8 }} />
-                  <Skeleton width="100%" height={8} borderRadius={4} style={{ marginTop: 12 }} />
-                  <Skeleton width="30%" height={12} borderRadius={4} style={{ marginTop: 8 }} />
-                </View>
-              ))}
-            </View>
-          ) : queue.length === 0 ? (
-            <EmptyState
-              icon="checkmark-circle-outline"
-              title="Queue is empty"
-              subtitle="No downloads in progress"
-            />
-          ) : (
-            <FlatList
-              data={queue.filter((item): item is RadarrQueueItem => item != null && item.id != null)}
-              keyExtractor={(item, index) => `${item.id}-${index}`}
-              contentContainerStyle={styles.queueList}
-              renderItem={({ item }) => (
-                <QueueCard
-                  item={item}
-                  onRemove={() => handleRemoveFromQueue(item.id)}
-                />
-              )}
-              initialNumToRender={10}
-              maxToRenderPerBatch={10}
-              windowSize={5}
-              scrollEnabled={false}
-              nestedScrollEnabled
-            />
-          )
-        )}
+      {activeTab === 'queue' && (
+        isLoading ? (
+          <View style={styles.skeletonList}>
+            {Array.from({ length: 4 }).map((_, i) => (
+              <View key={i} style={styles.skeletonQueueCard}>
+                <Skeleton width="70%" height={16} borderRadius={4} />
+                <Skeleton width="40%" height={12} borderRadius={4} style={{ marginTop: 8 }} />
+                <Skeleton width="100%" height={6} borderRadius={3} style={{ marginTop: 12 }} />
+              </View>
+            ))}
+          </View>
+        ) : queue.length === 0 ? (
+          <EmptyState icon="checkmark-circle-outline" title="Queue empty" subtitle="No downloads" />
+        ) : (
+          <FlatList
+            data={queue}
+            keyExtractor={(item) => String(item.id)}
+            contentContainerStyle={styles.queueList}
+            renderItem={renderQueueItem}
+            initialNumToRender={10}
+            maxToRenderPerBatch={10}
+            windowSize={5}
+            removeClippedSubviews
+            refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={RADARR_ORANGE} />}
+          />
+        )
+      )}
 
-        {activeTab === 'search' && (
-          isSearching ? (
-            <View style={styles.skeletonList}>
-              {Array.from({ length: 5 }).map((_, i) => (
-                <View key={i} style={styles.skeletonSearchCard}>
-                  <Skeleton width={80} height={120} borderRadius={8} />
-                  <View style={{ flex: 1, marginLeft: 12 }}>
-                    <Skeleton width="80%" height={16} borderRadius={4} />
-                    <Skeleton width="40%" height={14} borderRadius={4} style={{ marginTop: 8 }} />
-                    <Skeleton width="100%" height={12} borderRadius={4} style={{ marginTop: 8 }} />
-                    <Skeleton width="60%" height={12} borderRadius={4} style={{ marginTop: 4 }} />
-                  </View>
+      {activeTab === 'search' && (
+        isSearching ? (
+          <View style={styles.skeletonList}>
+            {Array.from({ length: 5 }).map((_, i) => (
+              <View key={i} style={styles.skeletonSearchCard}>
+                <Skeleton width={70} height={105} borderRadius={8} />
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Skeleton width="80%" height={14} borderRadius={4} />
+                  <Skeleton width="40%" height={12} borderRadius={4} style={{ marginTop: 6 }} />
+                  <Skeleton width="100%" height={10} borderRadius={4} style={{ marginTop: 8 }} />
                 </View>
-              ))}
-            </View>
-          ) : searchResults.length === 0 ? (
-            <EmptyState
-              icon="search-outline"
-              title="Search for movies"
-              subtitle="Find movies to add to your library"
-            />
-          ) : (
-            <FlatList
-              data={searchResults.filter((item): item is RadarrLookupResult => item != null && item.tmdbId != null)}
-              keyExtractor={(item, index) => `${item.tmdbId}-${index}`}
-              contentContainerStyle={styles.searchResultsList}
-              renderItem={({ item }) => (
-                <SearchResultCard
-                  result={item}
-                  onAdd={() => handleAddMovie(item)}
-                  existingMovie={movies.find((m) => m.tmdbId === item.tmdbId)}
-                />
-              )}
-              initialNumToRender={10}
-              maxToRenderPerBatch={10}
-              windowSize={5}
-              scrollEnabled={false}
-              nestedScrollEnabled
-            />
-          )
-        )}
-      </RNAnimated.ScrollView>
+              </View>
+            ))}
+          </View>
+        ) : searchResults.length === 0 ? (
+          <EmptyState icon="search-outline" title="Search movies" subtitle="Find and add to library" />
+        ) : (
+          <FlatList
+            data={searchResults}
+            keyExtractor={(item) => String(item.tmdbId)}
+            contentContainerStyle={styles.searchList}
+            renderItem={renderSearchItem}
+            initialNumToRender={10}
+            maxToRenderPerBatch={10}
+            windowSize={5}
+            removeClippedSubviews
+          />
+        )
+      )}
 
       <MovieDetailModal
         visible={showDetailModal}
         movie={selectedMovie}
-        onClose={() => {
-          setShowDetailModal(false);
-          setSelectedMovie(null);
-        }}
+        onClose={() => { setShowDetailModal(false); setSelectedMovie(null); }}
         onToggleMonitored={handleToggleMonitored}
         onDelete={handleDeleteMovie}
         onRefresh={handleRefreshMovie}
@@ -1216,10 +1525,14 @@ export default function RadarrManageScreen() {
       <ManualSearchModal
         visible={showManualSearch}
         movie={selectedMovie}
-        releases={manualSearchReleases}
-        isLoading={isManualSearchLoading}
+        releases={manualReleases}
+        isLoading={isManualLoading}
         onClose={() => setShowManualSearch(false)}
         onDownload={handleDownloadRelease}
+        indexerFilter={indexerFilter}
+        setIndexerFilter={setIndexerFilter}
+        qualityFilter={qualityFilter}
+        setQualityFilter={setQualityFilter}
       />
 
       <AddMovieModal
@@ -1227,10 +1540,7 @@ export default function RadarrManageScreen() {
         movie={selectedSearchResult}
         rootFolders={rootFolders}
         qualityProfiles={qualityProfiles}
-        onClose={() => {
-          setShowAddModal(false);
-          setSelectedSearchResult(null);
-        }}
+        onClose={() => { setShowAddModal(false); setSelectedSearchResult(null); }}
         onAdd={handleConfirmAdd}
         isAdding={isAdding}
       />
@@ -1243,148 +1553,137 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background.primary,
   },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingBottom: 100,
-  },
   header: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 100,
-  },
-  headerGradient: {
-    paddingTop: 50,
-    paddingBottom: spacing[4],
-    paddingHorizontal: spacing[4],
-  },
-  headerTop: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    paddingHorizontal: spacing[4],
+    paddingVertical: spacing[3],
+    gap: spacing[3],
   },
   backBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(0,0,0,0.2)',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.surface.default,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  calendarBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(0,0,0,0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerTitleContainer: {
+  headerTitleRow: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing[2],
   },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#000',
+  radarrIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    overflow: 'hidden',
   },
-  statsContainer: {
+  radarrIconGradient: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  calendarBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.surface.default,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  statsRow: {
     flexDirection: 'row',
     paddingHorizontal: spacing[4],
-    paddingTop: 120,
-    gap: spacing[3],
+    gap: spacing[2],
+    marginBottom: spacing[3],
   },
   statCard: {
     flex: 1,
     backgroundColor: colors.surface.default,
-    borderRadius: borderRadius.xl,
+    borderRadius: borderRadius.lg,
     padding: spacing[3],
     alignItems: 'center',
-    overflow: 'hidden',
   },
-  statGradient: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  statIconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  statIconBg: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: spacing[2],
+    marginBottom: spacing[1],
   },
   statValue: {
-    fontSize: 24,
+    fontSize: 18,
     fontWeight: '700',
     color: '#fff',
   },
   statLabel: {
-    fontSize: 11,
-    color: colors.text.tertiary,
-    marginTop: spacing[1],
+    fontSize: 10,
+    color: colors.text.muted,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    marginTop: 2,
   },
-  tabsWrapper: {
-    paddingHorizontal: spacing[4],
-    paddingTop: spacing[5],
-  },
-  tabs: {
+  tabRow: {
     flexDirection: 'row',
+    marginHorizontal: spacing[4],
     backgroundColor: colors.surface.default,
-    borderRadius: borderRadius.xl,
+    borderRadius: borderRadius.lg,
     padding: spacing[1],
+    marginBottom: spacing[3],
   },
-  tab: {
+  tabBtn: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: spacing[3],
-    gap: spacing[2],
-    borderRadius: borderRadius.lg,
+    paddingVertical: spacing[2.5],
+    gap: spacing[1.5],
+    borderRadius: borderRadius.md,
   },
-  tabActive: {
+  tabBtnActive: {
     backgroundColor: colors.surface.elevated,
   },
   tabText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '500',
-    color: colors.text.tertiary,
+    color: colors.text.muted,
   },
   tabTextActive: {
     color: RADARR_ORANGE,
   },
-  searchContainer: {
+  searchRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: spacing[4],
-    paddingTop: spacing[4],
-    gap: spacing[3],
+    marginHorizontal: spacing[4],
+    gap: spacing[2],
+    marginBottom: spacing[3],
   },
-  searchInputWrapper: {
+  searchInputWrap: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.surface.default,
-    borderRadius: borderRadius.xl,
-    paddingHorizontal: spacing[4],
-    gap: spacing[3],
+    borderRadius: borderRadius.lg,
+    paddingHorizontal: spacing[3],
+    gap: spacing[2],
   },
   searchInput: {
     flex: 1,
-    paddingVertical: spacing[4],
+    paddingVertical: spacing[3],
     color: '#fff',
-    fontSize: 16,
+    fontSize: 15,
   },
   searchBtn: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     overflow: 'hidden',
   },
   searchBtnGradient: {
@@ -1392,144 +1691,140 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  filterScroll: {
-    paddingHorizontal: spacing[4],
-    paddingTop: spacing[4],
+  libraryControls: {
+    marginBottom: spacing[2],
   },
-  filterChip: {
+  filterRow: {
     paddingHorizontal: spacing[4],
-    paddingVertical: spacing[2.5],
+    gap: spacing[2],
+    paddingBottom: spacing[2],
+  },
+  filterPill: {
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[2],
     backgroundColor: colors.surface.default,
     borderRadius: borderRadius.full,
-    marginRight: spacing[2],
     borderWidth: 1,
     borderColor: 'transparent',
   },
-  filterChipActive: {
+  filterPillActive: {
     backgroundColor: `${RADARR_ORANGE}20`,
     borderColor: RADARR_ORANGE,
   },
-  filterChipText: {
-    fontSize: 13,
+  filterPillText: {
+    fontSize: 12,
     fontWeight: '500',
     color: colors.text.secondary,
   },
-  filterChipTextActive: {
+  filterPillTextActive: {
     color: RADARR_ORANGE,
+  },
+  sortRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing[4],
+    gap: spacing[2],
+  },
+  sortBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing[1],
+  },
+  sortText: {
+    fontSize: 12,
+    color: colors.text.secondary,
+    textTransform: 'capitalize',
   },
   movieGrid: {
     paddingHorizontal: spacing[4],
-    paddingTop: spacing[4],
+    paddingBottom: spacing[20],
   },
   movieGridRow: {
-    justifyContent: 'flex-start',
-    gap: spacing[3],
+    gap: spacing[2],
     marginBottom: spacing[3],
   },
-  movieCard: {
-    marginBottom: spacing[2],
+  gridCard: {
+    padding: spacing[1],
   },
-  movieCardPressed: {
-    opacity: 0.8,
-    transform: [{ scale: 0.98 }],
-  },
-  moviePosterContainer: {
+  gridPosterContainer: {
     borderRadius: borderRadius.xl,
     overflow: 'hidden',
-    aspectRatio: 2 / 3,
+    backgroundColor: colors.surface.default,
   },
-  moviePoster: {
+  gridPoster: {
     width: '100%',
     height: '100%',
   },
-  posterGradient: {
+  noPosterGrid: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  gridOverlay: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    height: '50%',
+    height: '40%',
   },
-  posterOverlay: {
-    position: 'absolute',
-    bottom: spacing[2],
-    left: spacing[2],
-    right: spacing[2],
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-end',
-  },
-  yearBadge: {
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    paddingHorizontal: spacing[2],
-    paddingVertical: spacing[1],
-    borderRadius: borderRadius.sm,
-  },
-  yearText: {
-    color: '#fff',
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  sizeBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    paddingHorizontal: spacing[2],
-    paddingVertical: spacing[1],
-    borderRadius: borderRadius.sm,
-  },
-  sizeText: {
-    color: '#fff',
-    fontSize: 10,
-    fontWeight: '500',
-  },
-  statusIndicator: {
+  gridStatusBadge: {
     position: 'absolute',
     top: spacing[2],
     right: spacing[2],
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: colors.background.primary,
+    paddingHorizontal: spacing[2],
+    paddingVertical: spacing[1],
+    borderRadius: borderRadius.sm,
   },
-  movieInfo: {
-    paddingTop: spacing[2],
+  gridStatusText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '700',
   },
-  movieTitle: {
+  unmonitoredBadge: {
+    position: 'absolute',
+    top: spacing[2],
+    left: spacing[2],
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    padding: spacing[1],
+    borderRadius: borderRadius.sm,
+  },
+  gridProgressContainer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 3,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  gridProgressFill: {
+    height: '100%',
+  },
+  gridTitle: {
     color: '#fff',
     fontSize: 13,
     fontWeight: '600',
+    marginTop: spacing[2],
   },
-  movieMeta: {
+  gridMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
     marginTop: spacing[1],
   },
-  starContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
+  gridYear: {
+    color: colors.text.tertiary,
+    fontSize: 12,
   },
-  ratingText: {
-    color: colors.text.secondary,
+  gridDot: {
+    width: 3,
+    height: 3,
+    borderRadius: 1.5,
+    backgroundColor: colors.text.muted,
+    marginHorizontal: spacing[1.5],
+  },
+  gridRating: {
+    color: colors.text.tertiary,
     fontSize: 11,
-    marginLeft: spacing[1],
-  },
-  statusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: spacing[1.5],
-    gap: spacing[1.5],
-  },
-  statusDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  statusLabel: {
-    fontSize: 11,
-    fontWeight: '500',
+    marginLeft: 2,
   },
   noPoster: {
     backgroundColor: colors.surface.elevated,
@@ -1538,76 +1833,77 @@ const styles = StyleSheet.create({
   },
   queueList: {
     paddingHorizontal: spacing[4],
-    paddingTop: spacing[4],
+    paddingBottom: spacing[20],
     gap: spacing[3],
   },
   queueCard: {
     backgroundColor: colors.surface.default,
-    borderRadius: borderRadius.xl,
-    padding: spacing[4],
-    overflow: 'hidden',
-  },
-  queueGradientBg: {
-    ...StyleSheet.absoluteFillObject,
+    borderRadius: borderRadius.lg,
+    padding: spacing[3],
   },
   queueHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
     marginBottom: spacing[2],
   },
-  queueTitleContainer: {
-    flex: 1,
-    gap: spacing[2],
+  queueTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing[1],
   },
   queueTitle: {
-    color: '#fff',
-    fontSize: 16,
+    flex: 1,
+    fontSize: 15,
     fontWeight: '600',
+    color: '#fff',
+    marginRight: spacing[2],
   },
-  queueRemoveBtn: {
-    padding: spacing[1],
-    marginTop: -spacing[1],
-    marginRight: -spacing[1],
-  },
-  queueStatus: {
+  queueMeta: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing[2],
-    marginBottom: spacing[3],
+  },
+  qualityBadge: {
+    paddingHorizontal: spacing[1.5],
+    paddingVertical: 2,
+    borderRadius: 4,
+    borderWidth: 1,
+  },
+  qualityText: {
+    fontSize: 9,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+  },
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
   queueStatusText: {
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  queueTimeLeft: {
     fontSize: 12,
-    color: colors.text.tertiary,
-    marginLeft: 'auto',
+    fontWeight: '500',
   },
   progressContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing[3],
-    marginBottom: spacing[3],
+    gap: spacing[2],
+    marginBottom: spacing[2],
   },
   progressTrack: {
     flex: 1,
-    height: 8,
+    height: 6,
     backgroundColor: colors.surface.elevated,
-    borderRadius: 4,
+    borderRadius: 3,
     overflow: 'hidden',
   },
   progressBar: {
     height: '100%',
-    borderRadius: 4,
-    overflow: 'hidden',
+    borderRadius: 3,
   },
-  progressPercent: {
-    color: colors.text.secondary,
-    fontSize: 13,
+  progressText: {
+    fontSize: 11,
     fontWeight: '600',
-    width: 45,
+    color: colors.text.secondary,
+    width: 36,
     textAlign: 'right',
   },
   queueFooter: {
@@ -1616,54 +1912,42 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   queueSize: {
-    color: colors.text.tertiary,
-    fontSize: 12,
-  },
-  queueIndexer: {
-    color: colors.text.muted,
     fontSize: 11,
+    color: colors.text.muted,
   },
-  qualityBadge: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: spacing[2],
-    paddingVertical: spacing[1],
-    borderRadius: borderRadius.sm,
-    borderWidth: 1,
+  queueTime: {
+    fontSize: 11,
+    color: colors.text.tertiary,
   },
-  qualityText: {
-    fontSize: 10,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-  },
-  searchResultsList: {
+  searchList: {
     paddingHorizontal: spacing[4],
-    paddingTop: spacing[4],
-    gap: spacing[3],
+    paddingBottom: spacing[20],
+    gap: spacing[2],
   },
   searchCard: {
     flexDirection: 'row',
     backgroundColor: colors.surface.default,
-    borderRadius: borderRadius.xl,
+    borderRadius: borderRadius.lg,
     padding: spacing[3],
     gap: spacing[3],
   },
   searchPosterContainer: {
-    borderRadius: borderRadius.lg,
+    borderRadius: borderRadius.md,
     overflow: 'hidden',
   },
   searchPoster: {
-    width: 80,
-    height: 120,
-    borderRadius: borderRadius.lg,
+    width: 70,
+    height: 105,
+    borderRadius: borderRadius.md,
   },
   searchInfo: {
     flex: 1,
     justifyContent: 'center',
   },
   searchTitle: {
-    color: '#fff',
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
+    color: '#fff',
   },
   searchMeta: {
     flexDirection: 'row',
@@ -1672,111 +1956,100 @@ const styles = StyleSheet.create({
     marginTop: spacing[1],
   },
   searchYear: {
-    color: RADARR_ORANGE,
     fontSize: 13,
     fontWeight: '600',
+    color: RADARR_ORANGE,
   },
   searchRuntime: {
-    color: colors.text.tertiary,
     fontSize: 12,
+    color: colors.text.muted,
+  },
+  searchRating: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  searchRatingText: {
+    fontSize: 11,
+    color: colors.text.secondary,
   },
   searchOverview: {
+    fontSize: 11,
     color: colors.text.secondary,
-    fontSize: 12,
-    lineHeight: 18,
-    marginTop: spacing[2],
+    lineHeight: 16,
+    marginTop: spacing[1.5],
   },
-  genreContainer: {
+  genreRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing[1.5],
-    marginTop: spacing[2],
+    gap: spacing[1],
+    marginTop: spacing[1.5],
   },
   genreChip: {
     backgroundColor: colors.surface.elevated,
-    paddingHorizontal: spacing[2],
-    paddingVertical: spacing[1],
-    borderRadius: borderRadius.sm,
+    paddingHorizontal: spacing[1.5],
+    paddingVertical: 2,
+    borderRadius: 4,
   },
   genreText: {
-    color: colors.text.tertiary,
-    fontSize: 10,
-    fontWeight: '500',
+    fontSize: 9,
+    color: colors.text.muted,
   },
-  addBtn: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    overflow: 'hidden',
+  addButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: RADARR_ORANGE,
+    alignItems: 'center',
+    justifyContent: 'center',
     alignSelf: 'center',
   },
-  addBtnGradient: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  inLibraryBadge: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: `${colors.status.success}20`,
-    alignItems: 'center',
-    justifyContent: 'center',
+  inLibraryIcon: {
     alignSelf: 'center',
   },
   emptyState: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: spacing[16],
     paddingHorizontal: spacing[8],
   },
-  emptyIconContainer: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
+  emptyIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: `${RADARR_ORANGE}15`,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: spacing[4],
-    overflow: 'hidden',
-  },
-  emptyIconGradient: {
-    ...StyleSheet.absoluteFillObject,
   },
   emptyTitle: {
-    color: colors.text.secondary,
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '600',
-    marginBottom: spacing[2],
+    color: colors.text.secondary,
+    marginBottom: spacing[1],
   },
   emptySubtitle: {
-    color: colors.text.muted,
     fontSize: 14,
+    color: colors.text.muted,
     textAlign: 'center',
   },
   skeletonGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     paddingHorizontal: spacing[4],
-    paddingTop: spacing[4],
-    gap: spacing[3],
-  },
-  skeletonCard: {
-    marginBottom: spacing[2],
   },
   skeletonList: {
     paddingHorizontal: spacing[4],
-    paddingTop: spacing[4],
     gap: spacing[3],
   },
   skeletonQueueCard: {
     backgroundColor: colors.surface.default,
-    borderRadius: borderRadius.xl,
-    padding: spacing[4],
+    borderRadius: borderRadius.lg,
+    padding: spacing[3],
   },
   skeletonSearchCard: {
     flexDirection: 'row',
     backgroundColor: colors.surface.default,
-    borderRadius: borderRadius.xl,
+    borderRadius: borderRadius.lg,
     padding: spacing[3],
   },
   notConfigured: {
@@ -1785,42 +2058,41 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: spacing[8],
   },
-  notConfiguredGradient: {
-    ...StyleSheet.absoluteFillObject,
-  },
   notConfiguredIcon: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: `${RADARR_ORANGE}15`,
+    width: 80,
+    height: 80,
+    borderRadius: 20,
+    overflow: 'hidden',
+    marginBottom: spacing[4],
+  },
+  notConfiguredIconGradient: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: spacing[6],
   },
   notConfiguredTitle: {
-    color: '#fff',
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: '700',
-    marginBottom: spacing[2],
+    color: '#fff',
+    marginBottom: spacing[1],
   },
   notConfiguredSubtitle: {
-    color: colors.text.tertiary,
-    fontSize: 15,
-    textAlign: 'center',
-    marginBottom: spacing[8],
+    fontSize: 14,
+    color: colors.text.muted,
+    marginBottom: spacing[6],
   },
   configureBtn: {
-    borderRadius: borderRadius.xl,
+    borderRadius: borderRadius.lg,
     overflow: 'hidden',
   },
   configureBtnGradient: {
-    paddingHorizontal: spacing[8],
-    paddingVertical: spacing[4],
+    paddingHorizontal: spacing[6],
+    paddingVertical: spacing[3],
   },
   configureBtnText: {
-    color: '#000',
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
+    color: '#000',
   },
   modalOverlay: {
     flex: 1,
@@ -1837,25 +2109,25 @@ const styles = StyleSheet.create({
     maxHeight: '90%',
   },
   detailHeader: {
-    height: 280,
+    height: 240,
     overflow: 'hidden',
   },
   detailFanart: {
     ...StyleSheet.absoluteFillObject,
   },
-  detailFanartGradient: {
+  detailGradient: {
     ...StyleSheet.absoluteFillObject,
   },
-  detailCloseBtn: {
+  closeBtn: {
     position: 'absolute',
-    top: spacing[4],
-    right: spacing[4],
+    top: spacing[3],
+    right: spacing[3],
     zIndex: 10,
   },
-  blurBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  closeBtnBlur: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
@@ -1866,91 +2138,98 @@ const styles = StyleSheet.create({
     left: spacing[4],
     right: spacing[4],
     flexDirection: 'row',
-    gap: spacing[4],
+    gap: spacing[3],
   },
   detailPoster: {
-    width: 100,
-    height: 150,
-    borderRadius: borderRadius.lg,
+    width: 85,
+    height: 127,
+    borderRadius: borderRadius.md,
   },
   detailHeaderInfo: {
     flex: 1,
     justifyContent: 'flex-end',
   },
   detailTitle: {
-    color: '#fff',
-    fontSize: 22,
+    fontSize: 18,
     fontWeight: '700',
+    color: '#fff',
   },
   detailMetaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing[3],
+    gap: spacing[2],
     marginTop: spacing[1],
   },
   detailYear: {
-    color: RADARR_ORANGE,
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '600',
+    color: RADARR_ORANGE,
   },
   detailRuntime: {
-    color: colors.text.tertiary,
     fontSize: 13,
+    color: colors.text.tertiary,
   },
-  detailStatusBadge: {
+  detailStatus: {
     flexDirection: 'row',
     alignItems: 'center',
     alignSelf: 'flex-start',
-    gap: spacing[1.5],
-    paddingHorizontal: spacing[3],
-    paddingVertical: spacing[1.5],
+    gap: spacing[1],
+    paddingHorizontal: spacing[2],
+    paddingVertical: spacing[1],
     borderRadius: borderRadius.full,
-    marginTop: spacing[3],
+    marginTop: spacing[2],
   },
   detailStatusText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
   },
   detailContent: {
     padding: spacing[4],
   },
-  detailSection: {
-    marginBottom: spacing[5],
+  section: {
+    marginBottom: spacing[4],
   },
-  detailSectionTitle: {
-    color: colors.text.tertiary,
-    fontSize: 12,
+  sectionTitle: {
+    fontSize: 11,
     fontWeight: '600',
+    color: colors.text.muted,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
     marginBottom: spacing[2],
   },
-  detailOverview: {
+  overview: {
+    fontSize: 13,
     color: colors.text.secondary,
-    fontSize: 14,
-    lineHeight: 22,
+    lineHeight: 20,
+  },
+  genreContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing[1.5],
+  },
+  genreChipLg: {
+    backgroundColor: colors.surface.default,
+    paddingHorizontal: spacing[2],
+    paddingVertical: spacing[1],
+    borderRadius: borderRadius.sm,
+  },
+  genreTextLg: {
+    fontSize: 11,
+    color: colors.text.tertiary,
   },
   fileInfoCard: {
-    backgroundColor: colors.surface.default,
-    borderRadius: borderRadius.lg,
-    padding: spacing[3],
-  },
-  fileInfoRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing[2],
+    backgroundColor: colors.surface.default,
+    padding: spacing[3],
+    borderRadius: borderRadius.md,
   },
-  fileInfoText: {
-    color: '#fff',
+  fileSize: {
     fontSize: 14,
     fontWeight: '500',
+    color: '#fff',
   },
-  filePath: {
-    color: colors.text.muted,
-    fontSize: 11,
-    marginTop: spacing[2],
-  },
-  detailActions: {
+  actionGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing[2],
@@ -1959,125 +2238,169 @@ const styles = StyleSheet.create({
   actionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing[2],
+    gap: spacing[1.5],
     backgroundColor: colors.surface.default,
-    paddingHorizontal: spacing[4],
-    paddingVertical: spacing[3],
-    borderRadius: borderRadius.lg,
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[2.5],
+    borderRadius: borderRadius.md,
   },
   actionBtnActive: {
     backgroundColor: `${RADARR_ORANGE}20`,
   },
   actionBtnText: {
-    color: colors.text.secondary,
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '500',
+    color: colors.text.secondary,
   },
   deleteBtn: {
     backgroundColor: `${colors.status.error}15`,
   },
-  manualSearchModal: {
+  manualModal: {
     backgroundColor: colors.background.secondary,
     borderTopLeftRadius: borderRadius['2xl'],
     borderTopRightRadius: borderRadius['2xl'],
     maxHeight: '80%',
   },
-  manualSearchHeader: {
+  manualHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     padding: spacing[4],
     borderBottomWidth: 1,
     borderBottomColor: colors.border.subtle,
   },
-  manualSearchTitle: {
-    color: '#fff',
-    fontSize: 18,
+  manualTitle: {
+    fontSize: 17,
     fontWeight: '600',
+    color: '#fff',
   },
-  manualSearchSubtitle: {
-    color: colors.text.tertiary,
+  manualSubtitle: {
+    fontSize: 12,
+    color: colors.text.muted,
+    marginTop: 2,
+  },
+  filterSection: {
+    paddingVertical: spacing[2],
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border.subtle,
+  },
+  filterScroll: {
+    paddingHorizontal: spacing[4],
+    marginBottom: spacing[1],
+  },
+  filterLabel: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: colors.text.muted,
+    marginRight: spacing[2],
+    alignSelf: 'center',
+  },
+  filterChip: {
+    paddingHorizontal: spacing[2.5],
+    paddingVertical: spacing[1.5],
+    backgroundColor: colors.surface.default,
+    borderRadius: borderRadius.md,
+    marginRight: spacing[1.5],
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  filterChipActive: {
+    backgroundColor: `${RADARR_ORANGE}20`,
+    borderColor: RADARR_ORANGE,
+  },
+  filterChipText: {
+    fontSize: 11,
+    color: colors.text.secondary,
+  },
+  filterChipTextActive: {
+    color: RADARR_ORANGE,
+  },
+  manualLoading: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing[12],
+    gap: spacing[3],
+  },
+  manualLoadingText: {
     fontSize: 13,
-    marginTop: spacing[1],
+    color: colors.text.muted,
   },
-  manualSearchClose: {
-    position: 'absolute',
-    top: spacing[4],
-    right: spacing[4],
-  },
-  manualSearchLoading: {
+  manualEmpty: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: spacing[16],
+    paddingVertical: spacing[12],
+    gap: spacing[2],
   },
-  manualSearchLoadingText: {
-    color: colors.text.tertiary,
-    fontSize: 14,
-    marginTop: spacing[4],
-  },
-  manualSearchEmpty: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing[16],
-  },
-  manualSearchEmptyText: {
-    color: colors.text.tertiary,
-    fontSize: 14,
-    marginTop: spacing[3],
+  manualEmptyText: {
+    fontSize: 13,
+    color: colors.text.muted,
   },
   releaseList: {
     padding: spacing[4],
-    gap: spacing[3],
+    gap: spacing[2],
   },
   releaseCard: {
     backgroundColor: colors.surface.default,
-    borderRadius: borderRadius.lg,
+    borderRadius: borderRadius.md,
     padding: spacing[3],
   },
-  releaseCardRejected: {
+  releaseRejected: {
     opacity: 0.5,
   },
-  releaseHeader: {
+  releaseTop: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: spacing[2],
+    marginBottom: spacing[1.5],
+  },
+  releaseBadge: {
+    paddingHorizontal: spacing[1.5],
+    paddingVertical: 2,
+    borderRadius: 4,
+    borderWidth: 1,
+  },
+  releaseBadgeText: {
+    fontSize: 9,
+    fontWeight: '600',
+    textTransform: 'uppercase',
   },
   releaseSize: {
-    color: colors.text.tertiary,
-    fontSize: 12,
+    fontSize: 11,
+    color: colors.text.muted,
   },
   releaseTitle: {
-    color: '#fff',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '500',
-    marginBottom: spacing[2],
+    color: '#fff',
+    marginBottom: spacing[1.5],
   },
   releaseMeta: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing[3],
+    gap: spacing[2],
   },
   releaseIndexer: {
-    color: RADARR_ORANGE,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '500',
+    color: RADARR_ORANGE,
   },
-  seedersContainer: {
+  seeders: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 2,
   },
   seedersText: {
+    fontSize: 11,
     color: colors.status.success,
-    fontSize: 12,
-    fontWeight: '500',
   },
   releaseAge: {
+    fontSize: 10,
     color: colors.text.muted,
-    fontSize: 11,
   },
   rejectionText: {
+    fontSize: 10,
     color: colors.status.error,
-    fontSize: 11,
-    marginTop: spacing[2],
+    marginTop: spacing[1.5],
   },
   addModal: {
     backgroundColor: colors.background.secondary,
@@ -2086,26 +2409,23 @@ const styles = StyleSheet.create({
     maxHeight: '85%',
   },
   addModalHeader: {
-    borderTopLeftRadius: borderRadius['2xl'],
-    borderTopRightRadius: borderRadius['2xl'],
-    overflow: 'hidden',
-  },
-  addModalHeaderGradient: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: spacing[4],
-    paddingVertical: spacing[4],
+    paddingVertical: spacing[3],
+    borderTopLeftRadius: borderRadius['2xl'],
+    borderTopRightRadius: borderRadius['2xl'],
   },
   addModalTitle: {
-    color: '#000',
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '700',
+    color: '#000',
   },
   addModalClose: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: 'rgba(0,0,0,0.1)',
     alignItems: 'center',
     justifyContent: 'center',
@@ -2113,47 +2433,46 @@ const styles = StyleSheet.create({
   addModalContent: {
     padding: spacing[4],
   },
-  addMoviePreview: {
+  addPreview: {
     flexDirection: 'row',
-    gap: spacing[4],
-    marginBottom: spacing[6],
+    gap: spacing[3],
+    marginBottom: spacing[4],
   },
-  addPreviewPoster: {
-    width: 80,
-    height: 120,
-    borderRadius: borderRadius.lg,
+  addPoster: {
+    width: 70,
+    height: 105,
+    borderRadius: borderRadius.md,
   },
   addPreviewInfo: {
     flex: 1,
     justifyContent: 'center',
   },
   addPreviewTitle: {
-    color: '#fff',
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '600',
+    color: '#fff',
   },
   addPreviewYear: {
-    color: RADARR_ORANGE,
     fontSize: 14,
-    marginTop: spacing[1],
+    color: RADARR_ORANGE,
+    marginTop: 2,
   },
-  addSectionLabel: {
-    color: colors.text.tertiary,
-    fontSize: 12,
+  addLabel: {
+    fontSize: 11,
     fontWeight: '600',
+    color: colors.text.muted,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: spacing[3],
+    marginBottom: spacing[2],
     marginTop: spacing[2],
   },
   optionScroll: {
-    marginBottom: spacing[4],
+    marginBottom: spacing[2],
   },
   optionChip: {
-    paddingHorizontal: spacing[4],
-    paddingVertical: spacing[3],
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[2.5],
     backgroundColor: colors.surface.default,
-    borderRadius: borderRadius.lg,
+    borderRadius: borderRadius.md,
     marginRight: spacing[2],
     borderWidth: 1,
     borderColor: 'transparent',
@@ -2163,17 +2482,16 @@ const styles = StyleSheet.create({
     borderColor: RADARR_ORANGE,
   },
   optionChipText: {
+    fontSize: 13,
     color: colors.text.secondary,
-    fontSize: 14,
-    fontWeight: '500',
   },
   optionChipTextActive: {
     color: RADARR_ORANGE,
   },
   folderOption: {
     backgroundColor: colors.surface.default,
-    borderRadius: borderRadius.lg,
-    padding: spacing[4],
+    borderRadius: borderRadius.md,
+    padding: spacing[3],
     marginBottom: spacing[2],
     borderWidth: 2,
     borderColor: 'transparent',
@@ -2185,58 +2503,546 @@ const styles = StyleSheet.create({
   folderRadio: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing[3],
+    gap: spacing[2],
   },
   folderPath: {
-    color: '#fff',
-    fontSize: 14,
     flex: 1,
+    fontSize: 13,
+    color: '#fff',
   },
-  folderSpace: {
-    color: colors.text.tertiary,
-    fontSize: 12,
-    marginTop: spacing[2],
-    marginLeft: spacing[9],
+  folderFree: {
+    fontSize: 11,
+    color: colors.text.muted,
+    marginTop: spacing[1],
+    marginLeft: spacing[7],
   },
-  searchToggle: {
+  checkboxRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing[3],
-    marginTop: spacing[4],
-    marginBottom: spacing[2],
+    gap: spacing[2],
+    marginTop: spacing[3],
   },
   checkbox: {
-    width: 24,
-    height: 24,
-    borderRadius: borderRadius.sm,
+    width: 22,
+    height: 22,
+    borderRadius: 6,
     borderWidth: 2,
-    borderColor: colors.text.tertiary,
+    borderColor: colors.text.muted,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  checkboxActive: {
+  checkboxChecked: {
     backgroundColor: RADARR_ORANGE,
     borderColor: RADARR_ORANGE,
   },
-  searchToggleText: {
-    color: '#fff',
-    fontSize: 14,
+  checkboxLabel: {
+    fontSize: 13,
+    color: colors.text.secondary,
   },
-  addMovieBtn: {
+  addSubmitBtn: {
     margin: spacing[4],
-    borderRadius: borderRadius.xl,
+    borderRadius: borderRadius.lg,
     overflow: 'hidden',
   },
-  addMovieBtnGradient: {
+  addSubmitGradient: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing[2],
-    paddingVertical: spacing[4],
+    paddingVertical: spacing[3.5],
   },
-  addMovieBtnText: {
+  addSubmitText: {
+    fontSize: 15,
+    fontWeight: '600',
     color: '#000',
-    fontSize: 16,
+  },
+  starContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  ratingText: {
+    fontSize: 11,
+    color: colors.text.secondary,
+    marginLeft: spacing[1],
+  },
+  manualHeaderLeft: {
+    flex: 1,
+  },
+  manualHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing[3],
+  },
+  resultCountBadge: {
+    backgroundColor: `${RADARR_ORANGE}20`,
+    paddingHorizontal: spacing[2.5],
+    paddingVertical: spacing[1],
+    borderRadius: borderRadius.full,
+  },
+  resultCountText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: RADARR_ORANGE,
+  },
+  manualCloseBtn: {
+    padding: spacing[1],
+  },
+  filterHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing[4],
+    marginBottom: spacing[2],
+  },
+  filterSectionTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  filterActions: {
+    flexDirection: 'row',
+    gap: spacing[2],
+  },
+  filterToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing[1.5],
+    paddingHorizontal: spacing[2.5],
+    paddingVertical: spacing[1.5],
+    backgroundColor: colors.surface.default,
+    borderRadius: borderRadius.md,
+  },
+  filterToggleActive: {
+    backgroundColor: RADARR_ORANGE,
+  },
+  filterToggleText: {
+    fontSize: 11,
+    color: colors.text.secondary,
+  },
+  filterToggleTextActive: {
+    color: '#000',
+  },
+  filterGroup: {
+    marginBottom: spacing[2],
+  },
+  filterChipCount: {
+    marginLeft: spacing[1],
+    backgroundColor: colors.surface.elevated,
+    paddingHorizontal: spacing[1.5],
+    paddingVertical: 1,
+    borderRadius: borderRadius.sm,
+  },
+  filterChipCountActive: {
+    backgroundColor: 'rgba(0,0,0,0.2)',
+  },
+  filterChipCountText: {
+    fontSize: 9,
+    fontWeight: '600',
+    color: colors.text.muted,
+  },
+  filterChipCountTextActive: {
+    color: '#000',
+  },
+  sortSection: {
+    paddingHorizontal: spacing[4],
+    paddingTop: spacing[1],
+  },
+  sortOptions: {
+    flexDirection: 'row',
+    gap: spacing[2],
+    marginTop: spacing[1.5],
+  },
+  sortOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing[1],
+    paddingHorizontal: spacing[2.5],
+    paddingVertical: spacing[1.5],
+    backgroundColor: colors.surface.default,
+    borderRadius: borderRadius.md,
+  },
+  sortOptionActive: {
+    backgroundColor: RADARR_ORANGE,
+  },
+  sortOptionText: {
+    fontSize: 11,
+    color: colors.text.secondary,
+  },
+  sortOptionTextActive: {
+    color: '#000',
+  },
+  loadingSpinner: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: `${RADARR_ORANGE}15`,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing[2],
+  },
+  manualLoadingSubtext: {
+    fontSize: 11,
+    color: colors.text.tertiary,
+  },
+  emptyIconContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: colors.surface.default,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing[2],
+  },
+  clearFiltersBtn: {
+    marginTop: spacing[3],
+    paddingHorizontal: spacing[4],
+    paddingVertical: spacing[2],
+    backgroundColor: colors.surface.default,
+    borderRadius: borderRadius.md,
+  },
+  clearFiltersBtnText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: RADARR_ORANGE,
+  },
+  releaseTopResult: {
+    borderWidth: 1,
+    borderColor: `${RADARR_ORANGE}40`,
+  },
+  releaseTopLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing[2],
+  },
+  topResultBadge: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: RADARR_ORANGE,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  releaseStats: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing[3],
+  },
+  statItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  statText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.status.success,
+  },
+  indexerBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing[1],
+    backgroundColor: `${RADARR_ORANGE}15`,
+    paddingHorizontal: spacing[2],
+    paddingVertical: spacing[0.5],
+    borderRadius: borderRadius.sm,
+  },
+  rejectionBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing[1.5],
+    marginTop: spacing[2],
+    paddingHorizontal: spacing[2],
+    paddingVertical: spacing[1.5],
+    backgroundColor: `${colors.status.error}15`,
+    borderRadius: borderRadius.sm,
+  },
+  forceDownloadHint: {
+    fontSize: 10,
+    color: colors.text.muted,
+    marginLeft: 'auto',
+  },
+  addModalHeaderContainer: {
+    height: 120,
+    overflow: 'hidden',
+    borderTopLeftRadius: borderRadius['2xl'],
+    borderTopRightRadius: borderRadius['2xl'],
+  },
+  addModalBg: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  addModalBgGradient: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  addModalBackBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing[2],
+  },
+  stepDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+  },
+  stepDotActive: {
+    backgroundColor: 'rgba(255,255,255,0.6)',
+  },
+  stepDotCurrent: {
+    width: 24,
+    borderRadius: 4,
+    backgroundColor: RADARR_ORANGE,
+  },
+  addModalHeaderSpacer: {
+    width: 36,
+  },
+  stepContent: {
+    paddingBottom: spacing[4],
+  },
+  addPreviewLarge: {
+    alignItems: 'center',
+    marginBottom: spacing[4],
+  },
+  addPosterLarge: {
+    width: 140,
+    height: 210,
+    borderRadius: borderRadius.lg,
+  },
+  addPreviewTitleLarge: {
+    fontSize: 20,
     fontWeight: '700',
+    color: '#fff',
+    textAlign: 'center',
+    marginBottom: spacing[2],
+  },
+  addPreviewMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing[3],
+    marginBottom: spacing[3],
+  },
+  yearBadgeLarge: {
+    backgroundColor: RADARR_ORANGE,
+    paddingHorizontal: spacing[2.5],
+    paddingVertical: spacing[1],
+    borderRadius: borderRadius.md,
+  },
+  yearBadgeLargeText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#000',
+  },
+  runtimeText: {
+    fontSize: 13,
+    color: colors.text.secondary,
+  },
+  ratingBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing[1],
+  },
+  ratingBadgeText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: RADARR_ORANGE,
+  },
+  genreRowLarge: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: spacing[2],
+    marginBottom: spacing[3],
+  },
+  genreChipLarge: {
+    backgroundColor: colors.surface.default,
+    paddingHorizontal: spacing[3],
+    paddingVertical: spacing[1.5],
+    borderRadius: borderRadius.md,
+  },
+  genreChipTextLarge: {
+    fontSize: 12,
+    color: colors.text.secondary,
+  },
+  overviewText: {
+    fontSize: 13,
+    color: colors.text.secondary,
+    lineHeight: 20,
+    textAlign: 'center',
+  },
+  stepTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#fff',
+    marginBottom: spacing[1],
+  },
+  stepSubtitle: {
+    fontSize: 14,
+    color: colors.text.muted,
+    marginBottom: spacing[4],
+  },
+  settingSection: {
+    marginBottom: spacing[4],
+  },
+  settingSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing[2],
+    marginBottom: spacing[3],
+  },
+  settingSectionTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  radioOuter: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: colors.text.muted,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  radioOuterActive: {
+    borderColor: RADARR_ORANGE,
+  },
+  radioInner: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: RADARR_ORANGE,
+  },
+  folderInfo: {
+    flex: 1,
+    marginLeft: spacing[2],
+  },
+  folderFreeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing[2],
+    marginTop: spacing[1],
+  },
+  freeSpaceBar: {
+    flex: 1,
+    height: 4,
+    backgroundColor: colors.surface.elevated,
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  freeSpaceFill: {
+    height: '100%',
+    backgroundColor: colors.status.success,
+    borderRadius: 2,
+  },
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.surface.default,
+    padding: spacing[3],
+    borderRadius: borderRadius.md,
+  },
+  toggleInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing[3],
+  },
+  toggleLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#fff',
+  },
+  toggleHint: {
+    fontSize: 11,
+    color: colors.text.muted,
+    marginTop: 2,
+  },
+  toggleSwitch: {
+    width: 48,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.surface.elevated,
+    padding: 2,
+    justifyContent: 'center',
+  },
+  toggleSwitchActive: {
+    backgroundColor: RADARR_ORANGE,
+  },
+  toggleKnob: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#fff',
+  },
+  toggleKnobActive: {
+    alignSelf: 'flex-end',
+  },
+  confirmCard: {
+    backgroundColor: colors.surface.default,
+    borderRadius: borderRadius.lg,
+    padding: spacing[3],
+    marginBottom: spacing[4],
+  },
+  confirmRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing[3],
+  },
+  confirmPoster: {
+    width: 60,
+    height: 90,
+    borderRadius: borderRadius.md,
+  },
+  confirmInfo: {
+    flex: 1,
+  },
+  confirmTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  confirmYear: {
+    fontSize: 14,
+    color: RADARR_ORANGE,
+    marginTop: 2,
+  },
+  confirmSummary: {
+    backgroundColor: colors.surface.default,
+    borderRadius: borderRadius.lg,
+    padding: spacing[3],
+    gap: spacing[3],
+  },
+  summaryItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing[3],
+  },
+  summaryLabel: {
+    fontSize: 13,
+    color: colors.text.muted,
+    flex: 1,
+  },
+  summaryValue: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#fff',
+    flex: 2,
+    textAlign: 'right',
+  },
+  addModalFooter: {
+    borderTopWidth: 1,
+    borderTopColor: colors.border.subtle,
+    paddingBottom: spacing[2],
+  },
+  addSubmitDisabled: {
+    opacity: 0.5,
   },
 });
