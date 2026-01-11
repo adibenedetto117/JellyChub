@@ -4,6 +4,7 @@ import {
   getCastModule,
   subscribeToCastState,
   stopCasting,
+  showCastDialog as showCastDialogUtil,
   type CastSessionState,
   type CastMediaInfo,
 } from '@/utils/casting';
@@ -19,6 +20,7 @@ export interface UseChromecastReturn {
   seek: (positionMs: number) => Promise<void>;
   stop: () => Promise<number | null>;
   getPosition: () => Promise<number | null>;
+  showCastDialog: () => Promise<boolean>;
   isAvailable: boolean;
   remoteClient: any;
 }
@@ -129,6 +131,10 @@ export function useChromecast(): UseChromecastReturn {
     return null;
   }, []);
 
+  const showCastDialog = useCallback(async (): Promise<boolean> => {
+    return showCastDialogUtil();
+  }, []);
+
   return {
     castState,
     isConnected: castState.connectionState === 'connected',
@@ -140,6 +146,7 @@ export function useChromecast(): UseChromecastReturn {
     seek,
     stop,
     getPosition,
+    showCastDialog,
     isAvailable,
     remoteClient,
   };

@@ -72,6 +72,7 @@ interface RemoteMediaClient {
 interface CastContext {
   getPlayServicesState(): Promise<number>;
   getSessionManager(): SessionManager;
+  showCastDialog(): Promise<boolean>;
 }
 
 interface GoogleCastModule {
@@ -233,6 +234,19 @@ export async function hasActiveCastSession(): Promise<boolean> {
     const sessionManager = cast.CastContext.getSessionManager();
     const session = await sessionManager.getCurrentCastSession();
     return session !== null;
+  } catch {
+    return false;
+  }
+}
+
+export async function showCastDialog(): Promise<boolean> {
+  if (!isChromecastSupported) return false;
+
+  try {
+    const cast = getGoogleCast();
+    if (!cast) return false;
+
+    return await cast.CastContext.showCastDialog();
   } catch {
     return false;
   }
