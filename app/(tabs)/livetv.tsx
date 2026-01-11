@@ -564,7 +564,7 @@ export default function LiveTvScreen() {
               />
             </Pressable>
           )}
-          <SearchButton />
+          <SearchButton filter="TvChannel" />
         </View>
       </View>
 

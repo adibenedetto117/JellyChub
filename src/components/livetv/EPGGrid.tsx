@@ -276,6 +276,7 @@ const styles = StyleSheet.create({
     height: TIME_HEADER_HEIGHT,
     borderBottomWidth: 1,
     borderBottomColor: colors.border.default,
+    backgroundColor: colors.background.secondary,
   },
   channelColumnHeader: {
     width: CHANNEL_COLUMN_WIDTH,
@@ -305,6 +306,7 @@ const styles = StyleSheet.create({
   contentArea: {
     flex: 1,
     flexDirection: 'row',
+    backgroundColor: colors.background.secondary,
   },
   channelListContent: {
     // Content container for channel column
@@ -361,6 +363,7 @@ const styles = StyleSheet.create({
     position: 'relative',
     borderBottomWidth: 1,
     borderBottomColor: colors.border.subtle,
+    backgroundColor: colors.background.secondary,
   },
   programsContainer: {
     flex: 1,
