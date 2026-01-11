@@ -5,7 +5,7 @@ import { SafeAreaView } from '@/providers';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore, useSettingsStore } from '@/stores';
-import { useAnnouncementStore, selectActiveAnnouncements } from '@/stores/announcementStore';
+import { useAnnouncementStore } from '@/stores/announcementStore';
 import type { Announcement } from '@/stores/announcementStore';
 import {
   getSystemInfo,

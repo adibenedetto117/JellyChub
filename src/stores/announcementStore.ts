@@ -84,13 +84,4 @@ export const useAnnouncementStore = create<AnnouncementState>()(
   )
 );
 
-export const selectActiveAnnouncements = (state: AnnouncementState) => {
-  const now = new Date();
-  return state.announcements.filter((a) => {
-    if (state.dismissedAnnouncementIds.includes(a.id)) return false;
-    if (a.expiresAt && new Date(a.expiresAt) < now) return false;
-    return true;
-  });
-};
-
 export const selectAnnouncementHasHydrated = (state: AnnouncementState) => state._hasHydrated;

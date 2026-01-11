@@ -1,8 +1,7 @@
-import { memo, useCallback } from 'react';
+import { memo, useCallback, useMemo } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useAnnouncementStore, selectActiveAnnouncements } from '@/stores/announcementStore';
-import { useSettingsStore } from '@/stores';
+import { useAnnouncementStore } from '@/stores/announcementStore';
 import { colors } from '@/theme';
 import type { Announcement } from '@/stores/announcementStore';
 
@@ -71,8 +70,18 @@ const AnnouncementItem = memo(function AnnouncementItem({
 });
 
 export const AnnouncementBanner = memo(function AnnouncementBanner() {
-  const activeAnnouncements = useAnnouncementStore(selectActiveAnnouncements);
+  const announcements = useAnnouncementStore((s) => s.announcements);
+  const dismissedIds = useAnnouncementStore((s) => s.dismissedAnnouncementIds);
   const dismissAnnouncement = useAnnouncementStore((s) => s.dismissAnnouncement);
+
+  const activeAnnouncements = useMemo(() => {
+    const now = new Date();
+    return announcements.filter((a) => {
+      if (dismissedIds.includes(a.id)) return false;
+      if (a.expiresAt && new Date(a.expiresAt) < now) return false;
+      return true;
+    });
+  }, [announcements, dismissedIds]);
 
   if (activeAnnouncements.length === 0) {
     return null;
