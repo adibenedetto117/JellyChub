@@ -830,6 +830,10 @@ export default function RequestsScreen() {
     ? hasPermission(user.permissions, JELLYSEERR_PERMISSIONS.MANAGE_USERS)
     : false;
 
+  const isAdmin = user
+    ? hasPermission(user.permissions, JELLYSEERR_PERMISSIONS.ADMIN)
+    : false;
+
   const stats = useMemo(() => {
     const all = allRequests?.pages.flatMap((p) => p.results) ?? [];
     const pending = all.filter((r) => r.status === REQUEST_STATUS.PENDING).length;
@@ -853,7 +857,8 @@ export default function RequestsScreen() {
     { id: 'discover', label: 'Discover', visible: true },
     { id: 'requests', label: 'Requests', visible: true, badge: pendingCount > 0 && canManageRequests ? pendingCount : undefined },
     { id: 'users', label: 'Users', visible: canManageUsers },
-  ], [canManageRequests, canManageUsers, pendingCount]);
+    { id: 'admin', label: 'Admin', visible: isAdmin },
+  ], [canManageRequests, canManageUsers, pendingCount, isAdmin]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);

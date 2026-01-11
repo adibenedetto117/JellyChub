@@ -626,6 +626,28 @@ const ManualSearchModal = memo(function ManualSearchModal({
                 </ScrollView>
               </View>
 
+              <View style={styles.filterGroup}>
+                <Text style={styles.filterLabel}>Size</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
+                  {sizeRangeCounts.map((range) => (
+                    <Pressable
+                      key={range.label}
+                      style={[styles.filterChip, sizeFilter === range.label && styles.filterChipActive]}
+                      onPress={() => setSizeFilter(range.label)}
+                    >
+                      <Text style={[styles.filterChipText, sizeFilter === range.label && styles.filterChipTextActive]}>
+                        {range.label}
+                      </Text>
+                      <View style={[styles.filterChipCount, sizeFilter === range.label && styles.filterChipCountActive]}>
+                        <Text style={[styles.filterChipCountText, sizeFilter === range.label && styles.filterChipCountTextActive]}>
+                          {range.count}
+                        </Text>
+                      </View>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              </View>
+
               <View style={styles.sortSection}>
                 <Text style={styles.filterLabel}>Sort By</Text>
                 <View style={styles.sortOptions}>
@@ -677,6 +699,7 @@ const ManualSearchModal = memo(function ManualSearchModal({
                   onPress={() => {
                     setIndexerFilter('All');
                     setQualityFilter('All');
+                    setSizeFilter('All');
                     setHideRejected(false);
                     setMinSeeders(0);
                   }}
