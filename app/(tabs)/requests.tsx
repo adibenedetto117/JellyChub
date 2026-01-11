@@ -51,9 +51,128 @@ function isItemInLibrary(item: JellyseerrDiscoverItem): boolean {
   return status === MEDIA_STATUS.AVAILABLE || status === MEDIA_STATUS.PARTIALLY_AVAILABLE;
 }
 
-type TabType = 'discover' | 'requests' | 'users';
+type TabType = 'discover' | 'requests' | 'users' | 'admin';
 type FilterType = 'all' | 'pending' | 'approved' | 'available';
 type UserTabType = 'users' | 'import';
+
+function SettingsSection({
+  title,
+  children,
+  delay = 0,
+}: {
+  title: string;
+  children: React.ReactNode;
+  delay?: number;
+}) {
+  return (
+    <Animated.View entering={FadeInDown.delay(delay).duration(400)} style={styles.settingsSection}>
+      <Text style={styles.settingsSectionTitle}>{title}</Text>
+      {children}
+    </Animated.View>
+  );
+}
+
+function SettingsCard({
+  icon,
+  iconColor,
+  title,
+  subtitle,
+  value,
+  action,
+  onAction,
+  isLoading,
+}: {
+  icon: string;
+  iconColor?: string;
+  title: string;
+  subtitle?: string;
+  value?: string | number;
+  action?: string;
+  onAction?: () => void;
+  isLoading?: boolean;
+}) {
+  return (
+    <View style={styles.settingsCard}>
+      <View style={[styles.settingsCardIcon, { backgroundColor: `${iconColor || JELLYSEERR_PURPLE}20` }]}>
+        <Ionicons name={icon as any} size={20} color={iconColor || JELLYSEERR_PURPLE} />
+      </View>
+      <View style={styles.settingsCardContent}>
+        <Text style={styles.settingsCardTitle}>{title}</Text>
+        {subtitle && <Text style={styles.settingsCardSubtitle}>{subtitle}</Text>}
+      </View>
+      {value !== undefined && (
+        <Text style={styles.settingsCardValue}>{value}</Text>
+      )}
+      {action && onAction && (
+        <Pressable onPress={onAction} disabled={isLoading} style={styles.settingsCardAction}>
+          {isLoading ? (
+            <ActivityIndicator size="small" color={JELLYSEERR_PURPLE} />
+          ) : (
+            <Text style={styles.settingsCardActionText}>{action}</Text>
+          )}
+        </Pressable>
+      )}
+    </View>
+  );
+}
+
+function JobCard({
+  job,
+  onRun,
+  onCancel,
+  isRunning,
+}: {
+  job: JellyseerrJob;
+  onRun: () => void;
+  onCancel: () => void;
+  isRunning: boolean;
+}) {
+  const nextRun = new Date(job.nextExecutionTime);
+  const isValidDate = !isNaN(nextRun.getTime());
+  const nextRunText = isValidDate
+    ? nextRun.toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })
+    : 'N/A';
+
+  return (
+    <View style={styles.jobCard}>
+      <View style={styles.jobCardHeader}>
+        <View style={[styles.jobCardIcon, { backgroundColor: job.running ? '#22c55e20' : `${JELLYSEERR_PURPLE}20` }]}>
+          <Ionicons
+            name={job.running ? 'sync' : 'time-outline'}
+            size={18}
+            color={job.running ? '#22c55e' : JELLYSEERR_PURPLE}
+          />
+        </View>
+        <View style={styles.jobCardContent}>
+          <Text style={styles.jobCardTitle}>{job.name}</Text>
+          <Text style={styles.jobCardSubtitle}>
+            {job.running ? 'Running...' : `Next: ${nextRunText}`}
+          </Text>
+        </View>
+        <Pressable
+          onPress={job.running ? onCancel : onRun}
+          disabled={isRunning}
+          style={[styles.jobCardButton, job.running && styles.jobCardButtonCancel]}
+        >
+          {isRunning ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <>
+              <Ionicons
+                name={job.running ? 'stop' : 'play'}
+                size={14}
+                color="#fff"
+              />
+              <Text style={styles.jobCardButtonText}>
+                {job.running ? 'Stop' : 'Run'}
+              </Text>
+            </>
+          )}
+        </Pressable>
+      </View>
+    </View>
+  );
+}
 
 interface PermissionToggle {
   key: keyof typeof JELLYSEERR_PERMISSIONS;

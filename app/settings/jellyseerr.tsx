@@ -383,19 +383,6 @@ export default function JellyseerrSettingsScreen() {
               <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.3)" />
             </Pressable>
 
-            <Pressable style={styles.navButton} onPress={() => router.push('/settings/jellyseerr-users' as any)}>
-              <View style={styles.navButtonContent}>
-                <View style={[styles.navButtonIcon, { backgroundColor: `${JELLYSEERR_PURPLE}20` }]}>
-                  <Ionicons name="people-outline" size={18} color={JELLYSEERR_PURPLE} />
-                </View>
-                <View style={styles.navButtonText}>
-                  <Text style={styles.navButtonTitle}>User Management</Text>
-                  <Text style={styles.navButtonSubtitle}>Manage users, permissions, and quotas</Text>
-                </View>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.3)" />
-            </Pressable>
-
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Advanced</Text>
             </View>

@@ -462,6 +462,7 @@ const ManualSearchModal = memo(function ManualSearchModal({
   const [sortBy, setSortBy] = useState<SortReleaseType>('seeders');
   const [hideRejected, setHideRejected] = useState(false);
   const [minSeeders, setMinSeeders] = useState(0);
+  const [sizeFilter, setSizeFilter] = useState('All');
 
   if (!movie) return null;
 
@@ -495,12 +496,22 @@ const ManualSearchModal = memo(function ManualSearchModal({
     ];
   }, [releases]);
 
+  const sizeRangeCounts = useMemo(() => {
+    return SIZE_RANGES.map((range) => {
+      const count = releases.filter((r) => r.size >= range.min && r.size < range.max).length;
+      return { ...range, count };
+    });
+  }, [releases]);
+
   const filteredAndSortedReleases = useMemo(() => {
+    const selectedSizeRange = SIZE_RANGES.find((r) => r.label === sizeFilter) || SIZE_RANGES[0];
+
     let result = releases.filter((r) => {
       if (indexerFilter !== 'All' && r.indexer !== indexerFilter) return false;
       if (qualityFilter !== 'All' && r.quality?.quality?.name !== qualityFilter) return false;
       if (hideRejected && r.rejected) return false;
       if (minSeeders > 0 && (r.seeders ?? 0) < minSeeders) return false;
+      if (sizeFilter !== 'All' && (r.size < selectedSizeRange.min || r.size >= selectedSizeRange.max)) return false;
       return true;
     });
 
@@ -526,7 +537,7 @@ const ManualSearchModal = memo(function ManualSearchModal({
     });
 
     return result;
-  }, [releases, indexerFilter, qualityFilter, sortBy, hideRejected, minSeeders]);
+  }, [releases, indexerFilter, qualityFilter, sortBy, hideRejected, minSeeders, sizeFilter]);
 
   const totalResults = releases.length;
   const filteredCount = filteredAndSortedReleases.length;
