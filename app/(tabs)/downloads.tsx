@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo, useCallback, memo } from 'react';
-import { View, Text, FlatList, Pressable, Alert, StyleSheet, RefreshControl, ScrollView } from 'react-native';
+import { useState, useEffect, useMemo, useCallback, memo, useRef } from 'react';
+import { View, Text, FlatList, Pressable, Alert, StyleSheet, RefreshControl, ScrollView, TextInput } from 'react-native';
 import { SafeAreaView } from '@/providers';
 import { router } from 'expo-router';
 import Animated, { FadeIn, FadeOut, Layout, useSharedValue, useAnimatedStyle, withSpring } from 'react-native-reanimated';
@@ -9,7 +9,6 @@ import { useDownloadStore, useSettingsStore } from '@/stores';
 import { downloadManager } from '@/services';
 import { formatBytes, ticksToMs, formatDuration, getDisplayName, getDisplayImageUrl } from '@/utils';
 import { CachedImage } from '@/components/ui/CachedImage';
-import { SearchButton } from '@/components/ui';
 import { getImageUrl } from '@/api';
 import { colors } from '@/theme';
 import type { DownloadItem } from '@/types';
@@ -685,9 +684,31 @@ export default function DownloadsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<ContentTab>('movies');
   const [isPaused, setIsPaused] = useState(downloadManager.getIsPaused());
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
+  const searchInputRef = useRef<TextInput>(null);
   const { downloads, usedStorage, maxStorage, recalculateUsedStorage } = useDownloadStore();
   const accentColor = useSettingsStore((s) => s.accentColor);
   const hideMedia = useSettingsStore((s) => s.hideMedia);
+
+  const filterDownloadsBySearch = useCallback((items: DownloadItem[], query: string): DownloadItem[] => {
+    if (!query.trim()) return items;
+    const lowerQuery = query.toLowerCase();
+    return items.filter((item) => {
+      const name = item.item.Name?.toLowerCase() || '';
+      const seriesName = item.item.SeriesName?.toLowerCase() || '';
+      const albumArtist = (item.item as any).AlbumArtist?.toLowerCase() || '';
+      const album = (item.item as any).Album?.toLowerCase() || '';
+      const artists = ((item.item as any).Artists || []).join(' ').toLowerCase();
+      return (
+        name.includes(lowerQuery) ||
+        seriesName.includes(lowerQuery) ||
+        albumArtist.includes(lowerQuery) ||
+        album.includes(lowerQuery) ||
+        artists.includes(lowerQuery)
+      );
+    });
+  }, []);
 
   useEffect(() => {
     recalculateUsedStorage();
@@ -702,14 +723,17 @@ export default function DownloadsScreen() {
     return { activeDownloads: active, completedDownloads: completed };
   }, [downloads]);
 
-  // Categorize completed downloads by type
+  const filteredCompletedDownloads = useMemo(() => {
+    return filterDownloadsBySearch(completedDownloads, searchQuery);
+  }, [completedDownloads, searchQuery, filterDownloadsBySearch]);
+
   const { movies, tvShows, music, books } = useMemo(() => {
     const movieItems: DownloadItem[] = [];
     const tvItems: DownloadItem[] = [];
     const musicItems: DownloadItem[] = [];
     const bookItems: DownloadItem[] = [];
 
-    completedDownloads.forEach((item) => {
+    filteredCompletedDownloads.forEach((item) => {
       const type = item.item.Type;
       if (type === 'Movie') {
         movieItems.push(item);
@@ -728,7 +752,7 @@ export default function DownloadsScreen() {
       music: musicItems,
       books: bookItems,
     };
-  }, [completedDownloads]);
+  }, [filteredCompletedDownloads]);
 
   // Group TV shows by series and season
   const seriesGroups = useMemo((): SeriesGroup[] => {
@@ -913,17 +937,60 @@ export default function DownloadsScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header */}
       <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <Text style={styles.headerTitle}>{t('downloads.title')}</Text>
-        </View>
-        <View style={styles.headerRight}>
-          {downloads.length > 0 && (
-            <Pressable onPress={handleClearAll} style={styles.clearButton}>
-              <Text style={styles.clearText}>{t('downloads.clearAll')}</Text>
+        {isSearching ? (
+          <View style={styles.searchContainer}>
+            <View style={[styles.searchInputContainer, { borderColor: accentColor }]}>
+              <Ionicons name="search" size={18} color="rgba(255,255,255,0.5)" />
+              <TextInput
+                ref={searchInputRef}
+                style={styles.searchInput}
+                placeholder={t('downloads.searchPlaceholder')}
+                placeholderTextColor="rgba(255,255,255,0.4)"
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                autoCapitalize="none"
+                autoCorrect={false}
+                selectionColor={accentColor}
+              />
+              {searchQuery.length > 0 && (
+                <Pressable onPress={() => setSearchQuery('')} hitSlop={8}>
+                  <Ionicons name="close-circle" size={18} color="rgba(255,255,255,0.4)" />
+                </Pressable>
+              )}
+            </View>
+            <Pressable
+              onPress={() => {
+                setIsSearching(false);
+                setSearchQuery('');
+              }}
+              style={styles.cancelButton}
+            >
+              <Text style={[styles.cancelText, { color: accentColor }]}>{t('common.cancel')}</Text>
             </Pressable>
-          )}
-          <SearchButton />
-        </View>
+          </View>
+        ) : (
+          <>
+            <View style={styles.headerLeft}>
+              <Text style={styles.headerTitle}>{t('downloads.title')}</Text>
+            </View>
+            <View style={styles.headerRight}>
+              {downloads.length > 0 && (
+                <Pressable onPress={handleClearAll} style={styles.clearButton}>
+                  <Text style={styles.clearText}>{t('downloads.clearAll')}</Text>
+                </Pressable>
+              )}
+              <Pressable
+                onPress={() => {
+                  setIsSearching(true);
+                  setTimeout(() => searchInputRef.current?.focus(), 100);
+                }}
+                style={styles.searchButton}
+              >
+                <Ionicons name="search" size={20} color={accentColor} />
+              </Pressable>
+            </View>
+          </>
+        )}
       </View>
 
       {/* Storage Bar */}
@@ -986,7 +1053,7 @@ export default function DownloadsScreen() {
           />
 
           {/* Content Type Tabs */}
-          {completedDownloads.length > 0 && (
+          {filteredCompletedDownloads.length > 0 ? (
             <>
               <ScrollView
                 horizontal
@@ -1030,7 +1097,13 @@ export default function DownloadsScreen() {
               {/* Content Section */}
               {renderContent()}
             </>
-          )}
+          ) : searchQuery.trim() && completedDownloads.length > 0 ? (
+            <View style={styles.noSearchResults}>
+              <Ionicons name="search-outline" size={48} color="rgba(255,255,255,0.2)" />
+              <Text style={styles.noSearchResultsText}>{t('common.noResults')}</Text>
+              <Text style={styles.noSearchResultsSubtext}>"{searchQuery}"</Text>
+            </View>
+          ) : null}
 
           <View style={styles.bottomSpacer} />
         </ScrollView>
@@ -1076,6 +1149,43 @@ const styles = StyleSheet.create({
     color: '#ef4444',
     fontSize: 13,
     fontWeight: '600',
+  },
+  searchButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surface.default,
+  },
+  searchContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  searchInputContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface.default,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    gap: 8,
+    borderWidth: 1,
+  },
+  searchInput: {
+    flex: 1,
+    color: '#fff',
+    fontSize: 16,
+    paddingVertical: 10,
+  },
+  cancelButton: {
+    paddingVertical: 8,
+  },
+  cancelText: {
+    fontSize: 15,
+    fontWeight: '500',
   },
   storageCard: {
     marginHorizontal: 16,
@@ -1171,6 +1281,20 @@ const styles = StyleSheet.create({
   queueButtonText: {
     fontSize: 12,
     fontWeight: '600',
+  },
+  noSearchResults: {
+    alignItems: 'center',
+    paddingVertical: 60,
+  },
+  noSearchResultsText: {
+    color: 'rgba(255,255,255,0.4)',
+    fontSize: 16,
+    marginTop: 12,
+  },
+  noSearchResultsSubtext: {
+    color: 'rgba(255,255,255,0.3)',
+    fontSize: 14,
+    marginTop: 4,
   },
   // Tabs
   tabsContainer: {

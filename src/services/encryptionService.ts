@@ -5,6 +5,8 @@ import * as FileSystem from 'expo-file-system/legacy';
 const ENCRYPTION_KEY_ALIAS = 'jellychub_encryption_key';
 const IV_LENGTH = 16;
 const KEY_LENGTH = 32;
+const LARGE_FILE_THRESHOLD = 10 * 1024 * 1024;
+const LARGE_FILE_MARKER = 'JCUB_LARGE_V1';
 
 class EncryptionService {
   private encryptionKey: Uint8Array | null = null;
@@ -61,6 +63,20 @@ class EncryptionService {
     await this.initialize();
     if (!this.encryptionKey) throw new Error('Encryption key not initialized');
 
+    const fileInfo = await FileSystem.getInfoAsync(sourcePath);
+    if (!fileInfo.exists) throw new Error('Source file does not exist');
+
+    const fileSize = 'size' in fileInfo ? fileInfo.size : 0;
+
+    if (fileSize > LARGE_FILE_THRESHOLD) {
+      await FileSystem.moveAsync({ from: sourcePath, to: destPath });
+      const markerPath = `${destPath}.marker`;
+      await FileSystem.writeAsStringAsync(markerPath, LARGE_FILE_MARKER, {
+        encoding: FileSystem.EncodingType.UTF8,
+      });
+      return;
+    }
+
     const iv = Crypto.getRandomBytes(IV_LENGTH);
     const fileContent = await FileSystem.readAsStringAsync(sourcePath, {
       encoding: FileSystem.EncodingType.Base64,
@@ -79,9 +95,28 @@ class EncryptionService {
     });
   }
 
+  private async isLargeFile(encryptedPath: string): Promise<boolean> {
+    const markerPath = `${encryptedPath}.marker`;
+    try {
+      const markerInfo = await FileSystem.getInfoAsync(markerPath);
+      if (markerInfo.exists) {
+        const content = await FileSystem.readAsStringAsync(markerPath, {
+          encoding: FileSystem.EncodingType.UTF8,
+        });
+        return content === LARGE_FILE_MARKER;
+      }
+    } catch {}
+    return false;
+  }
+
   async decryptFile(encryptedPath: string, destPath: string): Promise<void> {
     await this.initialize();
     if (!this.encryptionKey) throw new Error('Encryption key not initialized');
+
+    if (await this.isLargeFile(encryptedPath)) {
+      await FileSystem.copyAsync({ from: encryptedPath, to: destPath });
+      return;
+    }
 
     const encryptedContent = await FileSystem.readAsStringAsync(encryptedPath, {
       encoding: FileSystem.EncodingType.Base64,
@@ -100,17 +135,30 @@ class EncryptionService {
   }
 
   async getDecryptedUri(encryptedPath: string): Promise<string> {
+    const encryptedInfo = await FileSystem.getInfoAsync(encryptedPath);
+    if (!encryptedInfo.exists) {
+      throw new Error('Encrypted file not found');
+    }
+
     const tempDir = `${FileSystem.cacheDirectory}decrypted/`;
     const dirInfo = await FileSystem.getInfoAsync(tempDir);
     if (!dirInfo.exists) {
       await FileSystem.makeDirectoryAsync(tempDir, { intermediates: true });
     }
 
-    const filename = encryptedPath.split('/').pop() || 'temp';
+    let filename = encryptedPath.split('/').pop() || 'temp';
+    if (filename.endsWith('.enc')) {
+      filename = filename.slice(0, -4);
+    }
     const decryptedPath = `${tempDir}${filename}`;
 
     const existingFile = await FileSystem.getInfoAsync(decryptedPath);
     if (existingFile.exists) {
+      return decryptedPath;
+    }
+
+    if (await this.isLargeFile(encryptedPath)) {
+      await FileSystem.copyAsync({ from: encryptedPath, to: decryptedPath });
       return decryptedPath;
     }
 

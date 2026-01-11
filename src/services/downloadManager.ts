@@ -206,11 +206,10 @@ class DownloadManager {
       await encryptionService.encryptFile(result.uri, encryptedPath);
       await FileSystem.deleteAsync(result.uri, { idempotent: true });
 
-      // Get file size from the encrypted file
       const fileInfo = await FileSystem.getInfoAsync(encryptedPath);
       const actualFileSize = fileInfo.exists && 'size' in fileInfo ? fileInfo.size : download.totalBytes;
 
-      store.completeDownload(downloadId, encryptedPath);
+      store.completeDownload(downloadId, encryptedPath, actualFileSize);
 
       // Build rich notification info
       const itemType = item.Type || 'Media';
@@ -307,6 +306,7 @@ class DownloadManager {
     if (download?.localPath) {
       try {
         await FileSystem.deleteAsync(download.localPath, { idempotent: true });
+        await FileSystem.deleteAsync(`${download.localPath}.marker`, { idempotent: true });
       } catch {
       }
     }
@@ -321,6 +321,7 @@ class DownloadManager {
     if (download?.localPath) {
       try {
         await FileSystem.deleteAsync(download.localPath, { idempotent: true });
+        await FileSystem.deleteAsync(`${download.localPath}.marker`, { idempotent: true });
       } catch {
       }
     }

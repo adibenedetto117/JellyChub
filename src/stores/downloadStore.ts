@@ -21,7 +21,7 @@ interface DownloadState {
     status: DownloadItem['status'],
     error?: string
   ) => void;
-  completeDownload: (id: string, localPath: string) => void;
+  completeDownload: (id: string, localPath: string, actualFileSize?: number) => void;
   removeDownload: (id: string) => void;
   pauseDownload: (id: string) => void;
   resumeDownload: (id: string) => void;
@@ -107,12 +107,11 @@ export const useDownloadStore = create<DownloadState>()(
               : state.activeDownloadId,
         })),
 
-      completeDownload: (id, localPath) =>
+      completeDownload: (id, localPath, actualFileSize) =>
         set((state) => {
           const download = state.downloads.find((d) => d.id === id);
-          const newUsedStorage = download
-            ? state.usedStorage + download.totalBytes
-            : state.usedStorage;
+          const fileSize = actualFileSize ?? download?.totalBytes ?? 0;
+          const newUsedStorage = state.usedStorage + fileSize;
 
           return {
             downloads: state.downloads.map((d) =>
@@ -122,7 +121,8 @@ export const useDownloadStore = create<DownloadState>()(
                     status: 'completed' as const,
                     localPath,
                     progress: 100,
-                    downloadedBytes: d.totalBytes,
+                    totalBytes: fileSize,
+                    downloadedBytes: fileSize,
                     completedAt: new Date().toISOString(),
                   }
                 : d
