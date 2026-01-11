@@ -1,10 +1,11 @@
-import { View, Text, Pressable, StyleSheet, Dimensions, PanResponder } from 'react-native';
-import { memo, useState, useRef, useCallback, useEffect, useMemo } from 'react';
+import { View, Text, Pressable, StyleSheet, Dimensions } from 'react-native';
+import { memo, useState, useRef, useCallback, useEffect } from 'react';
 import { Image } from 'expo-image';
 import Animated, {
   FadeIn,
   FadeOut,
 } from 'react-native-reanimated';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { getImageUrl } from '@/api';
@@ -93,21 +94,18 @@ export const HeroSpotlight = memo(function HeroSpotlight({ items, onItemPress, o
     startAutoScroll();
   }, [displayItems.length, startAutoScroll]);
 
-  const panResponder = useMemo(() => PanResponder.create({
-    onStartShouldSetPanResponder: () => false,
-    onMoveShouldSetPanResponder: (_, gestureState) => {
-      // Only respond to horizontal swipes
-      return Math.abs(gestureState.dx) > Math.abs(gestureState.dy) && Math.abs(gestureState.dx) > 10;
-    },
-    onPanResponderRelease: (_, gestureState) => {
-      const SWIPE_THRESHOLD = 50;
-      if (gestureState.dx < -SWIPE_THRESHOLD) {
+  const SWIPE_THRESHOLD = 50;
+  const panGesture = Gesture.Pan()
+    .activeOffsetX([-10, 10])
+    .failOffsetY([-20, 20])
+    .onEnd((event) => {
+      if (event.translationX < -SWIPE_THRESHOLD) {
         handleSwipe('left');
-      } else if (gestureState.dx > SWIPE_THRESHOLD) {
+      } else if (event.translationX > SWIPE_THRESHOLD) {
         handleSwipe('right');
       }
-    },
-  }), [handleSwipe]);
+    })
+    .runOnJS(true);
 
   const handleDotPress = useCallback((index: number) => {
     setSlideDirection(index > activeIndex ? 'right' : 'left');
@@ -159,11 +157,11 @@ export const HeroSpotlight = memo(function HeroSpotlight({ items, onItemPress, o
   const exitingAnimation = FadeOut.duration(300);
 
   return (
-    <Pressable
-      style={[styles.container, { height: heroHeight }]}
-      onPress={handlePress}
-      {...panResponder.panHandlers}
-    >
+    <GestureDetector gesture={panGesture}>
+      <Pressable
+        style={[styles.container, { height: heroHeight }]}
+        onPress={handlePress}
+      >
       <Animated.View
         key={currentItem.Id}
         entering={enteringAnimation}
@@ -255,7 +253,8 @@ export const HeroSpotlight = memo(function HeroSpotlight({ items, onItemPress, o
           </View>
         )}
       </View>
-    </Pressable>
+      </Pressable>
+    </GestureDetector>
   );
 });
 

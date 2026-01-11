@@ -27,6 +27,7 @@ import { ContinueWatching } from '@/components/media/ContinueWatching';
 import { NextUpRow } from '@/components/media/NextUpRow';
 import { HeroSpotlight } from '@/components/media/HeroSpotlight';
 import { AnimatedGradient } from '@/components/ui';
+import { AnnouncementBanner } from '@/components/ui/AnnouncementBanner';
 import { SkeletonContinueWatching, SkeletonRow, SkeletonHero } from '@/components/ui/Skeleton';
 import { TVHomeScreen } from '@/components/tv';
 import type { BaseItem, Library, Episode, CollectionType } from '@/types/jellyfin';
@@ -221,7 +222,19 @@ export default function HomeScreen() {
     }
   }, []);
 
-  const handleEpisodePress = useCallback((item: Episode) => {
+  const handleContinueWatchingPress = useCallback((item: BaseItem) => {
+    const type = item.Type?.toLowerCase();
+    if (type === 'episode') {
+      const episode = item as Episode;
+      if (episode.SeriesId) {
+        navigateToDetails('series', episode.SeriesId, '/(tabs)/home');
+      }
+    } else if (type === 'movie') {
+      navigateToDetails('movie', item.Id, '/(tabs)/home');
+    }
+  }, []);
+
+  const handleNextUpPress = useCallback((item: Episode) => {
     if (item.SeriesId) {
       navigateToDetails('series', item.SeriesId, '/(tabs)/home');
     }
@@ -238,25 +251,6 @@ export default function HomeScreen() {
     }
   }, []);
 
-  // Resume playback for Continue Watching items - goes directly to player
-  const handleResumePress = useCallback((item: BaseItem) => {
-    const type = item.Type?.toLowerCase();
-    if (type === 'movie' || type === 'episode') {
-      router.push(`/player/video?itemId=${item.Id}&from=${encodeURIComponent('/(tabs)/home')}`);
-    } else if (type === 'audio') {
-      router.push(`/player/music?itemId=${item.Id}`);
-    } else if (type === 'audiobook') {
-      router.push(`/player/audiobook?itemId=${item.Id}`);
-    } else {
-      // Fallback to details for unknown types
-      handleItemPress(item);
-    }
-  }, [handleItemPress]);
-
-  // Play next episode - goes directly to player
-  const handleNextEpisodePlay = useCallback((item: Episode) => {
-    router.push(`/player/video?itemId=${item.Id}&from=${encodeURIComponent('/(tabs)/home')}`);
-  }, []);
 
   const heroItems = useMemo(() => {
     const movieItems = libraryLatestMedia
@@ -362,31 +356,14 @@ export default function HomeScreen() {
           </SafeAreaView>
         )}
 
-        {showHero && (
-          <View style={[styles.quickActions, { paddingHorizontal: horizontalPadding }]}>
-            <Pressable
-              style={styles.quickActionButton}
-              onPress={() => router.push('/(tabs)/library')}
-            >
-              <Ionicons name="library-outline" size={18} color="rgba(255,255,255,0.8)" />
-              <Text style={styles.quickActionText}>{t('nav.library')}</Text>
-            </Pressable>
-            <Pressable
-              style={styles.quickActionButton}
-              onPress={() => router.push('/(tabs)/favorites')}
-            >
-              <Ionicons name="heart-outline" size={18} color="rgba(255,255,255,0.8)" />
-              <Text style={styles.quickActionText}>{t('nav.favorites')}</Text>
-            </Pressable>
-          </View>
-        )}
+        <AnnouncementBanner />
 
         {isLoadingResume && !resumeItems ? (
           <SkeletonContinueWatching count={2} />
         ) : (resumeItems?.Items?.length ?? 0) > 0 ? (
           <ContinueWatching
             items={resumeItems?.Items ?? []}
-            onItemPress={handleResumePress}
+            onItemPress={handleContinueWatchingPress}
           />
         ) : null}
 
@@ -395,7 +372,7 @@ export default function HomeScreen() {
         ) : (nextUp?.Items?.length ?? 0) > 0 ? (
           <NextUpRow
             items={nextUp?.Items ?? []}
-            onItemPress={handleNextEpisodePlay}
+            onItemPress={handleNextUpPress}
           />
         ) : null}
 
@@ -441,6 +418,7 @@ export default function HomeScreen() {
             if (!data || data.length === 0) return null;
 
             const useSquare = shouldUseSquareVariant(group.collectionType);
+            const primaryLibraryId = group.libraries[0]?.Id;
 
             return (
               <MediaRow
@@ -448,7 +426,7 @@ export default function HomeScreen() {
                 title={getLatestSectionTitle(group)}
                 items={data}
                 onItemPress={handleItemPress}
-                onSeeAllPress={() => router.push('/(tabs)/library')}
+                onSeeAllPress={primaryLibraryId ? () => router.push(`/(tabs)/library/${primaryLibraryId}`) : undefined}
                 variant={useSquare ? 'square' : undefined}
               />
             );
@@ -504,24 +482,5 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 20,
     backgroundColor: 'rgba(255,255,255,0.1)',
-  },
-  quickActions: {
-    flexDirection: 'row',
-    gap: 10,
-    marginBottom: 20,
-  },
-  quickActionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 20,
-  },
-  quickActionText: {
-    color: 'rgba(255,255,255,0.8)',
-    fontSize: 13,
-    fontWeight: '600',
   },
 });
