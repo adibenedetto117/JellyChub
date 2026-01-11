@@ -351,8 +351,8 @@ export default function EpubReaderScreen() {
         if (isStyleChangingRef.current) {
           return;
         }
-        if (data.progress !== undefined && data.progress > 0.01) {
-          if (data.cfi) setCurrentCfi(data.cfi);
+        if (data.cfi) setCurrentCfi(data.cfi);
+        if (data.progress !== undefined && data.progress >= 0) {
           const progressValue = Math.round(data.progress * 100);
           setProgress(progressValue / 100);
           if (itemId) {
@@ -731,8 +731,44 @@ export default function EpubReaderScreen() {
         }
       } catch(e) { log('goToHref error: ' + e.message); }
     }
-    function nextPage() { try { if(rendition) rendition.next(); } catch(e) { log('nextPage error: ' + e.message); } }
-    function prevPage() { try { if(rendition) rendition.prev(); } catch(e) { log('prevPage error: ' + e.message); } }
+    function nextPage() {
+      try {
+        if (!rendition || !book) return;
+        var currentLocation = rendition.currentLocation();
+        var currentCfi = currentLocation && currentLocation.start ? currentLocation.start.cfi : null;
+        rendition.next().then(function() {
+          var newLocation = rendition.currentLocation();
+          var newCfi = newLocation && newLocation.start ? newLocation.start.cfi : null;
+          if (currentCfi && newCfi && currentCfi === newCfi) {
+            var currentSection = book.spine.get(currentLocation.start.href);
+            if (currentSection && currentSection.next()) {
+              var nextSection = currentSection.next();
+              log('Advancing to next chapter: ' + nextSection.href);
+              rendition.display(nextSection.href);
+            }
+          }
+        });
+      } catch(e) { log('nextPage error: ' + e.message); }
+    }
+    function prevPage() {
+      try {
+        if (!rendition || !book) return;
+        var currentLocation = rendition.currentLocation();
+        var currentCfi = currentLocation && currentLocation.start ? currentLocation.start.cfi : null;
+        rendition.prev().then(function() {
+          var newLocation = rendition.currentLocation();
+          var newCfi = newLocation && newLocation.start ? newLocation.start.cfi : null;
+          if (currentCfi && newCfi && currentCfi === newCfi) {
+            var currentSection = book.spine.get(currentLocation.start.href);
+            if (currentSection && currentSection.prev()) {
+              var prevSection = currentSection.prev();
+              log('Going to previous chapter: ' + prevSection.href);
+              rendition.display(prevSection.href);
+            }
+          }
+        });
+      } catch(e) { log('prevPage error: ' + e.message); }
+    }
     function goToPercent(percent) {
       try {
         log('goToPercent called: ' + (percent * 100) + '%');
@@ -797,17 +833,24 @@ export default function EpubReaderScreen() {
       try {
         if(!book) { msg("styleChangeComplete", {}); return; }
 
-        var cfiToRestore = preservedCfi || lastKnownCfi;
+        var cfiToRestore = null;
         var percentToRestore = lastKnownPercent;
 
-        if (!cfiToRestore && rendition) {
+        if (rendition) {
           var currentLoc = rendition.currentLocation();
           if (currentLoc && currentLoc.start && currentLoc.start.cfi) {
             cfiToRestore = currentLoc.start.cfi;
             if (locationsGenerated && book.locations) {
-              percentToRestore = book.locations.percentageFromCfi(cfiToRestore) || 0;
+              percentToRestore = book.locations.percentageFromCfi(cfiToRestore) || lastKnownPercent;
             }
           }
+        }
+
+        if (!cfiToRestore && preservedCfi && preservedCfi.length > 0) {
+          cfiToRestore = preservedCfi;
+        }
+        if (!cfiToRestore && lastKnownCfi) {
+          cfiToRestore = lastKnownCfi;
         }
 
         log('setReaderTheme: preserving CFI=' + cfiToRestore + ' percent=' + percentToRestore);
@@ -858,9 +901,14 @@ export default function EpubReaderScreen() {
           } catch(e) {}
         });
 
-        rendition.display(cfiToRestore || undefined).then(function() {
+        var displayTarget = cfiToRestore;
+        if (!displayTarget && percentToRestore > 0 && locationsGenerated && book.locations) {
+          displayTarget = book.locations.cfiFromPercentage(percentToRestore);
+        }
+
+        rendition.display(displayTarget || undefined).then(function() {
           isStyleChangeNavigation = false;
-          var finalCfi = cfiToRestore;
+          var finalCfi = displayTarget;
           var finalPercent = percentToRestore;
           if (rendition.location && rendition.location.start) {
             finalCfi = rendition.location.start.cfi;
@@ -875,6 +923,19 @@ export default function EpubReaderScreen() {
         }).catch(function(e) {
           log('setReaderTheme display error: ' + e.message);
           isStyleChangeNavigation = false;
+          if (percentToRestore > 0 && locationsGenerated && book.locations) {
+            var fallbackCfi = book.locations.cfiFromPercentage(percentToRestore);
+            if (fallbackCfi) {
+              rendition.display(fallbackCfi).then(function() {
+                lastKnownCfi = fallbackCfi;
+                lastKnownPercent = percentToRestore;
+                msg("styleChangeComplete", {cfi: fallbackCfi, progress: percentToRestore});
+              }).catch(function() {
+                msg("styleChangeComplete", {cfi: cfiToRestore, progress: percentToRestore});
+              });
+              return;
+            }
+          }
           msg("styleChangeComplete", {cfi: cfiToRestore, progress: percentToRestore});
         });
 
@@ -889,17 +950,24 @@ export default function EpubReaderScreen() {
         currentFontSize = size;
         if(!book) { msg("styleChangeComplete", {}); return; }
 
-        var cfiToRestore = preservedCfi || lastKnownCfi;
+        var cfiToRestore = null;
         var percentToRestore = lastKnownPercent;
 
-        if (!cfiToRestore && rendition) {
+        if (rendition) {
           var currentLoc = rendition.currentLocation();
           if (currentLoc && currentLoc.start && currentLoc.start.cfi) {
             cfiToRestore = currentLoc.start.cfi;
             if (locationsGenerated && book.locations) {
-              percentToRestore = book.locations.percentageFromCfi(cfiToRestore) || 0;
+              percentToRestore = book.locations.percentageFromCfi(cfiToRestore) || lastKnownPercent;
             }
           }
+        }
+
+        if (!cfiToRestore && preservedCfi && preservedCfi.length > 0) {
+          cfiToRestore = preservedCfi;
+        }
+        if (!cfiToRestore && lastKnownCfi) {
+          cfiToRestore = lastKnownCfi;
         }
 
         log('setFontSize: preserving CFI=' + cfiToRestore + ' percent=' + percentToRestore);
@@ -948,9 +1016,14 @@ export default function EpubReaderScreen() {
           } catch(e) {}
         });
 
-        rendition.display(cfiToRestore || undefined).then(function() {
+        var displayTarget = cfiToRestore;
+        if (!displayTarget && percentToRestore > 0 && locationsGenerated && book.locations) {
+          displayTarget = book.locations.cfiFromPercentage(percentToRestore);
+        }
+
+        rendition.display(displayTarget || undefined).then(function() {
           isStyleChangeNavigation = false;
-          var finalCfi = cfiToRestore;
+          var finalCfi = displayTarget;
           var finalPercent = percentToRestore;
           if (rendition.location && rendition.location.start) {
             finalCfi = rendition.location.start.cfi;
@@ -965,6 +1038,19 @@ export default function EpubReaderScreen() {
         }).catch(function(e) {
           log('setFontSize display error: ' + e.message);
           isStyleChangeNavigation = false;
+          if (percentToRestore > 0 && locationsGenerated && book.locations) {
+            var fallbackCfi = book.locations.cfiFromPercentage(percentToRestore);
+            if (fallbackCfi) {
+              rendition.display(fallbackCfi).then(function() {
+                lastKnownCfi = fallbackCfi;
+                lastKnownPercent = percentToRestore;
+                msg("styleChangeComplete", {cfi: fallbackCfi, progress: percentToRestore});
+              }).catch(function() {
+                msg("styleChangeComplete", {cfi: cfiToRestore, progress: percentToRestore});
+              });
+              return;
+            }
+          }
           msg("styleChangeComplete", {cfi: cfiToRestore, progress: percentToRestore});
         });
 
