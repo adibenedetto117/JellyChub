@@ -5,6 +5,8 @@ import { SafeAreaView } from '@/providers';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore, useSettingsStore } from '@/stores';
+import { useAnnouncementStore, selectActiveAnnouncements } from '@/stores/announcementStore';
+import type { Announcement } from '@/stores/announcementStore';
 import {
   getSystemInfo,
   getSessions,
@@ -34,7 +36,7 @@ import type { SystemInfo, SessionInfo, ItemCounts, ActivityLogEntry, ScheduledTa
 import { colors } from '@/theme';
 import { getImageUrl } from '@/api/client';
 
-type TabType = 'dashboard' | 'streams' | 'tasks' | 'users';
+type TabType = 'dashboard' | 'streams' | 'tasks' | 'users' | 'messages';
 
 interface ServerHealth {
   activeSessions: number;
@@ -336,11 +338,16 @@ export default function AdminScreen() {
     );
   }
 
+  const announcements = useAnnouncementStore((s) => s.announcements);
+  const addAnnouncement = useAnnouncementStore((s) => s.addAnnouncement);
+  const removeAnnouncement = useAnnouncementStore((s) => s.removeAnnouncement);
+
   const tabs: { id: TabType; label: string; badge?: number }[] = [
     { id: 'dashboard', label: 'Dashboard' },
     { id: 'streams', label: 'Streams', badge: activeSessions.length || undefined },
     { id: 'tasks', label: 'Tasks', badge: runningTasks.length || undefined },
     { id: 'users', label: 'Users' },
+    { id: 'messages', label: 'Messages', badge: announcements.length || undefined },
   ];
 
   return (
@@ -455,6 +462,16 @@ export default function AdminScreen() {
             onCreateUser={() => setShowCreateUser(true)}
             currentUserId={userId}
             hideMedia={hideMedia}
+          />
+        )}
+
+        {activeTab === 'messages' && (
+          <MessagesTab
+            announcements={announcements}
+            accentColor={accentColor}
+            onAdd={addAnnouncement}
+            onRemove={removeAnnouncement}
+            adminName={currentUser?.Name ?? 'Admin'}
           />
         )}
 
@@ -1658,4 +1675,199 @@ function formatBitrate(bitrate: number): string {
 
 function getHiddenUserName(index: number): string {
   return `User ${index + 1}`;
+}
+
+interface MessagesTabProps {
+  announcements: Announcement[];
+  accentColor: string;
+  onAdd: (announcement: Omit<Announcement, 'id' | 'createdAt'>) => void;
+  onRemove: (id: string) => void;
+  adminName: string;
+}
+
+function MessagesTab({ announcements, accentColor, onAdd, onRemove, adminName }: MessagesTabProps) {
+  const [title, setTitle] = useState('');
+  const [message, setMessage] = useState('');
+  const [type, setType] = useState<'info' | 'warning' | 'success'>('info');
+
+  const handleSend = () => {
+    if (!message.trim()) {
+      Alert.alert('Error', 'Please enter a message');
+      return;
+    }
+    onAdd({
+      title: title.trim(),
+      message: message.trim(),
+      type,
+      createdBy: adminName,
+    });
+    setTitle('');
+    setMessage('');
+    setType('info');
+    Alert.alert('Success', 'Announcement sent to all users');
+  };
+
+  const handleDelete = (id: string, msgTitle: string) => {
+    Alert.alert(
+      'Delete Announcement',
+      `Delete "${msgTitle || 'this announcement'}"?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: () => onRemove(id) },
+      ]
+    );
+  };
+
+  const typeOptions: { value: 'info' | 'warning' | 'success'; label: string; color: string }[] = [
+    { value: 'info', label: 'Info', color: '#3b82f6' },
+    { value: 'warning', label: 'Warning', color: '#f59e0b' },
+    { value: 'success', label: 'Success', color: '#22c55e' },
+  ];
+
+  return (
+    <View style={{ paddingHorizontal: 16 }}>
+      <View style={{ backgroundColor: colors.surface.default, borderRadius: 16, padding: 16, marginBottom: 16 }}>
+        <Text style={{ color: '#fff', fontSize: 17, fontWeight: '600', marginBottom: 16 }}>New Announcement</Text>
+
+        <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 13, marginBottom: 8 }}>Title (optional)</Text>
+        <TextInput
+          style={{
+            backgroundColor: colors.background.primary,
+            color: '#fff',
+            paddingHorizontal: 16,
+            paddingVertical: 12,
+            borderRadius: 8,
+            marginBottom: 16,
+            fontSize: 15,
+          }}
+          placeholder="Announcement title..."
+          placeholderTextColor="rgba(255,255,255,0.3)"
+          value={title}
+          onChangeText={setTitle}
+        />
+
+        <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 13, marginBottom: 8 }}>Message</Text>
+        <TextInput
+          style={{
+            backgroundColor: colors.background.primary,
+            color: '#fff',
+            paddingHorizontal: 16,
+            paddingVertical: 12,
+            borderRadius: 8,
+            marginBottom: 16,
+            fontSize: 15,
+            minHeight: 100,
+            textAlignVertical: 'top',
+          }}
+          placeholder="Enter your message..."
+          placeholderTextColor="rgba(255,255,255,0.3)"
+          value={message}
+          onChangeText={setMessage}
+          multiline
+        />
+
+        <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 13, marginBottom: 8 }}>Type</Text>
+        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
+          {typeOptions.map((option) => (
+            <Pressable
+              key={option.value}
+              onPress={() => setType(option.value)}
+              style={{
+                flex: 1,
+                paddingVertical: 10,
+                borderRadius: 8,
+                backgroundColor: type === option.value ? option.color : colors.background.primary,
+                alignItems: 'center',
+              }}
+            >
+              <Text
+                style={{
+                  color: type === option.value ? '#fff' : 'rgba(255,255,255,0.6)',
+                  fontWeight: '500',
+                  fontSize: 13,
+                }}
+              >
+                {option.label}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+
+        <Pressable
+          onPress={handleSend}
+          style={{
+            backgroundColor: accentColor,
+            paddingVertical: 14,
+            borderRadius: 8,
+            alignItems: 'center',
+          }}
+        >
+          <Text style={{ color: '#fff', fontWeight: '600', fontSize: 15 }}>Send Announcement</Text>
+        </Pressable>
+      </View>
+
+      <Text style={{ color: '#fff', fontWeight: '600', fontSize: 15, marginBottom: 12 }}>
+        Active Announcements ({announcements.length})
+      </Text>
+
+      {announcements.length === 0 ? (
+        <View style={{ backgroundColor: colors.surface.default, borderRadius: 16, padding: 24, alignItems: 'center' }}>
+          <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 14 }}>No active announcements</Text>
+          <Text style={{ color: 'rgba(255,255,255,0.3)', fontSize: 12, marginTop: 4 }}>
+            Create one above to notify all users
+          </Text>
+        </View>
+      ) : (
+        announcements.map((announcement) => {
+          const typeColor =
+            announcement.type === 'warning'
+              ? '#f59e0b'
+              : announcement.type === 'success'
+              ? '#22c55e'
+              : '#3b82f6';
+
+          return (
+            <View
+              key={announcement.id}
+              style={{
+                backgroundColor: colors.surface.default,
+                borderRadius: 12,
+                padding: 16,
+                marginBottom: 12,
+                borderLeftWidth: 3,
+                borderLeftColor: typeColor,
+              }}
+            >
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <View style={{ flex: 1 }}>
+                  {announcement.title && (
+                    <Text style={{ color: '#fff', fontSize: 15, fontWeight: '600', marginBottom: 4 }}>
+                      {announcement.title}
+                    </Text>
+                  )}
+                  <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 14, lineHeight: 20 }}>
+                    {announcement.message}
+                  </Text>
+                  <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 12, marginTop: 8 }}>
+                    {formatRelativeTime(announcement.createdAt)} by {announcement.createdBy}
+                  </Text>
+                </View>
+                <Pressable
+                  onPress={() => handleDelete(announcement.id, announcement.title)}
+                  style={{
+                    padding: 8,
+                    marginLeft: 8,
+                    backgroundColor: 'rgba(239,68,68,0.15)',
+                    borderRadius: 6,
+                  }}
+                >
+                  <Text style={{ color: '#f87171', fontSize: 12, fontWeight: '500' }}>Delete</Text>
+                </Pressable>
+              </View>
+            </View>
+          );
+        })
+      )}
+    </View>
+  );
 }

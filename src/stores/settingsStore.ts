@@ -177,6 +177,7 @@ interface SettingsState extends Omit<AppSettings, 'servers'> {
   // Jellyseerr
   jellyseerrConnectionStatus: 'unknown' | 'connected' | 'error';
   jellyseerrUseCustomHeaders: boolean;
+  jellyseerrHideAvailable: boolean;
 
   // Notification settings
   notifications: {
@@ -243,6 +244,7 @@ interface SettingsState extends Omit<AppSettings, 'servers'> {
 
   setJellyseerrConnectionStatus: (status: 'unknown' | 'connected' | 'error') => void;
   setJellyseerrUseCustomHeaders: (enabled: boolean) => void;
+  setJellyseerrHideAvailable: (enabled: boolean) => void;
 
   setNotificationSetting: (key: keyof SettingsState['notifications'], enabled: boolean) => void;
 
@@ -295,6 +297,7 @@ const initialState = {
   sonarrUseCustomHeaders: false,
   jellyseerrConnectionStatus: 'unknown' as const,
   jellyseerrUseCustomHeaders: false,
+  jellyseerrHideAvailable: false,
   notifications: {
     downloadComplete: true,
     nowPlaying: false,
@@ -486,6 +489,7 @@ export const useSettingsStore = create<SettingsState>()(
 
       setJellyseerrConnectionStatus: (status) => set({ jellyseerrConnectionStatus: status }),
       setJellyseerrUseCustomHeaders: (enabled) => set({ jellyseerrUseCustomHeaders: enabled }),
+      setJellyseerrHideAvailable: (enabled) => set({ jellyseerrHideAvailable: enabled }),
 
       setNotificationSetting: (key, enabled) =>
         set((state) => ({
