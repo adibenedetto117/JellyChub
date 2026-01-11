@@ -138,6 +138,7 @@ export default {
     noDownloadsDesc: 'Descarga películas, series y música para ver sin conexión',
     storage: 'Almacenamiento',
     clearAll: 'Borrar todo',
+    searchPlaceholder: 'Buscar descargas...',
     downloadOptions: 'Opciones de descarga',
     downloadQuality: 'Calidad de descarga',
     estimatedSize: 'Tamaño estimado',

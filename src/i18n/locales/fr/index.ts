@@ -138,6 +138,7 @@ export default {
     noDownloadsDesc: 'Téléchargez des films, séries et musique pour regarder hors ligne',
     storage: 'Stockage',
     clearAll: 'Tout effacer',
+    searchPlaceholder: 'Rechercher les téléchargements...',
     downloadOptions: 'Options de téléchargement',
     downloadQuality: 'Qualité de téléchargement',
     estimatedSize: 'Taille estimée',

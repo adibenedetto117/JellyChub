@@ -138,6 +138,7 @@ export default {
     noDownloadsDesc: 'Download movies, shows, and music to watch offline',
     storage: 'Storage',
     clearAll: 'Clear All',
+    searchPlaceholder: 'Search downloads...',
     downloadOptions: 'Download Options',
     downloadQuality: 'Download Quality',
     estimatedSize: 'Estimated size',

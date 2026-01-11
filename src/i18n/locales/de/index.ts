@@ -138,6 +138,7 @@ export default {
     noDownloadsDesc: 'Lade Filme, Serien und Musik herunter um sie offline anzusehen',
     storage: 'Speicher',
     clearAll: 'Alles löschen',
+    searchPlaceholder: 'Downloads durchsuchen...',
     downloadOptions: 'Download-Optionen',
     downloadQuality: 'Download-Qualität',
     estimatedSize: 'Geschätzte Größe',
