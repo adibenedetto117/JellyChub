@@ -12,7 +12,6 @@ import {
   Modal,
   useWindowDimensions,
   ScrollView,
-  Animated as RNAnimated,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { SafeAreaView } from '@/providers';
@@ -50,7 +49,7 @@ import { Skeleton } from '@/components/ui';
 
 const SONARR_BLUE = '#35c5f4';
 const SONARR_DARK = '#1a3a4a';
-const SONARR_GRADIENT = ['#35c5f4', '#1a8fc9', '#0d6ea3'];
+const SONARR_GRADIENT = ['#35c5f4', '#1a8fc9', '#0d6ea3'] as const;
 
 type TabType = 'library' | 'queue' | 'search';
 type ViewMode = 'list' | 'grid';
@@ -66,21 +65,15 @@ interface Stats {
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
-function StatCard({ label, value, icon, color, delay }: { label: string; value: number; icon: string; color: string; delay: number }) {
+function StatCard({ label, value, icon, color, onPress }: { label: string; value: number; icon: string; color: string; onPress?: () => void }) {
   return (
-    <Animated.View entering={FadeInUp.delay(delay).springify()} style={styles.statCard}>
-      <LinearGradient
-        colors={[`${color}20`, `${color}05`]}
-        style={styles.statGradient}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-      />
-      <View style={[styles.statIconContainer, { backgroundColor: `${color}25` }]}>
-        <Ionicons name={icon as any} size={20} color={color} />
+    <Pressable onPress={onPress} style={({ pressed }) => [styles.statCard, pressed && onPress && { opacity: 0.8 }]}>
+      <View style={[styles.statIconBg, { backgroundColor: `${color}15` }]}>
+        <Ionicons name={icon as any} size={18} color={color} />
       </View>
       <Text style={styles.statValue}>{value}</Text>
       <Text style={styles.statLabel}>{label}</Text>
-    </Animated.View>
+    </Pressable>
   );
 }
 
@@ -501,8 +494,8 @@ function SeriesDetailModal({
                   ]}
                   onPress={() => onSearchSeries(series)}
                 >
-                  <Ionicons name="search" size={22} color={SONARR_BLUE} />
-                  <Text style={styles.actionLabel}>Search</Text>
+                  <Ionicons name="flash" size={22} color={SONARR_BLUE} />
+                  <Text style={[styles.actionLabel, { color: SONARR_BLUE }]}>Auto Search</Text>
                 </Pressable>
 
                 <Pressable
@@ -512,8 +505,8 @@ function SeriesDetailModal({
                   ]}
                   onPress={() => onManualSearch(series)}
                 >
-                  <Ionicons name="list" size={22} color={colors.text.secondary} />
-                  <Text style={styles.actionLabel}>Manual</Text>
+                  <Ionicons name="albums-outline" size={22} color={colors.text.secondary} />
+                  <Text style={styles.actionLabel}>Browse Releases</Text>
                 </Pressable>
 
                 <Pressable
@@ -523,8 +516,8 @@ function SeriesDetailModal({
                   ]}
                   onPress={() => onRefresh(series)}
                 >
-                  <Ionicons name="refresh" size={22} color={colors.text.secondary} />
-                  <Text style={styles.actionLabel}>Refresh</Text>
+                  <Ionicons name="sync-outline" size={22} color={colors.text.secondary} />
+                  <Text style={styles.actionLabel}>Refresh Metadata</Text>
                 </Pressable>
 
                 <Pressable
@@ -608,7 +601,7 @@ function SeriesDetailModal({
                                 onSearchSeason(series, season.seasonNumber);
                               }}
                             >
-                              <Ionicons name="search" size={18} color={SONARR_BLUE} />
+                              <Ionicons name="flash" size={18} color={SONARR_BLUE} />
                             </Pressable>
                             <Pressable
                               style={({ pressed }) => [
@@ -620,7 +613,7 @@ function SeriesDetailModal({
                                 onManualSearch(series, season.seasonNumber);
                               }}
                             >
-                              <Ionicons name="list" size={18} color={colors.text.secondary} />
+                              <Ionicons name="albums-outline" size={18} color={colors.text.secondary} />
                             </Pressable>
                           </View>
                         </Pressable>
@@ -647,7 +640,7 @@ function SeriesDetailModal({
                                     <Text style={styles.episodeNumber}>{ep.episodeNumber}</Text>
                                   </View>
                                   <View style={styles.episodeDetails}>
-                                    <Text style={styles.episodeTitle} numberOfLines={1}>
+                                    <Text style={styles.detailEpisodeTitle} numberOfLines={1}>
                                       {ep.title || `Episode ${ep.episodeNumber}`}
                                     </Text>
                                     {ep.airDate && (
@@ -761,6 +754,17 @@ function getQualityBadgeColor(quality: string): string {
   return colors.text.tertiary;
 }
 
+type SortReleaseType = 'seeders' | 'size' | 'age' | 'quality';
+
+const SIZE_RANGES = [
+  { label: 'All', min: 0, max: Infinity },
+  { label: '<1 GB', min: 0, max: 1024 * 1024 * 1024 },
+  { label: '1-5 GB', min: 1024 * 1024 * 1024, max: 5 * 1024 * 1024 * 1024 },
+  { label: '5-15 GB', min: 5 * 1024 * 1024 * 1024, max: 15 * 1024 * 1024 * 1024 },
+  { label: '15-50 GB', min: 15 * 1024 * 1024 * 1024, max: 50 * 1024 * 1024 * 1024 },
+  { label: '>50 GB', min: 50 * 1024 * 1024 * 1024, max: Infinity },
+];
+
 function ManualSearchModal({
   visible,
   series,
@@ -769,6 +773,7 @@ function ManualSearchModal({
   isLoading,
   onClose,
   onDownload,
+  downloadingGuid,
 }: {
   visible: boolean;
   series: SonarrSeries | null;
@@ -777,12 +782,102 @@ function ManualSearchModal({
   isLoading: boolean;
   onClose: () => void;
   onDownload: (release: SonarrRelease) => void;
+  downloadingGuid: string | null;
 }) {
+  const [sortBy, setSortBy] = useState<SortReleaseType>('seeders');
+  const [hideRejected, setHideRejected] = useState(false);
+  const [indexerFilter, setIndexerFilter] = useState('All');
+  const [qualityFilter, setQualityFilter] = useState('All');
+  const [sizeFilter, setSizeFilter] = useState('All');
+
   if (!series) return null;
 
   const title = seasonNumber !== undefined
     ? `${series.title} - Season ${seasonNumber}`
     : series.title;
+
+  const indexers = useMemo(() => {
+    const counts = new Map<string, number>();
+    releases.forEach((r) => {
+      counts.set(r.indexer, (counts.get(r.indexer) || 0) + 1);
+    });
+    return [{ name: 'All', count: releases.length }, ...Array.from(counts.entries()).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count)];
+  }, [releases]);
+
+  const qualities = useMemo(() => {
+    const counts = new Map<string, number>();
+    releases.forEach((r) => {
+      const q = r.quality?.quality?.name;
+      if (q) counts.set(q, (counts.get(q) || 0) + 1);
+    });
+    const qualityOrder = ['2160p', '1080p', '720p', '480p'];
+    return [
+      { name: 'All', count: releases.length },
+      ...Array.from(counts.entries())
+        .map(([name, count]) => ({ name, count }))
+        .sort((a, b) => {
+          const aIdx = qualityOrder.findIndex((q) => a.name.includes(q));
+          const bIdx = qualityOrder.findIndex((q) => b.name.includes(q));
+          if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx;
+          if (aIdx !== -1) return -1;
+          if (bIdx !== -1) return 1;
+          return b.count - a.count;
+        }),
+    ];
+  }, [releases]);
+
+  const sizeRangeCounts = useMemo(() => {
+    return SIZE_RANGES.map((range) => {
+      const count = releases.filter((r) => r.size >= range.min && r.size < range.max).length;
+      return { ...range, count };
+    });
+  }, [releases]);
+
+  const filteredAndSortedReleases = useMemo(() => {
+    const selectedSizeRange = SIZE_RANGES.find((r) => r.label === sizeFilter) || SIZE_RANGES[0];
+
+    let result = releases.filter((r) => {
+      if (indexerFilter !== 'All' && r.indexer !== indexerFilter) return false;
+      if (qualityFilter !== 'All' && r.quality?.quality?.name !== qualityFilter) return false;
+      if (hideRejected && r.rejected) return false;
+      if (sizeFilter !== 'All' && (r.size < selectedSizeRange.min || r.size >= selectedSizeRange.max)) return false;
+      return true;
+    });
+
+    result.sort((a, b) => {
+      switch (sortBy) {
+        case 'seeders':
+          return (b.seeders ?? 0) - (a.seeders ?? 0);
+        case 'size':
+          return b.size - a.size;
+        case 'age':
+          return a.age - b.age;
+        case 'quality': {
+          const order = ['2160p', '1080p', '720p', '480p'];
+          const aQ = a.quality?.quality?.name || '';
+          const bQ = b.quality?.quality?.name || '';
+          const aIdx = order.findIndex((q) => aQ.includes(q));
+          const bIdx = order.findIndex((q) => bQ.includes(q));
+          return (aIdx === -1 ? 999 : aIdx) - (bIdx === -1 ? 999 : bIdx);
+        }
+        default:
+          return 0;
+      }
+    });
+
+    return result;
+  }, [releases, indexerFilter, qualityFilter, sortBy, hideRejected, sizeFilter]);
+
+  const totalResults = releases.length;
+  const filteredCount = filteredAndSortedReleases.length;
+  const rejectedCount = releases.filter((r) => r.rejected).length;
+
+  const clearFilters = () => {
+    setIndexerFilter('All');
+    setQualityFilter('All');
+    setSizeFilter('All');
+    setHideRejected(false);
+  };
 
   return (
     <Modal visible={visible} animationType="slide" transparent>
@@ -790,64 +885,215 @@ function ManualSearchModal({
         <Pressable style={styles.manualSearchBackdrop} onPress={onClose} />
         <View style={styles.manualSearchModal}>
           <View style={styles.manualSearchHeader}>
-            <View>
+            <View style={styles.manualSearchHeaderLeft}>
               <Text style={styles.manualSearchTitle}>Manual Search</Text>
               <Text style={styles.manualSearchSubtitle} numberOfLines={1}>{title}</Text>
             </View>
-            <Pressable style={styles.manualSearchClose} onPress={onClose}>
-              <Ionicons name="close" size={24} color="#fff" />
-            </Pressable>
+            <View style={styles.manualSearchHeaderRight}>
+              {!isLoading && totalResults > 0 && (
+                <View style={styles.resultCountBadge}>
+                  <Text style={styles.resultCountText}>{filteredCount}/{totalResults}</Text>
+                </View>
+              )}
+              <Pressable style={styles.manualSearchClose} onPress={onClose} hitSlop={8}>
+                <Ionicons name="close" size={24} color="#fff" />
+              </Pressable>
+            </View>
           </View>
+
+          {!isLoading && releases.length > 0 && (
+            <View style={styles.filterSection}>
+              <View style={styles.filterHeader}>
+                <Text style={styles.filterSectionTitle}>Filters</Text>
+                <View style={styles.filterActions}>
+                  <Pressable
+                    style={[styles.filterToggle, hideRejected && styles.filterToggleActive]}
+                    onPress={() => setHideRejected(!hideRejected)}
+                  >
+                    <Ionicons name={hideRejected ? 'eye-off' : 'eye'} size={14} color={hideRejected ? '#000' : colors.text.tertiary} />
+                    <Text style={[styles.filterToggleText, hideRejected && styles.filterToggleTextActive]}>
+                      Hide Rejected ({rejectedCount})
+                    </Text>
+                  </Pressable>
+                </View>
+              </View>
+
+              <View style={styles.filterGroup}>
+                <Text style={styles.filterLabel}>Indexer</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
+                  {indexers.map((idx) => (
+                    <Pressable
+                      key={idx.name}
+                      style={[styles.filterChip, indexerFilter === idx.name && styles.filterChipActive]}
+                      onPress={() => setIndexerFilter(idx.name)}
+                    >
+                      <Text style={[styles.filterChipText, indexerFilter === idx.name && styles.filterChipTextActive]}>
+                        {idx.name}
+                      </Text>
+                      <View style={[styles.filterChipCount, indexerFilter === idx.name && styles.filterChipCountActive]}>
+                        <Text style={[styles.filterChipCountText, indexerFilter === idx.name && styles.filterChipCountTextActive]}>
+                          {idx.count}
+                        </Text>
+                      </View>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              </View>
+
+              <View style={styles.filterGroup}>
+                <Text style={styles.filterLabel}>Quality</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
+                  {qualities.map((q) => (
+                    <Pressable
+                      key={q.name}
+                      style={[styles.filterChip, qualityFilter === q.name && styles.filterChipActive]}
+                      onPress={() => setQualityFilter(q.name)}
+                    >
+                      <Text style={[styles.filterChipText, qualityFilter === q.name && styles.filterChipTextActive]}>
+                        {q.name}
+                      </Text>
+                      <View style={[styles.filterChipCount, qualityFilter === q.name && styles.filterChipCountActive]}>
+                        <Text style={[styles.filterChipCountText, qualityFilter === q.name && styles.filterChipCountTextActive]}>
+                          {q.count}
+                        </Text>
+                      </View>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              </View>
+
+              <View style={styles.filterGroup}>
+                <Text style={styles.filterLabel}>Size</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
+                  {sizeRangeCounts.map((range) => (
+                    <Pressable
+                      key={range.label}
+                      style={[styles.filterChip, sizeFilter === range.label && styles.filterChipActive]}
+                      onPress={() => setSizeFilter(range.label)}
+                    >
+                      <Text style={[styles.filterChipText, sizeFilter === range.label && styles.filterChipTextActive]}>
+                        {range.label}
+                      </Text>
+                      <View style={[styles.filterChipCount, sizeFilter === range.label && styles.filterChipCountActive]}>
+                        <Text style={[styles.filterChipCountText, sizeFilter === range.label && styles.filterChipCountTextActive]}>
+                          {range.count}
+                        </Text>
+                      </View>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              </View>
+
+              <View style={styles.sortSection}>
+                <Text style={styles.filterLabel}>Sort By</Text>
+                <View style={styles.sortOptions}>
+                  {([
+                    { key: 'seeders', label: 'Seeders', icon: 'arrow-up' },
+                    { key: 'size', label: 'Size', icon: 'server' },
+                    { key: 'age', label: 'Age', icon: 'time' },
+                    { key: 'quality', label: 'Quality', icon: 'film' },
+                  ] as const).map((opt) => (
+                    <Pressable
+                      key={opt.key}
+                      style={[styles.sortOption, sortBy === opt.key && styles.sortOptionActive]}
+                      onPress={() => setSortBy(opt.key)}
+                    >
+                      <Ionicons
+                        name={opt.icon as any}
+                        size={12}
+                        color={sortBy === opt.key ? '#000' : colors.text.tertiary}
+                      />
+                      <Text style={[styles.sortOptionText, sortBy === opt.key && styles.sortOptionTextActive]}>
+                        {opt.label}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+            </View>
+          )}
 
           {isLoading ? (
             <View style={styles.manualSearchLoading}>
-              <ActivityIndicator size="large" color={SONARR_BLUE} />
+              <View style={styles.loadingSpinner}>
+                <ActivityIndicator size="large" color={SONARR_BLUE} />
+              </View>
               <Text style={styles.manualSearchLoadingText}>Searching indexers...</Text>
+              <Text style={styles.manualSearchLoadingSubtext}>This may take a moment</Text>
             </View>
-          ) : releases.length === 0 ? (
+          ) : filteredAndSortedReleases.length === 0 ? (
             <View style={styles.manualSearchEmpty}>
-              <Ionicons name="search-outline" size={48} color={colors.text.muted} />
-              <Text style={styles.manualSearchEmptyText}>No releases found</Text>
+              <View style={styles.emptySearchIconContainer}>
+                <Ionicons name="search-outline" size={48} color={colors.text.muted} />
+              </View>
+              <Text style={styles.manualSearchEmptyText}>
+                {releases.length > 0 ? 'No results match your filters' : 'No releases found'}
+              </Text>
+              {releases.length > 0 && (
+                <Pressable style={styles.clearFiltersBtn} onPress={clearFilters}>
+                  <Text style={styles.clearFiltersBtnText}>Clear Filters</Text>
+                </Pressable>
+              )}
             </View>
           ) : (
             <FlatList
-              data={releases}
+              data={filteredAndSortedReleases}
               keyExtractor={(item) => item.guid}
               contentContainerStyle={styles.releaseList}
-              renderItem={({ item }) => {
+              renderItem={({ item, index }) => {
                 const qualityColor = getQualityBadgeColor(item.quality?.quality?.name || '');
+                const isDownloading = downloadingGuid === item.guid;
+                const isDisabled = downloadingGuid !== null;
+                const isTopResult = index < 3 && !item.rejected;
                 return (
                   <Pressable
-                    style={[styles.releaseCard, item.rejected && styles.releaseCardRejected]}
-                    onPress={() => !item.rejected && onDownload(item)}
-                    disabled={item.rejected}
+                    style={[
+                      styles.releaseCard,
+                      item.rejected && styles.releaseCardRejected,
+                      isDownloading && styles.releaseCardDownloading,
+                      isTopResult && styles.releaseTopResult,
+                    ]}
+                    onPress={() => !isDisabled && onDownload(item)}
+                    disabled={isDisabled}
                   >
-                    <View style={styles.releaseHeader}>
-                      <View style={[styles.qualityBadge, { backgroundColor: `${qualityColor}20`, borderColor: qualityColor }]}>
-                        <Text style={[styles.qualityText, { color: qualityColor }]}>{item.quality?.quality?.name}</Text>
-                      </View>
-                      <Text style={styles.releaseSize}>{formatBytes(item.size)}</Text>
-                      {item.fullSeason && (
-                        <View style={styles.fullSeasonBadge}>
-                          <Text style={styles.fullSeasonText}>Full Season</Text>
+                    <View style={styles.releaseTop}>
+                      <View style={styles.releaseTopLeft}>
+                        <View style={[styles.releaseBadge, { borderColor: qualityColor, backgroundColor: `${qualityColor}15` }]}>
+                          <Text style={[styles.releaseBadgeText, { color: qualityColor }]}>{item.quality?.quality?.name}</Text>
                         </View>
-                      )}
+                        {item.fullSeason && (
+                          <View style={styles.fullSeasonBadge}>
+                            <Text style={styles.fullSeasonText}>Full Season</Text>
+                          </View>
+                        )}
+                      </View>
+                      <View style={styles.releaseStats}>
+                        {item.seeders !== undefined && (
+                          <View style={styles.seedersContainer}>
+                            <Ionicons name="arrow-up" size={12} color={colors.status.success} />
+                            <Text style={styles.seedersText}>{item.seeders}</Text>
+                          </View>
+                        )}
+                        <Text style={styles.releaseSize}>{formatBytes(item.size)}</Text>
+                        {isDownloading && (
+                          <ActivityIndicator size="small" color={SONARR_BLUE} style={styles.releaseDownloadingIndicator} />
+                        )}
+                      </View>
                     </View>
                     <Text style={styles.releaseTitle} numberOfLines={2}>{item.title}</Text>
                     <View style={styles.releaseMeta}>
-                      <Text style={styles.releaseIndexer}>{item.indexer}</Text>
-                      {item.seeders !== undefined && (
-                        <View style={styles.seedersContainer}>
-                          <Ionicons name="arrow-up" size={12} color={colors.status.success} />
-                          <Text style={styles.seedersText}>{item.seeders}</Text>
-                        </View>
-                      )}
+                      <View style={styles.indexerBadge}>
+                        <Text style={styles.releaseIndexer}>{item.indexer}</Text>
+                      </View>
                       <Text style={styles.releaseAge}>{item.age}d ago</Text>
                     </View>
                     {item.rejected && item.rejections && (
-                      <Text style={styles.rejectionText} numberOfLines={1}>
-                        {item.rejections[0]}
-                      </Text>
+                      <View style={styles.rejectionRow}>
+                        <Text style={styles.rejectionText} numberOfLines={1}>
+                          {item.rejections[0]}
+                        </Text>
+                        <Text style={styles.forceDownloadHint}>Tap to force</Text>
+                      </View>
                     )}
                   </Pressable>
                 );
@@ -1321,6 +1567,7 @@ export default function SonarrManageScreen() {
   const [manualSearchReleases, setManualSearchReleases] = useState<SonarrRelease[]>([]);
   const [isManualSearchLoading, setIsManualSearchLoading] = useState(false);
   const [manualSearchSeasonNumber, setManualSearchSeasonNumber] = useState<number | undefined>(undefined);
+  const [downloadingReleaseGuid, setDownloadingReleaseGuid] = useState<string | null>(null);
 
   const [filter, setFilter] = useState<FilterType>('all');
   const [sortBy, setSortBy] = useState<SortType>('title');
@@ -1328,7 +1575,6 @@ export default function SonarrManageScreen() {
 
   const numColumns = screenWidth > 600 ? 4 : 3;
   const gridItemWidth = (screenWidth - spacing[4] * 2 - spacing[2] * (numColumns - 1)) / numColumns;
-  const scrollY = useRef(new RNAnimated.Value(0)).current;
 
   const stats: Stats = useMemo(() => ({
     totalSeries: seriesList.length,
@@ -1596,6 +1842,8 @@ export default function SonarrManageScreen() {
   }, []);
 
   const handleDownloadRelease = useCallback(async (release: SonarrRelease) => {
+    if (downloadingReleaseGuid) return;
+    setDownloadingReleaseGuid(release.guid);
     try {
       await sonarrService.downloadRelease(release.guid, release.indexerId);
       Alert.alert('Success', 'Download started');
@@ -1603,8 +1851,10 @@ export default function SonarrManageScreen() {
       loadData(false);
     } catch (e: any) {
       Alert.alert('Error', e?.message || 'Failed to start download');
+    } finally {
+      setDownloadingReleaseGuid(null);
     }
-  }, [loadData]);
+  }, [loadData, downloadingReleaseGuid]);
 
   const handleOpenSeriesDetail = useCallback(async (series: SonarrSeries) => {
     setDetailSeries(series);
@@ -1736,81 +1986,63 @@ export default function SonarrManageScreen() {
     );
   }
 
-  const headerOpacity = scrollY.interpolate({
-    inputRange: [0, 100],
-    outputRange: [1, 0],
-    extrapolate: 'clamp',
-  });
-
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <Stack.Screen options={{ headerShown: false }} />
 
-      <RNAnimated.View style={[styles.header, { opacity: headerOpacity }]}>
-        <LinearGradient colors={[SONARR_BLUE, '#1a8fc9']} style={styles.headerGradient}>
-          <View style={styles.headerTop}>
-            <Pressable style={styles.backBtn} onPress={() => router.back()}>
-              <Ionicons name="chevron-back" size={24} color="#fff" />
-            </Pressable>
-            <View style={styles.headerTitleContainer}>
-              <Ionicons name="tv" size={24} color="#fff" />
-              <Text style={styles.headerTitle}>Sonarr</Text>
-            </View>
-            <Pressable
-              style={styles.calendarBtn}
-              onPress={() => router.push('/settings/sonarr-calendar')}
-            >
-              <Ionicons name="calendar" size={22} color="#fff" />
-            </Pressable>
+      <View style={styles.header}>
+        <Pressable onPress={() => router.back()} style={styles.backBtn}>
+          <Ionicons name="chevron-back" size={24} color="#fff" />
+        </Pressable>
+        <View style={styles.headerTitleRow}>
+          <View style={styles.sonarrIcon}>
+            <LinearGradient colors={SONARR_GRADIENT} style={styles.sonarrIconGradient}>
+              <Ionicons name="tv" size={16} color="#fff" />
+            </LinearGradient>
           </View>
-        </LinearGradient>
-      </RNAnimated.View>
+          <Text style={styles.headerTitle}>Sonarr</Text>
+        </View>
+        <Pressable onPress={() => router.push('/settings/sonarr-calendar')} style={styles.calendarBtn}>
+          <Ionicons name="calendar-outline" size={22} color="#fff" />
+        </Pressable>
+      </View>
 
-      <RNAnimated.ScrollView
+      <View style={styles.statsRow}>
+        <StatCard label="Total" value={stats.totalSeries} icon="tv" color={SONARR_BLUE} onPress={() => setFilter('all')} />
+        <StatCard label="Have" value={stats.episodesDownloaded} icon="checkmark-circle" color={colors.status.success} onPress={() => setFilter('all')} />
+        <StatCard label="Missing" value={stats.missingEpisodes} icon="time" color={colors.status.warning} onPress={() => setFilter('missing')} />
+        <StatCard label="Queue" value={stats.queueCount} icon="cloud-download" color={colors.status.info} onPress={() => setActiveTab('queue')} />
+      </View>
+
+      <View style={styles.tabRow}>
+        {(['library', 'queue', 'search'] as TabType[]).map((tab) => (
+          <Pressable
+            key={tab}
+            style={[styles.tabBtn, activeTab === tab && styles.tabBtnActive]}
+            onPress={() => setActiveTab(tab)}
+          >
+            <Ionicons
+              name={tab === 'library' ? 'library' : tab === 'queue' ? 'cloud-download' : 'search'}
+              size={16}
+              color={activeTab === tab ? SONARR_BLUE : colors.text.muted}
+            />
+            <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>{tab.charAt(0).toUpperCase() + tab.slice(1)}</Text>
+          </Pressable>
+        ))}
+      </View>
+
+      <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
-        onScroll={RNAnimated.event(
-          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-          { useNativeDriver: true }
-        )}
-        scrollEventThrottle={16}
         refreshControl={
           <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={SONARR_BLUE} />
         }
       >
-        <View style={styles.statsContainer}>
-          <StatCard label="Series" value={stats.totalSeries} icon="tv" color={SONARR_BLUE} delay={0} />
-          <StatCard label="Have" value={stats.episodesDownloaded} icon="checkmark-circle" color={colors.status.success} delay={50} />
-          <StatCard label="Missing" value={stats.missingEpisodes} icon="time" color={colors.status.warning} delay={100} />
-          <StatCard label="Queue" value={stats.queueCount} icon="cloud-download" color={colors.status.info} delay={150} />
-        </View>
-
-        <View style={styles.tabsWrapper}>
-          <View style={styles.tabs}>
-            {(['library', 'queue', 'search'] as TabType[]).map((tab) => (
-              <Pressable
-                key={tab}
-                style={[styles.tab, activeTab === tab && styles.tabActive]}
-                onPress={() => setActiveTab(tab)}
-              >
-                <Ionicons
-                  name={tab === 'library' ? 'library' : tab === 'queue' ? 'cloud-download' : 'search'}
-                  size={18}
-                  color={activeTab === tab ? SONARR_BLUE : colors.text.tertiary}
-                />
-                <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>
-                  {tab.charAt(0).toUpperCase() + tab.slice(1)}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-        </View>
-
         {activeTab === 'search' && (
-          <View style={styles.searchContainer}>
-            <View style={styles.searchInputWrapper}>
-              <Ionicons name="search" size={20} color={colors.text.tertiary} />
+          <View style={styles.searchRow}>
+            <View style={styles.searchInputWrap}>
+              <Ionicons name="search" size={18} color={colors.text.muted} />
               <TextInput
                 style={styles.searchInput}
                 placeholder="Search TV shows..."
@@ -1821,37 +2053,49 @@ export default function SonarrManageScreen() {
                 returnKeyType="search"
               />
               {searchQuery.length > 0 && (
-                <Pressable onPress={() => setSearchQuery('')}>
-                  <Ionicons name="close-circle" size={20} color={colors.text.tertiary} />
+                <Pressable onPress={() => setSearchQuery('')} hitSlop={8}>
+                  <Ionicons name="close-circle" size={18} color={colors.text.muted} />
                 </Pressable>
               )}
             </View>
             <Pressable style={styles.searchBtn} onPress={handleSearch} disabled={isSearching}>
-              <LinearGradient colors={SONARR_GRADIENT} style={styles.searchBtnGradient}>
-                {isSearching ? (
-                  <ActivityIndicator color="#fff" size="small" />
-                ) : (
-                  <Ionicons name="search" size={20} color="#fff" />
-                )}
-              </LinearGradient>
+              {isSearching ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <LinearGradient colors={SONARR_GRADIENT} style={styles.searchBtnGradient}>
+                  <Ionicons name="search" size={18} color="#fff" />
+                </LinearGradient>
+              )}
             </Pressable>
           </View>
         )}
 
         {activeTab === 'library' && (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
-            {(['all', 'continuing', 'ended', 'missing', 'unmonitored'] as FilterType[]).map((f) => (
-              <Pressable
-                key={f}
-                style={[styles.filterChip, filter === f && styles.filterChipActive]}
-                onPress={() => setFilter(f)}
-              >
-                <Text style={[styles.filterChipText, filter === f && styles.filterChipTextActive]}>
-                  {f === 'all' ? 'All Series' : f.charAt(0).toUpperCase() + f.slice(1)}
-                </Text>
+          <View style={styles.libraryControls}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
+              {(['all', 'continuing', 'ended', 'missing', 'unmonitored'] as FilterType[]).map((f) => (
+                <Pressable
+                  key={f}
+                  style={[styles.filterPill, filter === f && styles.filterPillActive]}
+                  onPress={() => setFilter(f)}
+                >
+                  <Text style={[styles.filterPillText, filter === f && styles.filterPillTextActive]}>
+                    {f === 'all' ? 'All' : f.charAt(0).toUpperCase() + f.slice(1)}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+            <View style={styles.sortRow}>
+              <Pressable style={styles.sortBtn} onPress={() => {
+                const sorts: SortType[] = ['title', 'dateAdded', 'year', 'nextAiring'];
+                const idx = sorts.indexOf(sortBy);
+                setSortBy(sorts[(idx + 1) % sorts.length]);
+              }}>
+                <Ionicons name="swap-vertical" size={14} color={colors.text.secondary} />
+                <Text style={styles.sortText}>{sortBy === 'dateAdded' ? 'added' : sortBy === 'nextAiring' ? 'airing' : sortBy}</Text>
               </Pressable>
-            ))}
-          </ScrollView>
+            </View>
+          </View>
         )}
 
         {activeTab === 'library' && (
@@ -1936,7 +2180,7 @@ export default function SonarrManageScreen() {
             />
           ) : null
         )}
-      </RNAnimated.ScrollView>
+      </ScrollView>
 
       <AddSeriesModal
         visible={showAddModal}
@@ -1979,6 +2223,7 @@ export default function SonarrManageScreen() {
         isLoading={isManualSearchLoading}
         onClose={() => setShowManualSearch(false)}
         onDownload={handleDownloadRelease}
+        downloadingGuid={downloadingReleaseGuid}
       />
     </SafeAreaView>
   );
@@ -1993,132 +2238,127 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: 100,
+    paddingBottom: spacing[20],
   },
   header: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 100,
-  },
-  headerGradient: {
-    paddingTop: 50,
-    paddingBottom: spacing[4],
-    paddingHorizontal: spacing[4],
-  },
-  headerTop: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    paddingHorizontal: spacing[4],
+    paddingVertical: spacing[3],
+    gap: spacing[3],
   },
   backBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.surface.default,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  calendarBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerTitleContainer: {
+  headerTitleRow: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing[2],
   },
+  sonarrIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  sonarrIconGradient: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   headerTitle: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: '700',
     color: '#fff',
   },
-  statsContainer: {
+  calendarBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.surface.default,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  statsRow: {
     flexDirection: 'row',
     paddingHorizontal: spacing[4],
-    paddingTop: 120,
-    gap: spacing[3],
+    gap: spacing[2],
+    marginBottom: spacing[3],
   },
   statCard: {
     flex: 1,
     backgroundColor: colors.surface.default,
-    borderRadius: borderRadius.xl,
+    borderRadius: borderRadius.lg,
     padding: spacing[3],
     alignItems: 'center',
-    overflow: 'hidden',
   },
-  statGradient: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  statIconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  statIconBg: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: spacing[2],
+    marginBottom: spacing[1],
   },
   statValue: {
-    fontSize: 24,
+    fontSize: 18,
     fontWeight: '700',
     color: '#fff',
   },
   statLabel: {
-    fontSize: 11,
-    color: colors.text.tertiary,
-    marginTop: spacing[1],
+    fontSize: 10,
+    color: colors.text.muted,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    marginTop: 2,
   },
-  tabsWrapper: {
-    paddingHorizontal: spacing[4],
-    paddingTop: spacing[5],
-  },
-  tabs: {
+  tabRow: {
     flexDirection: 'row',
+    marginHorizontal: spacing[4],
     backgroundColor: colors.surface.default,
-    borderRadius: borderRadius.xl,
+    borderRadius: borderRadius.lg,
     padding: spacing[1],
+    marginBottom: spacing[3],
   },
-  tab: {
+  tabBtn: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: spacing[3],
-    gap: spacing[2],
-    borderRadius: borderRadius.lg,
+    paddingVertical: spacing[2.5],
+    gap: spacing[1.5],
+    borderRadius: borderRadius.md,
   },
-  tabActive: {
+  tabBtnActive: {
     backgroundColor: colors.surface.elevated,
   },
   tabText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '500',
-    color: colors.text.tertiary,
+    color: colors.text.muted,
   },
   tabTextActive: {
     color: SONARR_BLUE,
   },
-  searchContainer: {
+  searchRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: spacing[4],
-    paddingTop: spacing[4],
+    marginHorizontal: spacing[4],
     gap: spacing[2],
+    marginBottom: spacing[3],
   },
-  searchInputWrapper: {
+  searchInputWrap: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.surface.default,
-    borderRadius: borderRadius.xl,
-    paddingHorizontal: spacing[4],
+    borderRadius: borderRadius.lg,
+    paddingHorizontal: spacing[3],
     gap: spacing[2],
   },
   searchInput: {
@@ -2128,9 +2368,9 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   searchBtn: {
-    width: 48,
-    height: 48,
-    borderRadius: borderRadius.xl,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     overflow: 'hidden',
   },
   searchBtnGradient: {
@@ -2138,27 +2378,49 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  filterScroll: {
-    paddingHorizontal: spacing[4],
-    paddingTop: spacing[4],
+  libraryControls: {
+    marginBottom: spacing[2],
   },
-  filterChip: {
+  filterRow: {
     paddingHorizontal: spacing[4],
+    gap: spacing[2],
+    paddingBottom: spacing[2],
+  },
+  filterPill: {
+    paddingHorizontal: spacing[3],
     paddingVertical: spacing[2],
     backgroundColor: colors.surface.default,
     borderRadius: borderRadius.full,
-    marginRight: spacing[2],
+    borderWidth: 1,
+    borderColor: 'transparent',
   },
-  filterChipActive: {
-    backgroundColor: `${SONARR_BLUE}25`,
+  filterPillActive: {
+    backgroundColor: `${SONARR_BLUE}20`,
+    borderColor: SONARR_BLUE,
   },
-  filterChipText: {
-    fontSize: 13,
+  filterPillText: {
+    fontSize: 12,
     fontWeight: '500',
-    color: colors.text.tertiary,
+    color: colors.text.secondary,
   },
-  filterChipTextActive: {
+  filterPillTextActive: {
     color: SONARR_BLUE,
+  },
+  sortRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing[4],
+    gap: spacing[2],
+  },
+  sortBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing[1],
+  },
+  sortText: {
+    fontSize: 12,
+    color: colors.text.secondary,
+    textTransform: 'capitalize',
   },
   movieGrid: {
     flexDirection: 'row',
@@ -3201,7 +3463,7 @@ const styles = StyleSheet.create({
   episodeDetails: {
     flex: 1,
   },
-  episodeTitle: {
+  detailEpisodeTitle: {
     color: '#fff',
     fontSize: 13,
     fontWeight: '500',
@@ -3320,6 +3582,13 @@ const styles = StyleSheet.create({
   releaseCardRejected: {
     opacity: 0.5,
   },
+  releaseCardDownloading: {
+    borderColor: SONARR_BLUE,
+    borderWidth: 1,
+  },
+  releaseDownloadingIndicator: {
+    marginLeft: 8,
+  },
   releaseHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -3375,6 +3644,227 @@ const styles = StyleSheet.create({
   rejectionText: {
     color: colors.status.error,
     fontSize: 11,
+    flex: 1,
+  },
+  rejectionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     marginTop: spacing[2],
+  },
+  forceDownloadHint: {
+    fontSize: 10,
+    color: colors.text.muted,
+    marginLeft: spacing[2],
+  },
+  manualSearchHeaderLeft: {
+    flex: 1,
+  },
+  manualSearchHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing[3],
+  },
+  resultCountBadge: {
+    backgroundColor: `${SONARR_BLUE}20`,
+    paddingHorizontal: spacing[2],
+    paddingVertical: spacing[1],
+    borderRadius: borderRadius.md,
+  },
+  resultCountText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: SONARR_BLUE,
+  },
+  filterSection: {
+    paddingVertical: spacing[2],
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border.subtle,
+  },
+  filterHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing[4],
+    marginBottom: spacing[2],
+  },
+  filterSectionTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  filterActions: {
+    flexDirection: 'row',
+    gap: spacing[2],
+  },
+  filterToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing[1.5],
+    paddingHorizontal: spacing[2.5],
+    paddingVertical: spacing[1.5],
+    backgroundColor: colors.surface.default,
+    borderRadius: borderRadius.md,
+  },
+  filterToggleActive: {
+    backgroundColor: SONARR_BLUE,
+  },
+  filterToggleText: {
+    fontSize: 11,
+    color: colors.text.secondary,
+  },
+  filterToggleTextActive: {
+    color: '#000',
+  },
+  filterGroup: {
+    marginBottom: spacing[2],
+  },
+  filterLabel: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: colors.text.muted,
+    marginLeft: spacing[4],
+    marginBottom: spacing[1],
+  },
+  filterScroll: {
+    paddingHorizontal: spacing[4],
+  },
+  filterChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing[2.5],
+    paddingVertical: spacing[1.5],
+    backgroundColor: colors.surface.default,
+    borderRadius: borderRadius.md,
+    marginRight: spacing[1.5],
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  filterChipActive: {
+    backgroundColor: `${SONARR_BLUE}20`,
+    borderColor: SONARR_BLUE,
+  },
+  filterChipText: {
+    fontSize: 11,
+    color: colors.text.secondary,
+  },
+  filterChipTextActive: {
+    color: SONARR_BLUE,
+  },
+  filterChipCount: {
+    marginLeft: spacing[1],
+    backgroundColor: colors.surface.elevated,
+    paddingHorizontal: spacing[1.5],
+    paddingVertical: 1,
+    borderRadius: borderRadius.sm,
+  },
+  filterChipCountActive: {
+    backgroundColor: 'rgba(0,0,0,0.2)',
+  },
+  filterChipCountText: {
+    fontSize: 9,
+    fontWeight: '600',
+    color: colors.text.muted,
+  },
+  filterChipCountTextActive: {
+    color: '#000',
+  },
+  sortSection: {
+    paddingHorizontal: spacing[4],
+    paddingTop: spacing[1],
+  },
+  sortOptions: {
+    flexDirection: 'row',
+    gap: spacing[2],
+    marginTop: spacing[1.5],
+  },
+  sortOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing[1],
+    paddingHorizontal: spacing[2.5],
+    paddingVertical: spacing[1.5],
+    backgroundColor: colors.surface.default,
+    borderRadius: borderRadius.md,
+  },
+  sortOptionActive: {
+    backgroundColor: SONARR_BLUE,
+  },
+  sortOptionText: {
+    fontSize: 11,
+    color: colors.text.secondary,
+  },
+  sortOptionTextActive: {
+    color: '#000',
+  },
+  loadingSpinner: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: `${SONARR_BLUE}15`,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing[2],
+  },
+  manualSearchLoadingSubtext: {
+    fontSize: 11,
+    color: colors.text.tertiary,
+  },
+  emptySearchIconContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: colors.surface.default,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing[2],
+  },
+  clearFiltersBtn: {
+    marginTop: spacing[3],
+    paddingHorizontal: spacing[4],
+    paddingVertical: spacing[2],
+    backgroundColor: colors.surface.default,
+    borderRadius: borderRadius.md,
+  },
+  clearFiltersBtnText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: SONARR_BLUE,
+  },
+  releaseTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing[1.5],
+  },
+  releaseTopLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing[2],
+  },
+  releaseStats: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing[3],
+  },
+  releaseBadge: {
+    paddingHorizontal: spacing[1.5],
+    paddingVertical: 2,
+    borderRadius: 4,
+    borderWidth: 1,
+  },
+  releaseBadgeText: {
+    fontSize: 9,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+  },
+  releaseTopResult: {
+    borderWidth: 1,
+    borderColor: `${SONARR_BLUE}40`,
+  },
+  indexerBadge: {
+    backgroundColor: `${SONARR_BLUE}15`,
+    paddingHorizontal: spacing[1.5],
+    paddingVertical: 2,
+    borderRadius: 4,
   },
 });
