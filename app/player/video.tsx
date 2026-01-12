@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { View, Text, Pressable, StatusBar, Dimensions, ActivityIndicator, Alert, Platform, ScrollView, useWindowDimensions } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { useLocalSearchParams, router } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -24,7 +24,7 @@ import { useVideoPlayer, VideoView, VideoAirPlayButton } from 'expo-video';
 import * as Haptics from 'expo-haptics';
 import * as Brightness from 'expo-brightness';
 import { VolumeManager } from 'react-native-volume-manager';
-import { useAuthStore, usePlayerStore, useSettingsStore, useDownloadStore, useVideoPreferencesStore } from '@/stores';
+import { useAuthStore, usePlayerStore, useSettingsStore, useDownloadStore, useVideoPreferencesStore, selectDownloadHasHydrated } from '@/stores';
 import {
   getItem,
   getPlaybackInfo,
@@ -156,38 +156,84 @@ export default function VideoPlayerScreen() {
   const controlsConfig = useSettingsStore((s) => s.player.controlsConfig);
   const controlsOrder = useSettingsStore((s) => s.player.controlsOrder);
   const getDownloadedItem = useDownloadStore((s) => s.getDownloadedItem);
+  const downloadStoreHydrated = useDownloadStore(selectDownloadHasHydrated);
   const userId = currentUser?.Id ?? '';
   const insets = useSafeAreaInsets();
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
 
-  const downloadedItem = getDownloadedItem(itemId);
+  // Only look up downloaded item after store has hydrated from persistence
+  const allDownloads = useDownloadStore((s) => s.downloads);
+  const downloadedItem = downloadStoreHydrated ? getDownloadedItem(itemId) : undefined;
+  console.log('[VideoPlayer] Download lookup:', {
+    itemId,
+    downloadStoreHydrated,
+    allDownloadsCount: allDownloads.length,
+    completedDownloads: allDownloads.filter(d => d.status === 'completed').map(d => ({ id: d.id, itemId: d.itemId })),
+    foundDownloadedItem: downloadedItem ? { id: downloadedItem.id, itemId: downloadedItem.itemId, localPath: downloadedItem.localPath } : null,
+  });
   const [localFilePath, setLocalFilePath] = useState<string | null>(null);
+  // Track whether we've finished attempting to resolve the local path
+  // This is needed to distinguish "not yet resolved" from "resolved but failed"
+  const [localPathResolved, setLocalPathResolved] = useState(false);
+
+  // Debug logging for download playback
+  useEffect(() => {
+    console.log('[VideoPlayer] Download state:', {
+      itemId,
+      downloadStoreHydrated,
+      hasDownloadedItem: !!downloadedItem,
+      downloadedItemId: downloadedItem?.id,
+      downloadedItemStatus: downloadedItem?.status,
+      storedLocalPath: downloadedItem?.localPath,
+      resolvedLocalFilePath: localFilePath,
+      localPathResolved,
+      hasItemData: !!downloadedItem?.item,
+      itemName: downloadedItem?.item?.Name,
+    });
+  }, [itemId, downloadStoreHydrated, downloadedItem, localFilePath, localPathResolved]);
 
   useEffect(() => {
+    console.log('[VideoPlayer] resolveLocalPath effect triggered, downloadedItem?.localPath =', downloadedItem?.localPath);
+    // Reset resolution state when the path changes
+    setLocalPathResolved(false);
+
     const resolveLocalPath = async () => {
       if (!downloadedItem?.localPath) {
+        console.log('[VideoPlayer] No local path to resolve');
         setLocalFilePath(null);
+        setLocalPathResolved(true);
         return;
       }
       try {
+        console.log('[VideoPlayer] Checking file existence:', downloadedItem.localPath);
         const fileInfo = await FileSystem.getInfoAsync(downloadedItem.localPath);
         if (!fileInfo.exists) {
+          console.log('[VideoPlayer] File does not exist at path:', downloadedItem.localPath);
           setLocalFilePath(null);
+          setLocalPathResolved(true);
           return;
         }
+        console.log('[VideoPlayer] File exists, size:', (fileInfo as any).size);
         if (downloadedItem.localPath.endsWith('.enc')) {
           const decryptedPath = await encryptionService.getDecryptedUri(downloadedItem.localPath);
           const decryptedInfo = await FileSystem.getInfoAsync(decryptedPath);
           if (decryptedInfo.exists) {
+            console.log('[VideoPlayer] Decrypted file ready:', decryptedPath);
             setLocalFilePath(decryptedPath);
           } else {
+            console.log('[VideoPlayer] Decrypted file not found');
             setLocalFilePath(null);
           }
+          setLocalPathResolved(true);
         } else {
+          console.log('[VideoPlayer] Using local file path:', downloadedItem.localPath);
           setLocalFilePath(downloadedItem.localPath);
+          setLocalPathResolved(true);
         }
-      } catch {
+      } catch (error) {
+        console.error('[VideoPlayer] Error resolving local path:', error);
         setLocalFilePath(null);
+        setLocalPathResolved(true);
       }
     };
     resolveLocalPath();
@@ -347,17 +393,23 @@ export default function VideoPlayerScreen() {
     }
   }, [itemId, savedSubtitleOffset, setSubtitleOffsetInStore]);
 
-  const { data: item, isLoading: itemLoading } = useQuery({
+  // For downloaded items, use cached data; otherwise fetch from server
+  const isOfflinePlayback = !!downloadedItem?.localPath && !!localFilePath;
+
+  const { data: fetchedItem, isLoading: itemLoading } = useQuery({
     queryKey: ['item', userId, itemId],
     queryFn: () => getItem(userId, itemId),
-    enabled: !!userId && !!itemId,
+    enabled: !!userId && !!itemId && !isOfflinePlayback,
   });
 
   const { data: playbackInfo, isLoading: playbackLoading } = useQuery({
     queryKey: ['playback', userId, itemId],
     queryFn: () => getPlaybackInfo(itemId, userId),
-    enabled: !!userId && !!itemId,
+    enabled: !!userId && !!itemId && !isOfflinePlayback,
   });
+
+  // Use cached item data for offline playback, or fetched data for online
+  const item = isOfflinePlayback ? downloadedItem?.item : fetchedItem;
 
   // Get next episode for auto-play (only for TV episodes)
   const isEpisode = item?.Type === 'Episode';
@@ -513,11 +565,60 @@ export default function VideoPlayerScreen() {
     setIsRotationLocked((current) => !current);
   }, []);
 
-  const isLocalPathReady = !downloadedItem || localFilePath !== null;
+  // isLocalPathReady: true if we've determined there's no downloaded item (after hydration),
+  // or if we have a downloaded item and have finished resolving its local path (success or failure)
+  const isLocalPathReady = downloadStoreHydrated && (!downloadedItem || localPathResolved);
+  const hasStartedPlayback = useRef(false);
 
   useEffect(() => {
-    if (playbackInfo && item && isLocalPathReady) {
-      const source = selectBestMediaSource(playbackInfo.MediaSources);
+    // Prevent double-initialization
+    if (hasStartedPlayback.current) return;
+
+    // Wait for download store to hydrate before making decisions
+    if (!downloadStoreHydrated) {
+      console.log('[VideoPlayer] Waiting for download store to hydrate...');
+      return;
+    }
+
+    // For offline playback, we only need item and localFilePath
+    // For online playback, we also need playbackInfo
+    const canStartOnline = playbackInfo && item && isLocalPathReady && !isOfflinePlayback;
+    const canStartOffline = isOfflinePlayback && item && localFilePath;
+
+    console.log('[VideoPlayer] Playback check:', {
+      canStartOnline,
+      canStartOffline,
+      isOfflinePlayback,
+      hasItem: !!item,
+      itemSource: isOfflinePlayback ? 'downloadedItem.item' : 'fetchedItem',
+      itemId: item?.Id,
+      itemName: item?.Name,
+      hasPlaybackInfo: !!playbackInfo,
+      isLocalPathReady,
+      localPathResolved,
+      localFilePath,
+      downloadedItemLocalPath: downloadedItem?.localPath,
+    });
+
+    if (canStartOnline || canStartOffline) {
+      console.log('[VideoPlayer] Starting playback:', isOfflinePlayback ? 'OFFLINE' : 'ONLINE');
+      hasStartedPlayback.current = true;
+      // For offline playback, create a minimal media source from the cached item
+      const source: MediaSource | null = isOfflinePlayback
+        ? {
+            Id: item.Id,
+            Path: localFilePath,
+            Protocol: 'File',
+            Type: 'Default',
+            Container: item.Container || 'mp4',
+            Size: item.MediaSources?.[0]?.Size,
+            MediaStreams: item.MediaSources?.[0]?.MediaStreams || [],
+            SupportsDirectPlay: true,
+            SupportsDirectStream: true,
+            SupportsTranscoding: false,
+          }
+        : selectBestMediaSource(playbackInfo!.MediaSources);
+
       if (source) {
         setMediaSource(source);
         mediaSourceRef.current = source;
@@ -600,13 +701,16 @@ export default function VideoPlayerScreen() {
         }
       }
     }
-  }, [playbackInfo, item, isLocalPathReady]);
+  }, [playbackInfo, item, isLocalPathReady, isOfflinePlayback, localFilePath, downloadStoreHydrated, localPathResolved]);
 
   const startPlayback = useCallback((
     source: MediaSource,
     startPositionMs: number
   ) => {
-    if (!item) return;
+    if (!item) {
+      console.log('[VideoPlayer] startPlayback: item is null, aborting');
+      return;
+    }
 
     // Use local file if downloaded, otherwise stream from server
     const url = localFilePath
@@ -615,6 +719,7 @@ export default function VideoPlayerScreen() {
           startTimeTicks: startPositionMs > 0 ? msToTicks(startPositionMs) : undefined,
           useHls: false,
         });
+    console.log('[VideoPlayer] startPlayback: setting streamUrl to:', url);
     setStreamUrl(url);
 
     resumePositionMs.current = startPositionMs;
@@ -623,16 +728,21 @@ export default function VideoPlayerScreen() {
 
     setCurrentItem({ item, mediaSource: source, streamUrl: url, playSessionId }, 'video');
 
-    reportPlaybackStart({
-      ItemId: item.Id,
-      MediaSourceId: source.Id,
-      PlaySessionId: playSessionId,
-      PlayMethod: localFilePath ? 'DirectPlay' : 'DirectStream',
-      StartTimeTicks: startPositionMs > 0 ? msToTicks(startPositionMs) : undefined,
-    });
+    // Report playback start to server (skip for offline playback to avoid network errors)
+    if (!isOfflinePlayback) {
+      reportPlaybackStart({
+        ItemId: item.Id,
+        MediaSourceId: source.Id,
+        PlaySessionId: playSessionId,
+        PlayMethod: localFilePath ? 'DirectPlay' : 'DirectStream',
+        StartTimeTicks: startPositionMs > 0 ? msToTicks(startPositionMs) : undefined,
+      }).catch(() => {
+        // Silently ignore network errors when reporting playback
+      });
+    }
 
     setPlayerState('playing');
-  }, [item, playSessionId, localFilePath]);
+  }, [item, playSessionId, localFilePath, isOfflinePlayback]);
 
   const loadSubtitleTrack = useCallback(async (itemId: string, mediaSourceId: string, index: number, retryCount = 0): Promise<boolean> => {
     // Track this load request to detect race conditions
@@ -1097,7 +1207,8 @@ export default function VideoPlayerScreen() {
   }, [mediaSource, player, subtitleCues, externalSubtitleCues, introStart, introEnd, creditsStart, creditsEnd, nextEpisode, showNextUpCard, selectedSubtitleIndex, subtitleOffset, abLoop]);
 
   useEffect(() => {
-    if (!mediaSource || !player) return;
+    // Skip progress reporting for offline playback
+    if (!mediaSource || !player || isOfflinePlayback) return;
 
     const currentKey = playerKey.current;
 
@@ -1128,7 +1239,7 @@ export default function VideoPlayerScreen() {
     return () => {
       if (progressReportInterval.current) clearInterval(progressReportInterval.current);
     };
-  }, [playerState, mediaSource, player, itemId, playSessionId]);
+  }, [playerState, mediaSource, player, itemId, playSessionId, isOfflinePlayback]);
 
   useEffect(() => {
     if (!sleepTimer || !player) return;
@@ -1763,7 +1874,10 @@ export default function VideoPlayerScreen() {
     transform: [{ scale: skipRightScale.value }],
   }));
 
-  const isLoading = itemLoading || playbackLoading || playerState === 'loading' || playerState === 'buffering';
+  // Include hydration state in loading check - if store hasn't hydrated, we're still loading
+  // Also include local path resolution - if we have a downloaded item but haven't finished resolving its path yet, we're still loading
+  const isResolvingLocalPath = downloadStoreHydrated && !!downloadedItem && !localPathResolved;
+  const isLoading = !downloadStoreHydrated || isResolvingLocalPath || itemLoading || playbackLoading || playerState === 'loading' || playerState === 'buffering';
   const showLoadingIndicator = isLoading || isBuffering;
   const progressPercent = progress.duration > 0 ? ((isSeeking ? seekPosition : progress.position) / progress.duration) * 100 : 0;
 

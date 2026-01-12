@@ -425,8 +425,8 @@ export default function EpubReaderScreen() {
     setReaderSettings({ theme: t });
     setShowSettings(false);
     const colors = THEMES[t];
-    const cfiToPreserve = currentCfi ? currentCfi.replace(/"/g, '\\"') : '';
-    webViewRef.current?.injectJavaScript(`setReaderTheme("${colors.bg}", "${colors.text}", "${cfiToPreserve}"); true;`);
+    const progressToPreserve = progress;
+    webViewRef.current?.injectJavaScript(`setReaderThemeWithProgress("${colors.bg}", "${colors.text}", ${progressToPreserve}); true;`);
   };
 
   const handleFontSizeChange = (delta: number) => {
@@ -437,9 +437,9 @@ export default function EpubReaderScreen() {
     isStyleChangingRef.current = true;
     setFontSize(newSize);
     setReaderSettings({ fontSize: newSize });
-    const cfiToPreserve = currentCfi ? currentCfi.replace(/"/g, '\\"') : '';
+    const progressToPreserve = progress;
     const colors = THEMES[theme];
-    webViewRef.current?.injectJavaScript(`setFontSize(${newSize}, "${cfiToPreserve}", "${colors.bg}", "${colors.text}"); true;`);
+    webViewRef.current?.injectJavaScript(`setFontSizeWithProgress(${newSize}, ${progressToPreserve}, "${colors.bg}", "${colors.text}"); true;`);
   };
 
   const handleTocSelect = (href: string) => {
@@ -1056,6 +1056,209 @@ export default function EpubReaderScreen() {
 
       } catch(e) {
         log('setFontSize error: ' + e.message);
+        msg("styleChangeComplete", {});
+      }
+    }
+
+    function setFontSizeWithProgress(size, progressToRestore, bg, text) {
+      try {
+        currentFontSize = size;
+        if(!book) { msg("styleChangeComplete", {}); return; }
+
+        var actualProgress = progressToRestore;
+        if (rendition) {
+          var currentLoc = rendition.currentLocation();
+          if (currentLoc && currentLoc.start && currentLoc.start.cfi) {
+            if (locationsGenerated && book.locations) {
+              var pct = book.locations.percentageFromCfi(currentLoc.start.cfi);
+              if (pct !== undefined && pct > 0) {
+                actualProgress = pct;
+              }
+            }
+          }
+        }
+        if (!actualProgress && lastKnownPercent > 0) {
+          actualProgress = lastKnownPercent;
+        }
+
+        log('setFontSizeWithProgress: size=' + size + ' actualProgress=' + actualProgress + ' (passed=' + progressToRestore + ')');
+
+        if (rendition) {
+          rendition.destroy();
+        }
+
+        document.body.style.background = bg;
+
+        rendition = book.renderTo("reader", {
+          width: "100%",
+          height: "100%",
+          flow: "paginated"
+        });
+
+        rendition.themes.default({
+          "body": {
+            "background": bg + " !important",
+            "color": text + " !important",
+            "font-size": size + "% !important",
+            "line-height": "1.7 !important",
+            "padding": "16px !important"
+          },
+          "p,div,span,h1,h2,h3,h4,h5,h6,li": {"color": text + " !important"},
+          "a": {"color": "${accentColor} !important"},
+          "img,svg,image,figure,picture": {"display": "none !important"}
+        });
+
+        rendition.on("keydown", function(e) {
+          if (e.key === "ArrowLeft") prevPage();
+          if (e.key === "ArrowRight") nextPage();
+        });
+
+        rendition.on("relocated", function(loc) {
+          try {
+            lastKnownCfi = loc.start.cfi;
+            if (locationsGenerated && book.locations && book.locations.length()) {
+              var pct = book.locations.percentageFromCfi(loc.start.cfi);
+              lastKnownPercent = pct || 0;
+            }
+          } catch(e) {}
+        });
+
+        rendition.display().then(function() {
+          log('setFontSizeWithProgress: rendition displayed, regenerating locations...');
+          locationsGenerated = false;
+          book.locations.generate(1500).then(function() {
+            log('setFontSizeWithProgress: locations regenerated (' + book.locations.length() + '), navigating to ' + (actualProgress * 100) + '%');
+            locationsGenerated = true;
+            if (actualProgress > 0) {
+              var targetCfi = book.locations.cfiFromPercentage(actualProgress);
+              if (targetCfi) {
+                rendition.display(targetCfi).then(function() {
+                  lastKnownCfi = targetCfi;
+                  lastKnownPercent = actualProgress;
+                  log('setFontSizeWithProgress complete at ' + (actualProgress * 100) + '%');
+                  msg("styleChangeComplete", {cfi: targetCfi, progress: actualProgress});
+                }).catch(function(e) {
+                  log('setFontSizeWithProgress nav error: ' + e.message);
+                  msg("styleChangeComplete", {progress: actualProgress});
+                });
+              } else {
+                msg("styleChangeComplete", {progress: actualProgress});
+              }
+            } else {
+              msg("styleChangeComplete", {progress: 0});
+            }
+          }).catch(function(e) {
+            log('setFontSizeWithProgress locations error: ' + e.message);
+            msg("styleChangeComplete", {});
+          });
+        }).catch(function(e) {
+          log('setFontSizeWithProgress display error: ' + e.message);
+          msg("styleChangeComplete", {});
+        });
+
+      } catch(e) {
+        log('setFontSizeWithProgress error: ' + e.message);
+        msg("styleChangeComplete", {});
+      }
+    }
+
+    function setReaderThemeWithProgress(bg, text, progressToRestore) {
+      try {
+        if(!book) { msg("styleChangeComplete", {}); return; }
+
+        var actualProgress = progressToRestore;
+        if (rendition) {
+          var currentLoc = rendition.currentLocation();
+          if (currentLoc && currentLoc.start && currentLoc.start.cfi) {
+            if (locationsGenerated && book.locations) {
+              var pct = book.locations.percentageFromCfi(currentLoc.start.cfi);
+              if (pct !== undefined && pct > 0) {
+                actualProgress = pct;
+              }
+            }
+          }
+        }
+        if (!actualProgress && lastKnownPercent > 0) {
+          actualProgress = lastKnownPercent;
+        }
+
+        log('setReaderThemeWithProgress: actualProgress=' + actualProgress + ' (passed=' + progressToRestore + ')');
+
+        if (rendition) {
+          rendition.destroy();
+        }
+
+        document.body.style.background = bg;
+
+        rendition = book.renderTo("reader", {
+          width: "100%",
+          height: "100%",
+          flow: "paginated"
+        });
+
+        rendition.themes.default({
+          "body": {
+            "background": bg + " !important",
+            "color": text + " !important",
+            "font-size": currentFontSize + "% !important",
+            "line-height": "1.7 !important",
+            "padding": "16px !important"
+          },
+          "p,div,span,h1,h2,h3,h4,h5,h6,li": {"color": text + " !important"},
+          "a": {"color": "${accentColor} !important"},
+          "img,svg,image,figure,picture": {"display": "none !important"}
+        });
+
+        rendition.on("keydown", function(e) {
+          if (e.key === "ArrowLeft") prevPage();
+          if (e.key === "ArrowRight") nextPage();
+        });
+
+        rendition.on("relocated", function(loc) {
+          try {
+            lastKnownCfi = loc.start.cfi;
+            if (locationsGenerated && book.locations && book.locations.length()) {
+              var pct = book.locations.percentageFromCfi(loc.start.cfi);
+              lastKnownPercent = pct || 0;
+            }
+          } catch(e) {}
+        });
+
+        rendition.display().then(function() {
+          log('setReaderThemeWithProgress: rendition displayed, regenerating locations...');
+          locationsGenerated = false;
+          book.locations.generate(1500).then(function() {
+            log('setReaderThemeWithProgress: locations regenerated (' + book.locations.length() + '), navigating to ' + (actualProgress * 100) + '%');
+            locationsGenerated = true;
+            if (actualProgress > 0) {
+              var targetCfi = book.locations.cfiFromPercentage(actualProgress);
+              if (targetCfi) {
+                rendition.display(targetCfi).then(function() {
+                  lastKnownCfi = targetCfi;
+                  lastKnownPercent = actualProgress;
+                  log('setReaderThemeWithProgress complete at ' + (actualProgress * 100) + '%');
+                  msg("styleChangeComplete", {cfi: targetCfi, progress: actualProgress});
+                }).catch(function(e) {
+                  log('setReaderThemeWithProgress nav error: ' + e.message);
+                  msg("styleChangeComplete", {progress: actualProgress});
+                });
+              } else {
+                msg("styleChangeComplete", {progress: actualProgress});
+              }
+            } else {
+              msg("styleChangeComplete", {progress: 0});
+            }
+          }).catch(function(e) {
+            log('setReaderThemeWithProgress locations error: ' + e.message);
+            msg("styleChangeComplete", {});
+          });
+        }).catch(function(e) {
+          log('setReaderThemeWithProgress display error: ' + e.message);
+          msg("styleChangeComplete", {});
+        });
+
+      } catch(e) {
+        log('setReaderThemeWithProgress error: ' + e.message);
         msg("styleChangeComplete", {});
       }
     }
