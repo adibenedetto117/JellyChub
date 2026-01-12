@@ -346,6 +346,7 @@ function SeriesDetailModal({
       .filter(ep => ep.seasonNumber === seasonNumber)
       .sort((a, b) => a.episodeNumber - b.episodeNumber);
   };
+
   if (!series) return null;
 
   const poster = series.images.find((i) => i.coverType === 'poster');
@@ -790,12 +791,6 @@ function ManualSearchModal({
   const [qualityFilter, setQualityFilter] = useState('All');
   const [sizeFilter, setSizeFilter] = useState('All');
 
-  if (!series) return null;
-
-  const title = seasonNumber !== undefined
-    ? `${series.title} - Season ${seasonNumber}`
-    : series.title;
-
   const indexers = useMemo(() => {
     const counts = new Map<string, number>();
     releases.forEach((r) => {
@@ -867,6 +862,13 @@ function ManualSearchModal({
 
     return result;
   }, [releases, indexerFilter, qualityFilter, sortBy, hideRejected, sizeFilter]);
+
+  // Early return AFTER all hooks to satisfy Rules of Hooks
+  if (!series) return null;
+
+  const title = seasonNumber !== undefined
+    ? `${series.title} - Season ${seasonNumber}`
+    : series.title;
 
   const totalResults = releases.length;
   const filteredCount = filteredAndSortedReleases.length;

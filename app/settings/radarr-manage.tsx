@@ -117,14 +117,16 @@ const MovieCard = memo(function MovieCard({
 
   const status = getStatusInfo();
   const posterHeight = cardWidth * 1.5;
+  const textAreaHeight = 52; // Fixed height for title (2 lines) + meta row
+  const cardHeight = posterHeight + textAreaHeight;
 
   return (
-    <Animated.View entering={FadeInUp.delay(0).springify()}>
+    <Animated.View entering={FadeInUp.delay(0).springify()} style={{ width: cardWidth, height: cardHeight }}>
       <Pressable
         onPress={onPress}
-        style={({ pressed }) => [styles.gridCard, { width: cardWidth, opacity: pressed ? 0.8 : 1 }]}
+        style={({ pressed }) => [styles.gridCard, { width: cardWidth, height: cardHeight, opacity: pressed ? 0.8 : 1 }]}
       >
-        <View style={[styles.gridPosterContainer, { height: posterHeight }]}>
+        <View style={[styles.gridPosterContainer, { width: cardWidth, height: posterHeight }]}>
           {posterUrl ? (
             <Image source={{ uri: posterUrl }} style={styles.gridPoster} contentFit="cover" recyclingKey={`poster-${movie.id}`} />
           ) : (
@@ -464,8 +466,6 @@ const ManualSearchModal = memo(function ManualSearchModal({
   const [minSeeders, setMinSeeders] = useState(0);
   const [sizeFilter, setSizeFilter] = useState('All');
 
-  if (!movie) return null;
-
   const indexers = useMemo(() => {
     const counts = new Map<string, number>();
     releases.forEach((r) => {
@@ -538,6 +538,8 @@ const ManualSearchModal = memo(function ManualSearchModal({
 
     return result;
   }, [releases, indexerFilter, qualityFilter, sortBy, hideRejected, minSeeders, sizeFilter]);
+
+  if (!movie) return null;
 
   const totalResults = releases.length;
   const filteredCount = filteredAndSortedReleases.length;
@@ -1454,12 +1456,16 @@ export default function RadarrManageScreen() {
       {activeTab === 'library' && (
         isLoading ? (
           <View style={styles.skeletonGrid}>
-            {Array.from({ length: 9 }).map((_, i) => (
-              <View key={i} style={{ width: cardWidth, marginRight: i % numColumns < numColumns - 1 ? spacing[2] : 0, marginBottom: spacing[3] }}>
-                <Skeleton width={cardWidth} height={cardWidth * 1.5} borderRadius={12} />
-                <Skeleton width="80%" height={12} borderRadius={4} style={{ marginTop: 8 }} />
-              </View>
-            ))}
+            {Array.from({ length: 9 }).map((_, i) => {
+              const textAreaHeight = 52; // Must match MovieCard's textAreaHeight
+              const cardHeight = cardWidth * 1.5 + textAreaHeight;
+              return (
+                <View key={i} style={{ width: cardWidth, height: cardHeight, marginRight: i % numColumns < numColumns - 1 ? spacing[2] : 0, marginBottom: spacing[3] }}>
+                  <Skeleton width={cardWidth} height={cardWidth * 1.5} borderRadius={12} />
+                  <Skeleton width="80%" height={12} borderRadius={4} style={{ marginTop: 8 }} />
+                </View>
+              );
+            })}
           </View>
         ) : filteredMovies.length === 0 ? (
           <EmptyState icon="film-outline" title="No movies" subtitle={filter !== 'all' ? 'Change filter' : 'Add movies'} />
@@ -1478,11 +1484,11 @@ export default function RadarrManageScreen() {
             windowSize={7}
             removeClippedSubviews
             refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor={RADARR_ORANGE} />}
-            getItemLayout={(_, index) => ({
-              length: cardWidth * 1.5 + spacing[3] + 40,
-              offset: (cardWidth * 1.5 + spacing[3] + 40) * Math.floor(index / numColumns),
-              index,
-            })}
+            getItemLayout={(_, index) => {
+              const textAreaHeight = 52; // Must match MovieCard's textAreaHeight
+              const rowH = cardWidth * 1.5 + textAreaHeight + spacing[3];
+              return { length: rowH, offset: rowH * Math.floor(index / numColumns), index };
+            }}
           />
         )
       )}
@@ -1778,7 +1784,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing[3],
   },
   gridCard: {
-    padding: spacing[1],
+    overflow: 'hidden',
   },
   gridPosterContainer: {
     borderRadius: borderRadius.xl,
@@ -1838,11 +1844,13 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     marginTop: spacing[2],
+    width: '100%',
   },
   gridMeta: {
     flexDirection: 'row',
     alignItems: 'center',
     marginTop: spacing[1],
+    width: '100%',
   },
   gridYear: {
     color: colors.text.tertiary,

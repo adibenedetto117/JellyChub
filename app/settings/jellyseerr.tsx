@@ -5,7 +5,7 @@ import { Stack, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { useAuthStore } from '@/stores';
+import { useAuthStore, selectActiveServer } from '@/stores';
 import { jellyseerrClient } from '@/api/jellyseerr';
 import { colors } from '@/theme';
 import { goBack } from '@/utils';
@@ -32,7 +32,7 @@ export default function JellyseerrSettingsScreen() {
     setBottomBarConfig,
   } = useSettingsStore();
 
-  const activeServer = useAuthStore((s) => s.getActiveServer());
+  const activeServer = useAuthStore(selectActiveServer);
   const currentUser = useAuthStore((s) => s.currentUser);
 
   // Parse existing URL into parts
