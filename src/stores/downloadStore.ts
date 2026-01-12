@@ -5,6 +5,10 @@ import type { BaseItem } from '@/types/jellyfin';
 import { appStorage } from './storage';
 
 interface DownloadState {
+  // Hydration state
+  _hasHydrated: boolean;
+  setHasHydrated: (state: boolean) => void;
+
   // Download queue
   downloads: DownloadItem[];
   activeDownloadId: string | null;
@@ -43,6 +47,8 @@ interface DownloadState {
 export const useDownloadStore = create<DownloadState>()(
   persist(
     (set, get) => ({
+      _hasHydrated: false,
+      setHasHydrated: (state) => set({ _hasHydrated: state }),
       downloads: [],
       activeDownloadId: null,
       usedStorage: 0,
@@ -235,6 +241,11 @@ export const useDownloadStore = create<DownloadState>()(
         usedStorage: state.usedStorage,
         maxStorage: state.maxStorage,
       }),
+      onRehydrateStorage: () => (state) => {
+        console.log('[DownloadStore] Rehydrated, state:', state ? { downloadsCount: state.downloads.length, hasHydrated: state._hasHydrated } : null);
+        state?.setHasHydrated(true);
+        console.log('[DownloadStore] Set hasHydrated to true');
+      },
     }
   )
 );
@@ -258,3 +269,5 @@ export const selectStorageUsage = (state: DownloadState) => ({
   percentage: (state.usedStorage / state.maxStorage) * 100,
   remaining: state.maxStorage - state.usedStorage,
 });
+
+export const selectDownloadHasHydrated = (state: DownloadState) => state._hasHydrated;

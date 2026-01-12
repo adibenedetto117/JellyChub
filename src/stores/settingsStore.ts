@@ -178,6 +178,13 @@ interface SettingsState extends Omit<AppSettings, 'servers'> {
   jellyseerrConnectionStatus: 'unknown' | 'connected' | 'error';
   jellyseerrUseCustomHeaders: boolean;
   jellyseerrHideAvailable: boolean;
+  jellyseerrHideProcessing: boolean;
+  jellyseerrHidePartial: boolean;
+  jellyseerrMediaFilter: 'all' | 'movie' | 'tv';
+  jellyseerrGenreFilter: number[]; // Array of genre IDs to filter by
+  jellyseerrMinRating: number; // Minimum rating (0-10), 0 means no filter
+  jellyseerrRatingSource: 'tmdb' | 'imdb' | 'any'; // Which rating to filter by
+  jellyseerrYearFilter: number | null; // Filter by year, null means no filter
 
   // Notification settings
   notifications: {
@@ -245,6 +252,15 @@ interface SettingsState extends Omit<AppSettings, 'servers'> {
   setJellyseerrConnectionStatus: (status: 'unknown' | 'connected' | 'error') => void;
   setJellyseerrUseCustomHeaders: (enabled: boolean) => void;
   setJellyseerrHideAvailable: (enabled: boolean) => void;
+  setJellyseerrHideProcessing: (enabled: boolean) => void;
+  setJellyseerrHidePartial: (enabled: boolean) => void;
+  setJellyseerrMediaFilter: (filter: 'all' | 'movie' | 'tv') => void;
+  setJellyseerrGenreFilter: (genres: number[]) => void;
+  toggleJellyseerrGenre: (genreId: number) => void;
+  setJellyseerrMinRating: (rating: number) => void;
+  setJellyseerrRatingSource: (source: 'tmdb' | 'imdb' | 'any') => void;
+  setJellyseerrYearFilter: (year: number | null) => void;
+  clearJellyseerrFilters: () => void;
 
   setNotificationSetting: (key: keyof SettingsState['notifications'], enabled: boolean) => void;
 
@@ -298,6 +314,13 @@ const initialState = {
   jellyseerrConnectionStatus: 'unknown' as const,
   jellyseerrUseCustomHeaders: false,
   jellyseerrHideAvailable: false,
+  jellyseerrHideProcessing: false,
+  jellyseerrHidePartial: false,
+  jellyseerrMediaFilter: 'all' as const,
+  jellyseerrGenreFilter: [],
+  jellyseerrMinRating: 0,
+  jellyseerrRatingSource: 'tmdb' as const,
+  jellyseerrYearFilter: null,
   notifications: {
     downloadComplete: true,
     nowPlaying: false,
@@ -490,6 +513,30 @@ export const useSettingsStore = create<SettingsState>()(
       setJellyseerrConnectionStatus: (status) => set({ jellyseerrConnectionStatus: status }),
       setJellyseerrUseCustomHeaders: (enabled) => set({ jellyseerrUseCustomHeaders: enabled }),
       setJellyseerrHideAvailable: (enabled) => set({ jellyseerrHideAvailable: enabled }),
+      setJellyseerrHideProcessing: (enabled) => set({ jellyseerrHideProcessing: enabled }),
+      setJellyseerrHidePartial: (enabled) => set({ jellyseerrHidePartial: enabled }),
+      setJellyseerrMediaFilter: (filter) => set({ jellyseerrMediaFilter: filter }),
+      setJellyseerrGenreFilter: (genres) => set({ jellyseerrGenreFilter: genres }),
+      toggleJellyseerrGenre: (genreId) =>
+        set((state) => ({
+          jellyseerrGenreFilter: state.jellyseerrGenreFilter.includes(genreId)
+            ? state.jellyseerrGenreFilter.filter((id) => id !== genreId)
+            : [...state.jellyseerrGenreFilter, genreId],
+        })),
+      setJellyseerrMinRating: (rating) => set({ jellyseerrMinRating: rating }),
+      setJellyseerrRatingSource: (source) => set({ jellyseerrRatingSource: source }),
+      setJellyseerrYearFilter: (year) => set({ jellyseerrYearFilter: year }),
+      clearJellyseerrFilters: () =>
+        set({
+          jellyseerrHideAvailable: false,
+          jellyseerrHideProcessing: false,
+          jellyseerrHidePartial: false,
+          jellyseerrMediaFilter: 'all',
+          jellyseerrGenreFilter: [],
+          jellyseerrMinRating: 0,
+          jellyseerrRatingSource: 'tmdb',
+          jellyseerrYearFilter: null,
+        }),
 
       setNotificationSetting: (key, enabled) =>
         set((state) => ({

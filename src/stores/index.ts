@@ -19,7 +19,7 @@ export type {
   FixedTabId,
 } from './settingsStore';
 export { usePlayerStore, selectIsPlaying, selectCurrentQueueItem, selectHasNext, selectHasPrevious } from './playerStore';
-export { useDownloadStore, selectPendingDownloads, selectActiveDownload, selectCompletedDownloads, selectDownloadsByType, selectStorageUsage } from './downloadStore';
+export { useDownloadStore, selectPendingDownloads, selectActiveDownload, selectCompletedDownloads, selectDownloadsByType, selectStorageUsage, selectDownloadHasHydrated } from './downloadStore';
 export { useReadingProgressStore, selectReadingProgress, selectRecentlyReading } from './readingProgressStore';
 export type { ReadingProgress, AudiobookBookmark } from './readingProgressStore';
 export {
@@ -39,8 +39,6 @@ export { useVideoPreferencesStore, selectSubtitleOffset } from './videoPreferenc
 export type { VideoPreferences } from './videoPreferencesStore';
 export { useConnectionStore, selectConnectionStatus, selectIsDisconnected, selectIsRetrying, selectConsecutiveFailures } from './connectionStore';
 export { useNavigationStore, selectCanGoBack, selectCurrentRoute, selectHistoryLength } from './navigationStore';
-export { useAnnouncementStore, selectAnnouncementHasHydrated } from './announcementStore';
-export type { Announcement } from './announcementStore';
 
 // Storage exports - centralized MMKV storage instances
 export {

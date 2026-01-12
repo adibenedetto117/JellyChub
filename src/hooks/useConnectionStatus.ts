@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useAuthStore } from '@/stores';
+import { useAuthStore, selectActiveServer } from '@/stores';
 import { jellyfinClient } from '@/api';
 
 export type ConnectionStatus = 'connected' | 'disconnected' | 'checking' | 'no_server';
@@ -11,7 +11,7 @@ interface ConnectionState {
 }
 
 export function useConnectionStatus() {
-  const activeServer = useAuthStore((state) => state.getActiveServer());
+  const activeServer = useAuthStore(selectActiveServer);
   const [state, setState] = useState<ConnectionState>({
     status: 'checking',
     error: null,

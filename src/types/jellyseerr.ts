@@ -74,6 +74,80 @@ export const MEDIA_STATUS = {
   AVAILABLE: 5,
 } as const;
 
+// TMDB Genre IDs - shared between movies and TV
+export const TMDB_GENRES = {
+  ACTION: 28,
+  ADVENTURE: 12,
+  ANIMATION: 16,
+  COMEDY: 35,
+  CRIME: 80,
+  DOCUMENTARY: 99,
+  DRAMA: 18,
+  FAMILY: 10751,
+  FANTASY: 14,
+  HISTORY: 36,
+  HORROR: 27,
+  MUSIC: 10402,
+  MYSTERY: 9648,
+  ROMANCE: 10749,
+  SCIENCE_FICTION: 878,
+  THRILLER: 53,
+  WAR: 10752,
+  WESTERN: 37,
+  // TV-specific genres
+  ACTION_ADVENTURE: 10759,
+  KIDS: 10762,
+  NEWS: 10763,
+  REALITY: 10764,
+  SCI_FI_FANTASY: 10765,
+  SOAP: 10766,
+  TALK: 10767,
+  WAR_POLITICS: 10768,
+} as const;
+
+export const GENRE_LABELS: Record<number, string> = {
+  [TMDB_GENRES.ACTION]: 'Action',
+  [TMDB_GENRES.ADVENTURE]: 'Adventure',
+  [TMDB_GENRES.ANIMATION]: 'Animation',
+  [TMDB_GENRES.COMEDY]: 'Comedy',
+  [TMDB_GENRES.CRIME]: 'Crime',
+  [TMDB_GENRES.DOCUMENTARY]: 'Documentary',
+  [TMDB_GENRES.DRAMA]: 'Drama',
+  [TMDB_GENRES.FAMILY]: 'Family',
+  [TMDB_GENRES.FANTASY]: 'Fantasy',
+  [TMDB_GENRES.HISTORY]: 'History',
+  [TMDB_GENRES.HORROR]: 'Horror',
+  [TMDB_GENRES.MUSIC]: 'Music',
+  [TMDB_GENRES.MYSTERY]: 'Mystery',
+  [TMDB_GENRES.ROMANCE]: 'Romance',
+  [TMDB_GENRES.SCIENCE_FICTION]: 'Sci-Fi',
+  [TMDB_GENRES.THRILLER]: 'Thriller',
+  [TMDB_GENRES.WAR]: 'War',
+  [TMDB_GENRES.WESTERN]: 'Western',
+  [TMDB_GENRES.ACTION_ADVENTURE]: 'Action & Adventure',
+  [TMDB_GENRES.KIDS]: 'Kids',
+  [TMDB_GENRES.NEWS]: 'News',
+  [TMDB_GENRES.REALITY]: 'Reality',
+  [TMDB_GENRES.SCI_FI_FANTASY]: 'Sci-Fi & Fantasy',
+  [TMDB_GENRES.SOAP]: 'Soap',
+  [TMDB_GENRES.TALK]: 'Talk',
+  [TMDB_GENRES.WAR_POLITICS]: 'War & Politics',
+};
+
+// Common genres for filter UI (most popular)
+export const COMMON_GENRES = [
+  { id: TMDB_GENRES.ACTION, label: 'Action', icon: 'flash' },
+  { id: TMDB_GENRES.COMEDY, label: 'Comedy', icon: 'happy' },
+  { id: TMDB_GENRES.DRAMA, label: 'Drama', icon: 'heart' },
+  { id: TMDB_GENRES.HORROR, label: 'Horror', icon: 'skull' },
+  { id: TMDB_GENRES.SCIENCE_FICTION, label: 'Sci-Fi', icon: 'planet' },
+  { id: TMDB_GENRES.THRILLER, label: 'Thriller', icon: 'alert-circle' },
+  { id: TMDB_GENRES.ROMANCE, label: 'Romance', icon: 'heart-circle' },
+  { id: TMDB_GENRES.ANIMATION, label: 'Animation', icon: 'color-palette' },
+  { id: TMDB_GENRES.DOCUMENTARY, label: 'Documentary', icon: 'videocam' },
+  { id: TMDB_GENRES.FANTASY, label: 'Fantasy', icon: 'sparkles' },
+] as const;
+
 export interface JellyseerrSeasonRequest {
   id: number;
   seasonNumber: number;
@@ -395,6 +469,9 @@ export interface JellyseerrUpdateUserBody {
 export interface JellyseerrJellyfinUser {
   id: string;
   name: string;
+  Name?: string;
+  username?: string;
+  displayName?: string;
 }
 
 export const USER_TYPE = {

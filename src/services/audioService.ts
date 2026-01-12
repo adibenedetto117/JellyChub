@@ -5,7 +5,6 @@ import { useDownloadStore } from '@/stores/downloadStore';
 import { getAudioStreamUrl, reportPlaybackStart, reportPlaybackStopped, generatePlaySessionId } from '@/api';
 import { ticksToMs, msToTicks } from '@/utils';
 import { mediaSessionService } from './mediaSessionService';
-import { encryptionService } from './encryptionService';
 import type { BaseItem } from '@/types/jellyfin';
 
 class AudioService {
@@ -224,11 +223,7 @@ class AudioService {
       if (downloadedItem?.localPath) {
         const fileInfo = await FileSystem.getInfoAsync(downloadedItem.localPath);
         if (fileInfo.exists) {
-          if (downloadedItem.localPath.endsWith('.enc')) {
-            playbackUrl = await encryptionService.getDecryptedUri(downloadedItem.localPath);
-          } else {
-            playbackUrl = downloadedItem.localPath;
-          }
+          playbackUrl = downloadedItem.localPath;
           isLocalPlayback = true;
         } else {
           playbackUrl = getAudioStreamUrl(item.Id, { directStream: useDirectStream });
@@ -354,11 +349,7 @@ class AudioService {
       if (downloadedItem?.localPath) {
         const fileInfo = await FileSystem.getInfoAsync(downloadedItem.localPath);
         if (fileInfo.exists) {
-          if (downloadedItem.localPath.endsWith('.enc')) {
-            playbackUrl = await encryptionService.getDecryptedUri(downloadedItem.localPath);
-          } else {
-            playbackUrl = downloadedItem.localPath;
-          }
+          playbackUrl = downloadedItem.localPath;
         } else {
           playbackUrl = getAudioStreamUrl(nextItem.Id, { directStream: useDirectStream });
         }

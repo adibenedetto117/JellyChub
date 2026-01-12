@@ -148,6 +148,11 @@ export const useNavigationStore = create<NavigationStore>()((set, get) => ({
   },
 }));
 
-export const selectCanGoBack = (state: NavigationStore) => state.canGoBack();
+export const selectCanGoBack = (state: NavigationStore) => {
+  if (PLAYER_ROUTES.some(r => state.currentRoute?.startsWith(r))) {
+    return true;
+  }
+  return state.history.length > 0;
+};
 export const selectCurrentRoute = (state: NavigationStore) => state.currentRoute;
 export const selectHistoryLength = (state: NavigationStore) => state.history.length;

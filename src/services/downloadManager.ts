@@ -5,7 +5,6 @@ import { useAuthStore } from '@/stores/authStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { getStreamUrl, getAudioStreamUrl, getBookDownloadUrl } from '@/api';
 import { notificationService } from './notificationService';
-import { encryptionService } from './encryptionService';
 import type { BaseItem } from '@/types/jellyfin';
 
 export type DownloadQualityOption = 'original' | 'high' | 'medium' | 'low';
@@ -202,14 +201,10 @@ class DownloadManager {
     this.activeTasks.delete(downloadId);
 
     if (result?.uri) {
-      const encryptedPath = `${localPath}.enc`;
-      await encryptionService.encryptFile(result.uri, encryptedPath);
-      await FileSystem.deleteAsync(result.uri, { idempotent: true });
-
-      const fileInfo = await FileSystem.getInfoAsync(encryptedPath);
+      const fileInfo = await FileSystem.getInfoAsync(result.uri);
       const actualFileSize = fileInfo.exists && 'size' in fileInfo ? fileInfo.size : download.totalBytes;
 
-      store.completeDownload(downloadId, encryptedPath, actualFileSize);
+      store.completeDownload(downloadId, result.uri, actualFileSize);
 
       // Build rich notification info
       const itemType = item.Type || 'Media';
@@ -343,15 +338,52 @@ class DownloadManager {
     const fileInfo = await FileSystem.getInfoAsync(download.localPath);
     if (!fileInfo.exists) return null;
 
-    if (download.localPath.endsWith('.enc')) {
-      return encryptionService.getDecryptedUri(download.localPath);
-    }
-
     return download.localPath;
   }
 
   isDownloaded(itemId: string): boolean {
     return useDownloadStore.getState().isItemDownloaded(itemId);
+  }
+
+  /**
+   * Validates that all completed downloads still exist on disk.
+   * Removes any orphaned download records where the file no longer exists.
+   * Should be called on app startup after the download store has hydrated.
+   * @returns The number of orphaned records that were removed
+   */
+  async validateDownloads(): Promise<number> {
+    const store = useDownloadStore.getState();
+    const completedDownloads = store.downloads.filter((d) => d.status === 'completed');
+    let removedCount = 0;
+
+    for (const download of completedDownloads) {
+      if (!download.localPath) {
+        // No local path stored - this is an invalid record
+        console.log('[DownloadManager] Removing download with no localPath:', download.id);
+        store.removeDownload(download.id);
+        removedCount++;
+        continue;
+      }
+
+      try {
+        const fileInfo = await FileSystem.getInfoAsync(download.localPath);
+        if (!fileInfo.exists) {
+          console.log('[DownloadManager] File not found, removing record:', download.localPath);
+          store.removeDownload(download.id);
+          removedCount++;
+        }
+      } catch (error) {
+        console.error('[DownloadManager] Error checking file:', download.localPath, error);
+        // Keep the record if we can't check - don't remove on error
+      }
+    }
+
+    if (removedCount > 0) {
+      console.log(`[DownloadManager] Removed ${removedCount} orphaned download records`);
+      store.recalculateUsedStorage();
+    }
+
+    return removedCount;
   }
 
   async getStorageInfo(): Promise<{
