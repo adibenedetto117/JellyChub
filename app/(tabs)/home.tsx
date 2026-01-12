@@ -27,7 +27,6 @@ import { ContinueWatching } from '@/components/media/ContinueWatching';
 import { NextUpRow } from '@/components/media/NextUpRow';
 import { HeroSpotlight } from '@/components/media/HeroSpotlight';
 import { AnimatedGradient } from '@/components/ui';
-import { AnnouncementBanner } from '@/components/ui/AnnouncementBanner';
 import { SkeletonContinueWatching, SkeletonRow, SkeletonHero } from '@/components/ui/Skeleton';
 import { TVHomeScreen } from '@/components/tv';
 import type { BaseItem, Library, Episode, CollectionType } from '@/types/jellyfin';
@@ -355,8 +354,6 @@ export default function HomeScreen() {
             </View>
           </SafeAreaView>
         )}
-
-        <AnnouncementBanner />
 
         {isLoadingResume && !resumeItems ? (
           <SkeletonContinueWatching count={2} />

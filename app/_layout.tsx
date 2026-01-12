@@ -6,9 +6,9 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
 import * as SplashScreen from 'expo-splash-screen';
 import { QueryProvider } from '@/providers';
-import { useAuthStore, useSettingsStore, useNavigationStore } from '@/stores';
+import { useAuthStore, useSettingsStore, useNavigationStore, useDownloadStore, selectActiveServer, selectDownloadHasHydrated } from '@/stores';
 import { jellyfinClient, jellyseerrClient } from '@/api';
-import { notificationService } from '@/services';
+import { notificationService, downloadManager } from '@/services';
 import { useDeepLinking, useGlobalBackHandler } from '@/hooks';
 import { ErrorBoundary } from '@/components/ui';
 import { MiniPlayer } from '@/components/player';
@@ -114,10 +114,11 @@ SplashScreen.preventAutoHideAsync();
 
 function AppContent() {
   const [isReady, setIsReady] = useState(false);
-  const activeServer = useAuthStore((state) => state.getActiveServer());
+  const activeServer = useAuthStore(selectActiveServer);
   const jellyseerrUrl = useSettingsStore((state) => state.jellyseerrUrl);
   const jellyseerrAuthToken = useSettingsStore((state) => state.jellyseerrAuthToken);
   const pushNavigation = useNavigationStore((state) => state.push);
+  const downloadStoreHydrated = useDownloadStore(selectDownloadHasHydrated);
   const pathname = usePathname();
 
   useDeepLinking();
@@ -146,6 +147,15 @@ function AppContent() {
   useEffect(() => {
     notificationService.initialize();
   }, []);
+
+  // Validate downloads after store hydration to clean up orphaned records
+  useEffect(() => {
+    if (downloadStoreHydrated) {
+      downloadManager.validateDownloads().catch((error) => {
+        console.error('[App] Error validating downloads:', error);
+      });
+    }
+  }, [downloadStoreHydrated]);
 
   // Use initialWindowMetrics for stable, synchronous layout
   // This avoids the race condition where dynamic insets change after initial render

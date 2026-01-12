@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { View, ActivityIndicator } from 'react-native';
 import { Redirect, type Href } from 'expo-router';
 import { useAuthStore, useSettingsStore } from '@/stores';
-import { selectAuthHasHydrated } from '@/stores/authStore';
+import { selectAuthHasHydrated, selectActiveServer } from '@/stores/authStore';
 import { selectHasHydrated } from '@/stores/settingsStore';
 import { jellyfinClient } from '@/api';
 import { colors } from '@/theme';
@@ -12,7 +12,7 @@ export default function Index() {
   const settingsHasHydrated = useSettingsStore(selectHasHydrated);
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const hasServers = useAuthStore((state) => state.servers.length > 0);
-  const activeServer = useAuthStore((state) => state.getActiveServer());
+  const activeServer = useAuthStore(selectActiveServer);
   const landingPage = useSettingsStore((state) => state.bottomBarConfig?.landingPage ?? 'home');
   const [clientReady, setClientReady] = useState(false);
 

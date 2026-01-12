@@ -1,12 +1,11 @@
-import { View, Text, ScrollView, RefreshControl, TextInput, FlatList, Pressable, StyleSheet, ActivityIndicator, Alert, Modal } from 'react-native';
+import { View, Text, ScrollView, RefreshControl, TextInput, FlatList, Pressable, StyleSheet, ActivityIndicator, Modal } from 'react-native';
 import { useState, useCallback, useMemo } from 'react';
+import Slider from '@react-native-community/slider';
 import { SafeAreaView } from '@/providers';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import Animated, { FadeIn, FadeInDown, FadeInRight, SlideInUp } from 'react-native-reanimated';
-import { BlurView } from 'expo-blur';
-import { Image } from 'expo-image';
+import Animated, { FadeIn, FadeInDown, FadeInRight } from 'react-native-reanimated';
 import { useSettingsStore, selectHasJellyseerr } from '@/stores/settingsStore';
 import {
   useJellyseerrUser,
@@ -30,30 +29,22 @@ import {
   useJellyfinSyncStatus,
   useStartJellyfinSync,
   useCancelJellyfinSync,
-  useJellyseerrUsers,
-  useJellyfinUsers,
-  useCreateJellyseerrUser,
-  useUpdateJellyseerrUser,
-  useDeleteJellyseerrUser,
-  useImportJellyfinUsers,
 } from '@/hooks';
 import { JellyseerrPosterCard, RequestCard } from '@/components/jellyseerr';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { colors } from '@/theme';
-import type { JellyseerrDiscoverItem, JellyseerrMediaRequest, JellyseerrJob, JellyseerrUserDetails, JellyseerrJellyfinUser } from '@/types/jellyseerr';
-import { hasPermission, JELLYSEERR_PERMISSIONS, REQUEST_STATUS, MEDIA_STATUS, getUserTypeLabel } from '@/types/jellyseerr';
+import type { JellyseerrDiscoverItem, JellyseerrMediaRequest, JellyseerrJob } from '@/types/jellyseerr';
+import { hasPermission, JELLYSEERR_PERMISSIONS, REQUEST_STATUS, MEDIA_STATUS, COMMON_GENRES } from '@/types/jellyseerr';
 
 const JELLYSEERR_PURPLE = '#6366f1';
 const JELLYSEERR_PURPLE_DARK = '#4f46e5';
 
-function isItemInLibrary(item: JellyseerrDiscoverItem): boolean {
-  const status = item?.mediaInfo?.status;
-  return status === MEDIA_STATUS.AVAILABLE || status === MEDIA_STATUS.PARTIALLY_AVAILABLE;
+function getItemStatus(item: JellyseerrDiscoverItem): number | undefined {
+  return item?.mediaInfo?.status;
 }
 
-type TabType = 'discover' | 'requests' | 'users' | 'admin';
+type TabType = 'discover' | 'requests' | 'admin';
 type FilterType = 'all' | 'pending' | 'approved' | 'available';
-type UserTabType = 'users' | 'import';
 
 function SettingsSection({
   title,
@@ -174,21 +165,6 @@ function JobCard({
   );
 }
 
-interface PermissionToggle {
-  key: keyof typeof JELLYSEERR_PERMISSIONS;
-  label: string;
-  description: string;
-}
-
-const PERMISSION_TOGGLES: PermissionToggle[] = [
-  { key: 'ADMIN', label: 'Admin', description: 'Full access to all features' },
-  { key: 'MANAGE_USERS', label: 'Manage Users', description: 'Add, edit, and remove users' },
-  { key: 'MANAGE_REQUESTS', label: 'Manage Requests', description: 'Approve or decline requests' },
-  { key: 'REQUEST', label: 'Request', description: 'Submit media requests' },
-  { key: 'REQUEST_4K', label: 'Request 4K', description: 'Request 4K content' },
-  { key: 'AUTO_APPROVE', label: 'Auto Approve', description: 'Requests are auto-approved' },
-  { key: 'AUTO_APPROVE_4K', label: 'Auto Approve 4K', description: '4K requests are auto-approved' },
-];
 
 function MediaRow({
   title,
@@ -256,8 +232,8 @@ function FilterPill({
           {label}
         </Text>
         {count !== undefined && count > 0 && (
-          <View style={[styles.filterBadge, isActive && styles.filterBadgeActive]}>
-            <Text style={styles.filterBadgeText}>{count}</Text>
+          <View style={[styles.filterPillBadge, isActive && styles.filterPillBadgeActive]}>
+            <Text style={styles.filterPillBadgeText}>{count}</Text>
           </View>
         )}
       </LinearGradient>
@@ -337,423 +313,32 @@ function StatCard({
   );
 }
 
-function UserCard({
-  user,
-  onPress,
-  onDelete,
-  isCurrentUser,
-  index,
-}: {
-  user: JellyseerrUserDetails;
-  onPress: () => void;
-  onDelete: () => void;
-  isCurrentUser: boolean;
-  index: number;
-}) {
-  const isAdmin = hasPermission(user.permissions, JELLYSEERR_PERMISSIONS.ADMIN);
-
-  return (
-    <Animated.View entering={FadeInRight.delay(index * 50).duration(300)}>
-      <Pressable
-        style={({ pressed }) => [styles.userCard, pressed && { opacity: 0.9 }]}
-        onPress={onPress}
-      >
-        <View style={styles.userCardContent}>
-          <View style={styles.avatarContainer}>
-            {user.avatar ? (
-              <Image source={{ uri: user.avatar }} style={styles.avatar} contentFit="cover" />
-            ) : (
-              <LinearGradient
-                colors={[JELLYSEERR_PURPLE, JELLYSEERR_PURPLE_DARK]}
-                style={styles.avatarPlaceholder}
-              >
-                <Text style={styles.avatarInitial}>
-                  {(user.displayName || user.username || user.email || 'U')[0].toUpperCase()}
-                </Text>
-              </LinearGradient>
-            )}
-            {isAdmin && (
-              <View style={styles.adminBadge}>
-                <Ionicons name="shield" size={10} color="#fff" />
-              </View>
-            )}
-          </View>
-
-          <View style={styles.userInfo}>
-            <View style={styles.userNameRow}>
-              <Text style={styles.userName} numberOfLines={1}>
-                {user.displayName || user.username || user.email}
-              </Text>
-              {isCurrentUser && (
-                <View style={styles.youBadge}>
-                  <Text style={styles.youBadgeText}>You</Text>
-                </View>
-              )}
-            </View>
-            <Text style={styles.userEmail} numberOfLines={1}>
-              {user.email}
-            </Text>
-            <View style={styles.userMeta}>
-              <View style={styles.userTypeBadge}>
-                <Ionicons
-                  name={user.userType === 3 ? 'server-outline' : 'person-outline'}
-                  size={10}
-                  color={colors.text.tertiary}
-                />
-                <Text style={styles.userTypeText}>{getUserTypeLabel(user.userType)}</Text>
-              </View>
-              <Text style={styles.requestCount}>
-                {user.requestCount} request{user.requestCount !== 1 ? 's' : ''}
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.userActions}>
-            {!isCurrentUser && !isAdmin && (
-              <Pressable
-                style={styles.deleteButton}
-                onPress={(e) => {
-                  e.stopPropagation();
-                  onDelete();
-                }}
-                hitSlop={8}
-              >
-                <Ionicons name="trash-outline" size={18} color="#ef4444" />
-              </Pressable>
-            )}
-            <Ionicons name="chevron-forward" size={18} color={colors.text.muted} />
-          </View>
-        </View>
-      </Pressable>
-    </Animated.View>
-  );
-}
-
-function JellyfinUserCard({
-  user,
-  isImported,
-  isSelected,
-  onToggle,
-  index,
-}: {
-  user: JellyseerrJellyfinUser;
-  isImported: boolean;
-  isSelected: boolean;
-  onToggle: () => void;
-  index: number;
-}) {
-  return (
-    <Animated.View entering={FadeInRight.delay(index * 30).duration(300)}>
-      <Pressable
-        style={({ pressed }) => [
-          styles.jellyfinUserCard,
-          isImported && styles.jellyfinUserCardImported,
-          isSelected && styles.jellyfinUserCardSelected,
-          pressed && { opacity: 0.9 },
-        ]}
-        onPress={onToggle}
-        disabled={isImported}
-      >
-        <View style={styles.jellyfinUserContent}>
-          <View
-            style={[
-              styles.jellyfinCheckbox,
-              isImported && styles.jellyfinCheckboxDisabled,
-              isSelected && styles.jellyfinCheckboxSelected,
-            ]}
-          >
-            {isImported ? (
-              <Ionicons name="checkmark" size={14} color={colors.text.muted} />
-            ) : isSelected ? (
-              <Ionicons name="checkmark" size={14} color="#fff" />
-            ) : null}
-          </View>
-          <View style={styles.jellyfinUserInfo}>
-            <Text style={[styles.jellyfinUserName, isImported && { color: colors.text.muted }]}>
-              {user.name}
-            </Text>
-            {isImported && <Text style={styles.importedLabel}>Already imported</Text>}
-          </View>
-        </View>
-      </Pressable>
-    </Animated.View>
-  );
-}
-
-function EditUserModal({
-  visible,
-  user,
-  onClose,
-  onSave,
-  isSaving,
-}: {
-  visible: boolean;
-  user: JellyseerrUserDetails | null;
-  onClose: () => void;
-  onSave: (permissions: number, quotas: { movieLimit?: number; movieDays?: number; tvLimit?: number; tvDays?: number }) => void;
-  isSaving: boolean;
-}) {
-  const [permissions, setPermissions] = useState(user?.permissions ?? 0);
-  const [movieQuotaLimit, setMovieQuotaLimit] = useState(user?.movieQuotaLimit?.toString() ?? '');
-  const [movieQuotaDays, setMovieQuotaDays] = useState(user?.movieQuotaDays?.toString() ?? '');
-  const [tvQuotaLimit, setTvQuotaLimit] = useState(user?.tvQuotaLimit?.toString() ?? '');
-  const [tvQuotaDays, setTvQuotaDays] = useState(user?.tvQuotaDays?.toString() ?? '');
-
-  const togglePermission = (perm: number) => {
-    if (permissions & perm) {
-      setPermissions(permissions & ~perm);
-    } else {
-      setPermissions(permissions | perm);
-    }
-  };
-
-  const handleSave = () => {
-    onSave(permissions, {
-      movieLimit: movieQuotaLimit ? parseInt(movieQuotaLimit, 10) : undefined,
-      movieDays: movieQuotaDays ? parseInt(movieQuotaDays, 10) : undefined,
-      tvLimit: tvQuotaLimit ? parseInt(tvQuotaLimit, 10) : undefined,
-      tvDays: tvQuotaDays ? parseInt(tvQuotaDays, 10) : undefined,
-    });
-  };
-
-  if (!user) return null;
-
-  return (
-    <Modal visible={visible} animationType="slide" transparent>
-      <View style={styles.modalOverlay}>
-        <Animated.View entering={SlideInUp.springify()} style={styles.modalContent}>
-          <LinearGradient
-            colors={[`${JELLYSEERR_PURPLE}15`, 'transparent']}
-            style={styles.modalGradient}
-          />
-          <SafeAreaView style={styles.modalSafeArea} edges={['bottom']}>
-            <View style={styles.modalHeader}>
-              <Pressable onPress={onClose} style={styles.modalCloseButton}>
-                <BlurView intensity={30} style={styles.blurButton}>
-                  <Ionicons name="close" size={24} color="#fff" />
-                </BlurView>
-              </Pressable>
-              <Text style={styles.modalTitle}>Edit User</Text>
-              <View style={{ width: 40 }} />
-            </View>
-
-            <ScrollView style={styles.modalScroll} showsVerticalScrollIndicator={false}>
-              <View style={styles.modalUserHeader}>
-                <View style={styles.modalAvatarContainer}>
-                  {user.avatar ? (
-                    <Image source={{ uri: user.avatar }} style={styles.modalAvatar} contentFit="cover" />
-                  ) : (
-                    <LinearGradient
-                      colors={[JELLYSEERR_PURPLE, JELLYSEERR_PURPLE_DARK]}
-                      style={styles.modalAvatarPlaceholder}
-                    >
-                      <Text style={styles.modalAvatarInitial}>
-                        {(user.displayName || user.username || user.email || 'U')[0].toUpperCase()}
-                      </Text>
-                    </LinearGradient>
-                  )}
-                </View>
-                <Text style={styles.modalUserName}>{user.displayName || user.username || user.email}</Text>
-                <Text style={styles.modalUserEmail}>{user.email}</Text>
-              </View>
-
-              <View style={styles.modalSection}>
-                <Text style={styles.modalSectionTitle}>Permissions</Text>
-                {PERMISSION_TOGGLES.map((perm) => {
-                  const permValue = JELLYSEERR_PERMISSIONS[perm.key];
-                  const isEnabled = (permissions & permValue) === permValue;
-                  return (
-                    <Pressable
-                      key={perm.key}
-                      style={styles.permissionRow}
-                      onPress={() => togglePermission(permValue)}
-                    >
-                      <View style={styles.permissionInfo}>
-                        <Text style={styles.permissionLabel}>{perm.label}</Text>
-                        <Text style={styles.permissionDescription}>{perm.description}</Text>
-                      </View>
-                      <View
-                        style={[
-                          styles.permissionToggle,
-                          isEnabled && { backgroundColor: JELLYSEERR_PURPLE },
-                        ]}
-                      >
-                        {isEnabled && <Ionicons name="checkmark" size={14} color="#fff" />}
-                      </View>
-                    </Pressable>
-                  );
-                })}
-              </View>
-
-              <View style={styles.modalSection}>
-                <Text style={styles.modalSectionTitle}>Request Quotas</Text>
-                <Text style={styles.modalSectionSubtitle}>Leave empty for unlimited</Text>
-
-                <View style={styles.quotaRow}>
-                  <View style={styles.quotaItem}>
-                    <Text style={styles.quotaLabel}>Movie Limit</Text>
-                    <TextInput
-                      style={styles.quotaInput}
-                      value={movieQuotaLimit}
-                      onChangeText={setMovieQuotaLimit}
-                      placeholder="Unlimited"
-                      placeholderTextColor={colors.text.muted}
-                      keyboardType="number-pad"
-                    />
-                  </View>
-                  <View style={styles.quotaItem}>
-                    <Text style={styles.quotaLabel}>Per Days</Text>
-                    <TextInput
-                      style={styles.quotaInput}
-                      value={movieQuotaDays}
-                      onChangeText={setMovieQuotaDays}
-                      placeholder="7"
-                      placeholderTextColor={colors.text.muted}
-                      keyboardType="number-pad"
-                    />
-                  </View>
-                </View>
-
-                <View style={styles.quotaRow}>
-                  <View style={styles.quotaItem}>
-                    <Text style={styles.quotaLabel}>TV Limit</Text>
-                    <TextInput
-                      style={styles.quotaInput}
-                      value={tvQuotaLimit}
-                      onChangeText={setTvQuotaLimit}
-                      placeholder="Unlimited"
-                      placeholderTextColor={colors.text.muted}
-                      keyboardType="number-pad"
-                    />
-                  </View>
-                  <View style={styles.quotaItem}>
-                    <Text style={styles.quotaLabel}>Per Days</Text>
-                    <TextInput
-                      style={styles.quotaInput}
-                      value={tvQuotaDays}
-                      onChangeText={setTvQuotaDays}
-                      placeholder="7"
-                      placeholderTextColor={colors.text.muted}
-                      keyboardType="number-pad"
-                    />
-                  </View>
-                </View>
-              </View>
-
-              <View style={{ height: 100 }} />
-            </ScrollView>
-
-            <View style={styles.modalFooter}>
-              <Pressable
-                style={[styles.saveButton, isSaving && { opacity: 0.7 }]}
-                onPress={handleSave}
-                disabled={isSaving}
-              >
-                {isSaving ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <Text style={styles.saveButtonText}>Save Changes</Text>
-                )}
-              </Pressable>
-            </View>
-          </SafeAreaView>
-        </Animated.View>
-      </View>
-    </Modal>
-  );
-}
-
-function CreateUserModal({
-  visible,
-  onClose,
-  onCreate,
-  isCreating,
-}: {
-  visible: boolean;
-  onClose: () => void;
-  onCreate: (email: string, username?: string) => void;
-  isCreating: boolean;
-}) {
-  const [email, setEmail] = useState('');
-  const [username, setUsername] = useState('');
-
-  const handleCreate = () => {
-    if (!email.trim()) {
-      Alert.alert('Error', 'Email is required');
-      return;
-    }
-    onCreate(email.trim(), username.trim() || undefined);
-  };
-
-  return (
-    <Modal visible={visible} animationType="slide" transparent>
-      <View style={styles.modalOverlay}>
-        <Animated.View entering={SlideInUp.springify()} style={styles.createModalContent}>
-          <View style={styles.modalHeader}>
-            <Pressable onPress={onClose} style={styles.modalCloseButton}>
-              <View style={styles.closeButtonCircle}>
-                <Ionicons name="close" size={20} color="#fff" />
-              </View>
-            </Pressable>
-            <Text style={styles.modalTitle}>Create Local User</Text>
-            <View style={{ width: 40 }} />
-          </View>
-
-          <View style={styles.createForm}>
-            <Text style={styles.inputLabel}>Email *</Text>
-            <TextInput
-              style={styles.formInput}
-              value={email}
-              onChangeText={setEmail}
-              placeholder="user@example.com"
-              placeholderTextColor={colors.text.muted}
-              keyboardType="email-address"
-              autoCapitalize="none"
-            />
-
-            <Text style={styles.inputLabel}>Username</Text>
-            <TextInput
-              style={styles.formInput}
-              value={username}
-              onChangeText={setUsername}
-              placeholder="Optional"
-              placeholderTextColor={colors.text.muted}
-              autoCapitalize="none"
-            />
-          </View>
-
-          <Pressable
-            style={[styles.createButton, isCreating && { opacity: 0.7 }]}
-            onPress={handleCreate}
-            disabled={isCreating}
-          >
-            {isCreating ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.createButtonText}>Create User</Text>
-            )}
-          </Pressable>
-        </Animated.View>
-      </View>
-    </Modal>
-  );
-}
-
 export default function RequestsScreen() {
   const [activeTab, setActiveTab] = useState<TabType>('discover');
   const [searchQuery, setSearchQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [requestFilter, setRequestFilter] = useState<FilterType>('all');
-  const [userSearchQuery, setUserSearchQuery] = useState('');
-  const [activeUserTab, setActiveUserTab] = useState<UserTabType>('users');
-  const [selectedUser, setSelectedUser] = useState<JellyseerrUserDetails | null>(null);
-  const [showEditModal, setShowEditModal] = useState(false);
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [selectedJellyfinUsers, setSelectedJellyfinUsers] = useState<Set<string>>(new Set());
+  const [runningJobId, setRunningJobId] = useState<string | null>(null);
+  const [showFilterModal, setShowFilterModal] = useState(false);
 
   const hasJellyseerr = useSettingsStore(selectHasJellyseerr);
   const hideAvailable = useSettingsStore((s) => s.jellyseerrHideAvailable);
   const setHideAvailable = useSettingsStore((s) => s.setJellyseerrHideAvailable);
+  const hideProcessing = useSettingsStore((s) => s.jellyseerrHideProcessing);
+  const setHideProcessing = useSettingsStore((s) => s.setJellyseerrHideProcessing);
+  const hidePartial = useSettingsStore((s) => s.jellyseerrHidePartial);
+  const setHidePartial = useSettingsStore((s) => s.setJellyseerrHidePartial);
+  const mediaFilter = useSettingsStore((s) => s.jellyseerrMediaFilter);
+  const setMediaFilter = useSettingsStore((s) => s.setJellyseerrMediaFilter);
+  const genreFilter = useSettingsStore((s) => s.jellyseerrGenreFilter);
+  const toggleGenre = useSettingsStore((s) => s.toggleJellyseerrGenre);
+  const minRating = useSettingsStore((s) => s.jellyseerrMinRating);
+  const setMinRating = useSettingsStore((s) => s.setJellyseerrMinRating);
+  const ratingSource = useSettingsStore((s) => s.jellyseerrRatingSource);
+  const setRatingSource = useSettingsStore((s) => s.setJellyseerrRatingSource);
+  const yearFilter = useSettingsStore((s) => s.jellyseerrYearFilter);
+  const setYearFilter = useSettingsStore((s) => s.setJellyseerrYearFilter);
+  const clearFilters = useSettingsStore((s) => s.clearJellyseerrFilters);
 
   const { data: user, refetch: refetchUser } = useJellyseerrUser();
 
@@ -772,51 +357,22 @@ export default function RequestsScreen() {
   } = useAllRequests(requestFilter);
   const { data: pendingRequests } = usePendingRequests();
 
-  const {
-    data: usersData,
-    refetch: refetchUsers,
-    fetchNextPage: fetchNextUsers,
-    hasNextPage: hasNextUsers,
-    isFetchingNextPage: isFetchingNextUsers,
-    isLoading: isLoadingUsers,
-  } = useJellyseerrUsers();
-  const { data: jellyfinUsers, refetch: refetchJellyfinUsers, isLoading: isLoadingJellyfin } = useJellyfinUsers();
+  const { data: serverStatus, refetch: refetchStatus } = useJellyseerrServerStatus();
+  const { data: aboutInfo, refetch: refetchAbout } = useJellyseerrAbout();
+  const { data: cacheStats, refetch: refetchCache } = useJellyseerrCacheStats();
+  const { data: jobs, refetch: refetchJobs } = useJellyseerrJobs();
+  const { data: syncStatus, refetch: refetchSync } = useJellyfinSyncStatus();
 
-  const createUser = useCreateJellyseerrUser();
-  const updateUser = useUpdateJellyseerrUser();
-  const deleteJellyseerrUser = useDeleteJellyseerrUser();
-  const importUsers = useImportJellyfinUsers();
+  const flushCache = useFlushCache();
+  const runJob = useRunJob();
+  const cancelJob = useCancelJob();
+  const startSync = useStartJellyfinSync();
+  const cancelSync = useCancelJellyfinSync();
 
   const allRequestsList = useMemo(
     () => allRequests?.pages.flatMap((p) => p.results) ?? [],
     [allRequests]
   );
-
-  const users = useMemo(
-    () => usersData?.pages.flatMap((p) => p.results) ?? [],
-    [usersData]
-  );
-
-  const filteredUsers = useMemo(() => {
-    if (!userSearchQuery.trim()) return users;
-    const query = userSearchQuery.toLowerCase();
-    return users.filter(
-      (u) =>
-        u.displayName?.toLowerCase().includes(query) ||
-        u.username?.toLowerCase().includes(query) ||
-        u.email?.toLowerCase().includes(query)
-    );
-  }, [users, userSearchQuery]);
-
-  const importedJellyfinUserIds = useMemo(() => {
-    const ids = new Set<string>();
-    users.forEach((u) => {
-      if (u.jellyfinUserId) {
-        ids.add(u.jellyfinUserId);
-      }
-    });
-    return ids;
-  }, [users]);
 
   const approveRequest = useApproveRequest();
   const declineRequest = useDeclineRequest();
@@ -824,10 +380,6 @@ export default function RequestsScreen() {
 
   const canManageRequests = user
     ? hasPermission(user.permissions, JELLYSEERR_PERMISSIONS.MANAGE_REQUESTS)
-    : false;
-
-  const canManageUsers = user
-    ? hasPermission(user.permissions, JELLYSEERR_PERMISSIONS.MANAGE_USERS)
     : false;
 
   const isAdmin = user
@@ -845,35 +397,28 @@ export default function RequestsScreen() {
 
   const pendingCount = pendingRequests?.results?.length ?? stats.pending;
 
-  const userStats = useMemo(() => {
-    const total = users.length;
-    const admins = users.filter((u) => hasPermission(u.permissions, JELLYSEERR_PERMISSIONS.ADMIN)).length;
-    const jellyfinCount = users.filter((u) => u.userType === 3).length;
-    const localCount = users.filter((u) => u.userType === 2).length;
-    return { total, admins, jellyfinCount, localCount };
-  }, [users]);
-
   const tabs: { id: TabType; label: string; visible: boolean; badge?: number }[] = useMemo(() => [
     { id: 'discover', label: 'Discover', visible: true },
     { id: 'requests', label: 'Requests', visible: true, badge: pendingCount > 0 && canManageRequests ? pendingCount : undefined },
-    { id: 'users', label: 'Users', visible: canManageUsers },
     { id: 'admin', label: 'Admin', visible: isAdmin },
-  ], [canManageRequests, canManageUsers, pendingCount, isAdmin]);
+  ], [canManageRequests, pendingCount, isAdmin]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([
+    const refreshPromises: Promise<unknown>[] = [
       refetchUser(),
       refetchTrending(),
       refetchPopularMovies(),
       refetchPopularTv(),
       refetchUpcoming(),
       refetchAllRequests(),
-      refetchUsers(),
-      refetchJellyfinUsers(),
-    ]);
+    ];
+    if (activeTab === 'admin') {
+      refreshPromises.push(refetchStatus(), refetchAbout(), refetchCache(), refetchJobs(), refetchSync());
+    }
+    await Promise.all(refreshPromises);
     setRefreshing(false);
-  }, [refetchUser, refetchTrending, refetchPopularMovies, refetchPopularTv, refetchUpcoming, refetchAllRequests, refetchUsers, refetchJellyfinUsers]);
+  }, [refetchUser, refetchTrending, refetchPopularMovies, refetchPopularTv, refetchUpcoming, refetchAllRequests, activeTab, refetchStatus, refetchAbout, refetchCache, refetchJobs, refetchSync]);
 
   const handleItemPress = (item: JellyseerrDiscoverItem) => {
     router.push(`/(tabs)/jellyseerr/${item.mediaType}/${item.id}?from=${encodeURIComponent('/(tabs)/requests')}`);
@@ -895,99 +440,105 @@ export default function RequestsScreen() {
     declineRequest.mutate(requestId);
   };
 
-  const handleEditUser = (userToEdit: JellyseerrUserDetails) => {
-    setSelectedUser(userToEdit);
-    setShowEditModal(true);
-  };
-
-  const handleSaveUser = async (
-    permissions: number,
-    quotas: { movieLimit?: number; movieDays?: number; tvLimit?: number; tvDays?: number }
-  ) => {
-    if (!selectedUser) return;
-
-    try {
-      await updateUser.mutateAsync({
-        userId: selectedUser.id,
-        body: {
-          permissions,
-          movieQuotaLimit: quotas.movieLimit,
-          movieQuotaDays: quotas.movieDays,
-          tvQuotaLimit: quotas.tvLimit,
-          tvQuotaDays: quotas.tvDays,
-        },
-      });
-      setShowEditModal(false);
-      setSelectedUser(null);
-      Alert.alert('Success', 'User updated successfully');
-    } catch (error: any) {
-      Alert.alert('Error', error?.message ?? 'Failed to update user');
-    }
-  };
-
-  const handleDeleteUser = (userToDelete: JellyseerrUserDetails) => {
-    Alert.alert(
-      'Delete User',
-      `Are you sure you want to delete ${userToDelete.displayName || userToDelete.username || userToDelete.email}? This cannot be undone.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await deleteJellyseerrUser.mutateAsync(userToDelete.id);
-              Alert.alert('Success', 'User deleted');
-            } catch (error: any) {
-              Alert.alert('Error', error?.message ?? 'Failed to delete user');
-            }
-          },
-        },
-      ]
-    );
-  };
-
-  const handleCreateUser = async (email: string, username?: string) => {
-    try {
-      await createUser.mutateAsync({ email, username });
-      setShowCreateModal(false);
-      Alert.alert('Success', 'User created successfully');
-    } catch (error: any) {
-      Alert.alert('Error', error?.message ?? 'Failed to create user');
-    }
-  };
-
-  const handleToggleJellyfinUser = (userId: string) => {
-    setSelectedJellyfinUsers((prev) => {
-      const next = new Set(prev);
-      if (next.has(userId)) {
-        next.delete(userId);
-      } else {
-        next.add(userId);
+  const filterItems = useCallback((items: JellyseerrDiscoverItem[]) => {
+    return items.filter((item) => {
+      // Media type filter
+      if (mediaFilter !== 'all' && item.mediaType !== mediaFilter) {
+        return false;
       }
-      return next;
+
+      const status = getItemStatus(item);
+
+      // Status filters
+      if (hideAvailable && status === MEDIA_STATUS.AVAILABLE) {
+        return false;
+      }
+      if (hideProcessing && status === MEDIA_STATUS.PROCESSING) {
+        return false;
+      }
+      if (hidePartial && status === MEDIA_STATUS.PARTIALLY_AVAILABLE) {
+        return false;
+      }
+
+      // Genre filter - item must have at least one of the selected genres
+      if (genreFilter.length > 0) {
+        const itemGenres = item.genreIds || [];
+        const hasMatchingGenre = genreFilter.some((gId) => itemGenres.includes(gId));
+        if (!hasMatchingGenre) {
+          return false;
+        }
+      }
+
+      // Rating filter
+      if (minRating > 0 && (item.voteAverage || 0) < minRating) {
+        return false;
+      }
+
+      // Year filter
+      if (yearFilter) {
+        const releaseDate = item.releaseDate || item.firstAirDate;
+        if (releaseDate) {
+          const itemYear = new Date(releaseDate).getFullYear();
+          if (itemYear !== yearFilter) {
+            return false;
+          }
+        } else {
+          return false; // No date means we can't match the year filter
+        }
+      }
+
+      return true;
+    });
+  }, [hideAvailable, hideProcessing, hidePartial, mediaFilter, genreFilter, minRating, yearFilter]);
+
+  // Check if any filters are active and count them
+  const activeFilterCount = useMemo(() => {
+    let count = 0;
+    if (hideAvailable) count++;
+    if (hideProcessing) count++;
+    if (hidePartial) count++;
+    if (mediaFilter !== 'all') count++;
+    if (genreFilter.length > 0) count++;
+    if (minRating > 0) count++;
+    if (yearFilter !== null) count++;
+    return count;
+  }, [hideAvailable, hideProcessing, hidePartial, mediaFilter, genreFilter, minRating, yearFilter]);
+
+  const hasActiveFilters = activeFilterCount > 0;
+
+  const handleRunJob = (jobId: string) => {
+    setRunningJobId(jobId);
+    runJob.mutate(jobId, {
+      onSettled: () => setRunningJobId(null),
     });
   };
 
-  const handleImportUsers = async () => {
-    if (selectedJellyfinUsers.size === 0) {
-      Alert.alert('Error', 'Please select at least one user to import');
-      return;
-    }
+  const handleCancelJob = (jobId: string) => {
+    setRunningJobId(jobId);
+    cancelJob.mutate(jobId, {
+      onSettled: () => setRunningJobId(null),
+    });
+  };
 
-    try {
-      const imported = await importUsers.mutateAsync(Array.from(selectedJellyfinUsers));
-      setSelectedJellyfinUsers(new Set());
-      Alert.alert('Success', `Imported ${imported.length} user(s)`);
-    } catch (error: any) {
-      Alert.alert('Error', error?.message ?? 'Failed to import users');
+  const handleFlushCache = (cacheId: string) => {
+    flushCache.mutate(cacheId);
+  };
+
+  const handleSync = () => {
+    if (syncStatus?.running) {
+      cancelSync.mutate();
+    } else {
+      startSync.mutate();
     }
   };
 
-  const filterItems = useCallback((items: JellyseerrDiscoverItem[]) => {
-    if (!hideAvailable) return items;
-    return items.filter((item) => !isItemInLibrary(item));
-  }, [hideAvailable]);
+  const formatBytes = (bytes: number) => {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+  };
 
   if (!hasJellyseerr) {
     return (
@@ -1051,20 +602,46 @@ export default function RequestsScreen() {
             </Pressable>
           )}
         </View>
-        <Pressable
-          onPress={() => setHideAvailable(!hideAvailable)}
-          style={styles.filterToggle}
-          hitSlop={8}
-        >
-          <Ionicons
-            name={hideAvailable ? 'eye-off' : 'eye'}
-            size={18}
-            color={hideAvailable ? JELLYSEERR_PURPLE : 'rgba(255,255,255,0.4)'}
-          />
-          <Text style={[styles.filterToggleText, hideAvailable && styles.filterToggleTextActive]}>
-            Hide Available
-          </Text>
-        </Pressable>
+
+        {/* Compact Filter Bar */}
+        <View style={styles.compactFilterBar}>
+          {/* Media Type Pills */}
+          <View style={styles.mediaFilterRow}>
+            <Pressable
+              onPress={() => setMediaFilter('all')}
+              style={[styles.mediaFilterChip, mediaFilter === 'all' && styles.mediaFilterChipActive]}
+            >
+              <Text style={[styles.mediaFilterText, mediaFilter === 'all' && styles.mediaFilterTextActive]}>All</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setMediaFilter('movie')}
+              style={[styles.mediaFilterChip, mediaFilter === 'movie' && styles.mediaFilterChipActive]}
+            >
+              <Ionicons name="film-outline" size={14} color={mediaFilter === 'movie' ? '#fff' : colors.text.muted} />
+              <Text style={[styles.mediaFilterText, mediaFilter === 'movie' && styles.mediaFilterTextActive]}>Movies</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setMediaFilter('tv')}
+              style={[styles.mediaFilterChip, mediaFilter === 'tv' && styles.mediaFilterChipActive]}
+            >
+              <Ionicons name="tv-outline" size={14} color={mediaFilter === 'tv' ? '#fff' : colors.text.muted} />
+              <Text style={[styles.mediaFilterText, mediaFilter === 'tv' && styles.mediaFilterTextActive]}>TV</Text>
+            </Pressable>
+          </View>
+
+          {/* Filter Button */}
+          <Pressable
+            onPress={() => setShowFilterModal(true)}
+            style={[styles.filterButton, hasActiveFilters && styles.filterButtonActive]}
+          >
+            <Ionicons name="options" size={18} color={hasActiveFilters ? '#fff' : colors.text.muted} />
+            {activeFilterCount > 0 && (
+              <View style={styles.filterBadge}>
+                <Text style={styles.filterBadgeText}>{activeFilterCount}</Text>
+              </View>
+            )}
+          </Pressable>
+        </View>
       </Animated.View>
 
       {searchQuery.length >= 2 ? (
@@ -1082,18 +659,29 @@ export default function RequestsScreen() {
             <EmptyState
               icon="search-outline"
               title="No Results"
-              subtitle={hideAvailable ? `No unavailable content found for "${searchQuery}"` : `No movies or shows found for "${searchQuery}"`}
+              subtitle={
+                hasActiveFilters
+                  ? `No results found for "${searchQuery}" with current filters`
+                  : `No movies or shows found for "${searchQuery}"`
+              }
             />
           ) : (
-            <View style={styles.gridContainer}>
-              {filterItems(searchResults?.results ?? []).map((item) => (
-                <JellyseerrPosterCard
-                  key={`${item.mediaType}-${item.id}`}
-                  item={item}
-                  onPress={() => handleItemPress(item)}
-                />
-              ))}
-            </View>
+            <FlatList
+              data={filterItems(searchResults?.results ?? [])}
+              keyExtractor={(item) => `${item.mediaType}-${item.id}`}
+              numColumns={3}
+              columnWrapperStyle={styles.searchGridRow}
+              scrollEnabled={false}
+              renderItem={({ item }) => (
+                <View style={styles.searchGridItem}>
+                  <JellyseerrPosterCard
+                    item={item}
+                    onPress={() => handleItemPress(item)}
+                    size="small"
+                  />
+                </View>
+              )}
+            />
           )}
         </View>
       ) : (
@@ -1219,224 +807,108 @@ export default function RequestsScreen() {
     </View>
   );
 
-  const renderUsersContent = () => {
-    const userTabs = [
-      { id: 'users' as const, label: 'Users', count: userStats.total },
-      { id: 'import' as const, label: 'Import', icon: 'download-outline' },
-    ];
+  const renderAdminContent = () => (
+    <ScrollView
+      style={{ flex: 1 }}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={JELLYSEERR_PURPLE} />
+      }
+      showsVerticalScrollIndicator={false}
+      contentContainerStyle={styles.adminContent}
+    >
+      <SettingsSection title="Server Status" delay={0}>
+        <SettingsCard
+          icon="server-outline"
+          iconColor="#22c55e"
+          title="Version"
+          subtitle={serverStatus?.commitTag || 'Unknown'}
+          value={serverStatus?.version}
+        />
+        {serverStatus?.updateAvailable && (
+          <SettingsCard
+            icon="arrow-up-circle-outline"
+            iconColor="#f59e0b"
+            title="Update Available"
+            subtitle={`${serverStatus.commitsBehind} commits behind`}
+          />
+        )}
+        <SettingsCard
+          icon="film-outline"
+          title="Total Media"
+          value={aboutInfo?.totalMediaItems ?? 0}
+        />
+        <SettingsCard
+          icon="document-text-outline"
+          title="Total Requests"
+          value={aboutInfo?.totalRequests ?? 0}
+        />
+      </SettingsSection>
 
-    return (
-      <View style={{ flex: 1 }}>
-        <View style={styles.userTabBar}>
-          {userTabs.map((tab) => {
-            const isActive = activeUserTab === tab.id;
-            return (
-              <Pressable key={tab.id} onPress={() => setActiveUserTab(tab.id)} style={styles.userTab}>
-                <View style={styles.tabContent}>
-                  {tab.icon && (
-                    <Ionicons
-                      name={tab.icon as any}
-                      size={16}
-                      color={isActive ? JELLYSEERR_PURPLE : colors.text.tertiary}
-                    />
-                  )}
-                  <Text style={[styles.tabText, { color: isActive ? JELLYSEERR_PURPLE : colors.text.tertiary }]}>
-                    {tab.label}
-                  </Text>
-                  {tab.count !== undefined && (
-                    <View style={[styles.tabBadge, { backgroundColor: JELLYSEERR_PURPLE }]}>
-                      <Text style={styles.tabBadgeText}>{tab.count}</Text>
-                    </View>
-                  )}
-                </View>
-                {isActive && (
-                  <LinearGradient
-                    colors={[JELLYSEERR_PURPLE, JELLYSEERR_PURPLE_DARK]}
-                    style={styles.tabIndicator}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
-                  />
-                )}
-              </Pressable>
-            );
-          })}
-        </View>
-
-        {activeUserTab === 'users' && (
-          <View style={{ flex: 1 }}>
-            <Animated.View entering={FadeInDown.duration(300)} style={styles.userSearchContainer}>
-              <View style={styles.userSearchInputContainer}>
-                <Ionicons name="search" size={18} color={colors.text.muted} />
-                <TextInput
-                  style={styles.userSearchInput}
-                  placeholder="Search users..."
-                  placeholderTextColor={colors.text.muted}
-                  value={userSearchQuery}
-                  onChangeText={setUserSearchQuery}
-                />
-                {userSearchQuery.length > 0 && (
-                  <Pressable onPress={() => setUserSearchQuery('')} hitSlop={8}>
-                    <Ionicons name="close-circle" size={18} color={colors.text.muted} />
-                  </Pressable>
-                )}
-              </View>
-              <Pressable style={styles.addUserButton} onPress={() => setShowCreateModal(true)}>
-                <LinearGradient
-                  colors={[JELLYSEERR_PURPLE, JELLYSEERR_PURPLE_DARK]}
-                  style={styles.addUserButtonGradient}
-                >
-                  <Ionicons name="add" size={22} color="#fff" />
-                </LinearGradient>
-              </Pressable>
-            </Animated.View>
-
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.userStatsContainer}
-            >
-              <StatCard icon="people" label="Total" value={userStats.total} color={JELLYSEERR_PURPLE} />
-              <StatCard icon="shield" label="Admins" value={userStats.admins} color="#ef4444" />
-              <StatCard icon="server" label="Jellyfin" value={userStats.jellyfinCount} color="#22c55e" />
-              <StatCard icon="person" label="Local" value={userStats.localCount} color="#3b82f6" />
-            </ScrollView>
-
-            <FlatList
-              data={filteredUsers}
-              keyExtractor={(item) => item.id.toString()}
-              renderItem={({ item, index }) => (
-                <UserCard
-                  user={item}
-                  onPress={() => handleEditUser(item)}
-                  onDelete={() => handleDeleteUser(item)}
-                  isCurrentUser={user?.id === item.id}
-                  index={index}
-                />
-              )}
-              contentContainerStyle={styles.listContent}
-              showsVerticalScrollIndicator={false}
-              refreshControl={
-                <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={JELLYSEERR_PURPLE} />
-              }
-              onEndReached={() => {
-                if (hasNextUsers && !isFetchingNextUsers) {
-                  fetchNextUsers();
-                }
-              }}
-              onEndReachedThreshold={0.5}
-              ListFooterComponent={
-                isFetchingNextUsers ? (
-                  <View style={styles.loadingFooter}>
-                    <ActivityIndicator color={JELLYSEERR_PURPLE} />
-                  </View>
-                ) : null
-              }
-              ListEmptyComponent={
-                isLoadingUsers ? (
-                  <View style={styles.loadingContainer}>
-                    <ActivityIndicator color={JELLYSEERR_PURPLE} size="large" />
-                  </View>
-                ) : (
-                  <EmptyState
-                    icon="people-outline"
-                    title="No Users Found"
-                    subtitle={userSearchQuery ? 'Try a different search term' : 'No users in Jellyseerr'}
-                  />
-                )
-              }
-            />
+      <SettingsSection title="Library Sync" delay={100}>
+        <SettingsCard
+          icon={syncStatus?.running ? 'sync' : 'library-outline'}
+          iconColor={syncStatus?.running ? '#22c55e' : JELLYSEERR_PURPLE}
+          title="Jellyfin Library"
+          subtitle={syncStatus?.running ? `Syncing... ${syncStatus.progress}/${syncStatus.total}` : 'Sync media library with Jellyfin'}
+          action={syncStatus?.running ? 'Cancel' : 'Sync Now'}
+          onAction={handleSync}
+          isLoading={startSync.isPending || cancelSync.isPending}
+        />
+        {syncStatus?.running && syncStatus.currentLibrary && (
+          <View style={styles.syncProgress}>
+            <View style={styles.syncProgressBar}>
+              <View
+                style={[
+                  styles.syncProgressFill,
+                  { width: `${syncStatus.total > 0 ? (syncStatus.progress / syncStatus.total) * 100 : 0}%` },
+                ]}
+              />
+            </View>
+            <Text style={styles.syncProgressText}>
+              Scanning: {syncStatus.currentLibrary.name}
+            </Text>
           </View>
         )}
+      </SettingsSection>
 
-        {activeUserTab === 'import' && (
-          <View style={{ flex: 1 }}>
-            <Animated.View entering={FadeInDown.duration(300)} style={styles.importHeader}>
-              <View style={styles.importHeaderIcon}>
-                <Ionicons name="cloud-download" size={20} color={JELLYSEERR_PURPLE} />
-              </View>
-              <View style={styles.importHeaderText}>
-                <Text style={styles.importTitle}>Import from Jellyfin</Text>
-                <Text style={styles.importSubtitle}>
-                  Select users from your Jellyfin server to import into Jellyseerr
-                </Text>
-              </View>
-            </Animated.View>
+      <SettingsSection title="Cache Management" delay={200}>
+        <SettingsCard
+          icon="speedometer-outline"
+          title="API Cache"
+          subtitle={`Hits: ${cacheStats?.apiCacheHits ?? 0} / Misses: ${cacheStats?.apiCacheMisses ?? 0}`}
+          action="Flush"
+          onAction={() => handleFlushCache('apiCache')}
+          isLoading={flushCache.isPending}
+        />
+        <SettingsCard
+          icon="image-outline"
+          title="Image Cache"
+          subtitle={`${cacheStats?.imageCache?.tmdb?.total ?? 0} images`}
+          value={formatBytes(cacheStats?.imageCache?.tmdb?.size ?? 0)}
+          action="Flush"
+          onAction={() => handleFlushCache('imageCache')}
+          isLoading={flushCache.isPending}
+        />
+      </SettingsSection>
 
-            <FlatList
-              data={jellyfinUsers ?? []}
-              keyExtractor={(item) => item.id}
-              renderItem={({ item, index }) => (
-                <JellyfinUserCard
-                  user={item}
-                  isImported={importedJellyfinUserIds.has(item.id)}
-                  isSelected={selectedJellyfinUsers.has(item.id)}
-                  onToggle={() => handleToggleJellyfinUser(item.id)}
-                  index={index}
-                />
-              )}
-              contentContainerStyle={styles.listContent}
-              showsVerticalScrollIndicator={false}
-              refreshControl={
-                <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={JELLYSEERR_PURPLE} />
-              }
-              ListEmptyComponent={
-                isLoadingJellyfin ? (
-                  <View style={styles.loadingContainer}>
-                    <ActivityIndicator color={JELLYSEERR_PURPLE} size="large" />
-                  </View>
-                ) : (
-                  <EmptyState
-                    icon="server-outline"
-                    title="No Jellyfin Users"
-                    subtitle="Could not fetch users from Jellyfin server"
-                  />
-                )
-              }
-            />
-
-            {selectedJellyfinUsers.size > 0 && (
-              <Animated.View entering={FadeIn.duration(200)} style={styles.importFooter}>
-                <Pressable
-                  style={[styles.importButton, importUsers.isPending && { opacity: 0.7 }]}
-                  onPress={handleImportUsers}
-                  disabled={importUsers.isPending}
-                >
-                  {importUsers.isPending ? (
-                    <ActivityIndicator color="#fff" />
-                  ) : (
-                    <>
-                      <Ionicons name="download" size={18} color="#fff" />
-                      <Text style={styles.importButtonText}>
-                        Import {selectedJellyfinUsers.size} User{selectedJellyfinUsers.size > 1 ? 's' : ''}
-                      </Text>
-                    </>
-                  )}
-                </Pressable>
-              </Animated.View>
-            )}
-          </View>
+      <SettingsSection title="Scheduled Jobs" delay={300}>
+        {jobs?.map((job) => (
+          <JobCard
+            key={job.id}
+            job={job}
+            onRun={() => handleRunJob(job.id)}
+            onCancel={() => handleCancelJob(job.id)}
+            isRunning={runningJobId === job.id}
+          />
+        ))}
+        {(!jobs || jobs.length === 0) && (
+          <Text style={styles.noJobsText}>No scheduled jobs available</Text>
         )}
+      </SettingsSection>
 
-        <EditUserModal
-          visible={showEditModal}
-          user={selectedUser}
-          onClose={() => {
-            setShowEditModal(false);
-            setSelectedUser(null);
-          }}
-          onSave={handleSaveUser}
-          isSaving={updateUser.isPending}
-        />
-
-        <CreateUserModal
-          visible={showCreateModal}
-          onClose={() => setShowCreateModal(false)}
-          onCreate={handleCreateUser}
-          isCreating={createUser.isPending}
-        />
-      </View>
-    );
-  };
+      <View style={{ height: 100 }} />
+    </ScrollView>
+  );
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -1501,7 +973,168 @@ export default function RequestsScreen() {
 
       {activeTab === 'discover' && renderDiscoverContent()}
       {activeTab === 'requests' && renderRequestsContent()}
-      {activeTab === 'users' && renderUsersContent()}
+      {activeTab === 'admin' && renderAdminContent()}
+
+      {/* Filter Modal */}
+      <Modal
+        visible={showFilterModal}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowFilterModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <Pressable style={styles.modalBackdrop} onPress={() => setShowFilterModal(false)} />
+          <View style={styles.filterModalContent}>
+            <View style={styles.filterModalHeader}>
+              <Text style={styles.filterModalTitle}>Filters</Text>
+              <View style={styles.filterModalActions}>
+                {hasActiveFilters && (
+                  <Pressable onPress={clearFilters} style={styles.clearAllButton}>
+                    <Text style={styles.clearAllText}>Clear All</Text>
+                  </Pressable>
+                )}
+                <Pressable onPress={() => setShowFilterModal(false)} style={styles.closeModalButton}>
+                  <Ionicons name="close" size={24} color="#fff" />
+                </Pressable>
+              </View>
+            </View>
+
+            <ScrollView style={styles.filterModalScroll} showsVerticalScrollIndicator={false}>
+              {/* Genres */}
+              <View style={styles.filterModalSection}>
+                <Text style={styles.filterModalLabel}>Genres</Text>
+                <View style={styles.filterModalChipGrid}>
+                  {COMMON_GENRES.map((genre) => {
+                    const isActive = genreFilter.includes(genre.id);
+                    return (
+                      <Pressable
+                        key={genre.id}
+                        onPress={() => toggleGenre(genre.id)}
+                        style={[styles.filterModalChip, isActive && styles.filterModalChipActive]}
+                      >
+                        <Ionicons
+                          name={genre.icon as any}
+                          size={16}
+                          color={isActive ? '#fff' : colors.text.muted}
+                        />
+                        <Text style={[styles.filterModalChipText, isActive && styles.filterModalChipTextActive]}>
+                          {genre.label}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
+
+              {/* Rating */}
+              <View style={styles.filterModalSection}>
+                <View style={styles.filterModalLabelRow}>
+                  <Text style={styles.filterModalLabel}>Minimum Rating</Text>
+                  <Text style={styles.ratingValue}>
+                    {minRating === 0 ? 'Any' : `${minRating.toFixed(1)}+`}
+                  </Text>
+                </View>
+
+                {/* Rating Source Selector */}
+                <View style={styles.ratingSourceRow}>
+                  {(['tmdb', 'imdb', 'any'] as const).map((source) => (
+                    <Pressable
+                      key={source}
+                      onPress={() => setRatingSource(source)}
+                      style={[styles.ratingSourceChip, ratingSource === source && styles.ratingSourceChipActive]}
+                    >
+                      <Text style={[styles.ratingSourceText, ratingSource === source && styles.ratingSourceTextActive]}>
+                        {source === 'tmdb' ? 'TMDB' : source === 'imdb' ? 'IMDb' : 'Any'}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+
+                {/* Rating Slider */}
+                <View style={styles.sliderContainer}>
+                  <Text style={styles.sliderLabel}>0</Text>
+                  <Slider
+                    style={styles.slider}
+                    minimumValue={0}
+                    maximumValue={9}
+                    step={0.5}
+                    value={minRating}
+                    onValueChange={setMinRating}
+                    minimumTrackTintColor={JELLYSEERR_PURPLE}
+                    maximumTrackTintColor={colors.surface.elevated}
+                    thumbTintColor={JELLYSEERR_PURPLE}
+                  />
+                  <Text style={styles.sliderLabel}>9</Text>
+                </View>
+              </View>
+
+              {/* Year */}
+              <View style={styles.filterModalSection}>
+                <Text style={styles.filterModalLabel}>Release Year</Text>
+                <View style={styles.yearGrid}>
+                  <Pressable
+                    onPress={() => setYearFilter(null)}
+                    style={[styles.yearGridChip, yearFilter === null && styles.yearGridChipActive]}
+                  >
+                    <Text style={[styles.yearGridText, yearFilter === null && styles.yearGridTextActive]}>Any</Text>
+                  </Pressable>
+                  {[2025, 2024, 2023, 2022, 2021, 2020, 2019, 2018].map((year) => (
+                    <Pressable
+                      key={year}
+                      onPress={() => setYearFilter(year)}
+                      style={[styles.yearGridChip, yearFilter === year && styles.yearGridChipActive]}
+                    >
+                      <Text style={[styles.yearGridText, yearFilter === year && styles.yearGridTextActive]}>{year}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+
+              {/* Hide Status */}
+              <View style={styles.filterModalSection}>
+                <Text style={styles.filterModalLabel}>Hide by Status</Text>
+                <View style={styles.statusGrid}>
+                  <Pressable
+                    onPress={() => setHideAvailable(!hideAvailable)}
+                    style={[styles.statusGridChip, hideAvailable && styles.statusGridChipActive]}
+                  >
+                    <Ionicons name="checkmark-circle" size={18} color={hideAvailable ? '#fff' : '#22c55e'} />
+                    <Text style={[styles.statusGridText, hideAvailable && styles.statusGridTextActive]}>Available</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => setHidePartial(!hidePartial)}
+                    style={[styles.statusGridChip, hidePartial && styles.statusGridChipActive]}
+                  >
+                    <Ionicons name="pie-chart" size={18} color={hidePartial ? '#fff' : '#f59e0b'} />
+                    <Text style={[styles.statusGridText, hidePartial && styles.statusGridTextActive]}>Partial</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => setHideProcessing(!hideProcessing)}
+                    style={[styles.statusGridChip, hideProcessing && styles.statusGridChipActive]}
+                  >
+                    <Ionicons name="hourglass" size={18} color={hideProcessing ? '#fff' : '#3b82f6'} />
+                    <Text style={[styles.statusGridText, hideProcessing && styles.statusGridTextActive]}>Processing</Text>
+                  </Pressable>
+                </View>
+              </View>
+
+              <View style={{ height: 40 }} />
+            </ScrollView>
+
+            <Pressable
+              onPress={() => setShowFilterModal(false)}
+              style={styles.applyFiltersButton}
+            >
+              <LinearGradient
+                colors={[JELLYSEERR_PURPLE, JELLYSEERR_PURPLE_DARK]}
+                style={styles.applyFiltersGradient}
+              >
+                <Text style={styles.applyFiltersText}>Apply Filters</Text>
+              </LinearGradient>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1616,19 +1249,319 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  filterToggle: {
+  mediaFilterRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingTop: 10,
+    gap: 8,
+    marginTop: 12,
   },
-  filterToggleText: {
-    color: 'rgba(255,255,255,0.4)',
+  mediaFilterChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: colors.surface.elevated,
+    borderWidth: 1,
+    borderColor: colors.border.subtle,
+  },
+  mediaFilterChipActive: {
+    backgroundColor: JELLYSEERR_PURPLE,
+    borderColor: JELLYSEERR_PURPLE,
+  },
+  mediaFilterText: {
+    color: colors.text.muted,
     fontSize: 13,
     fontWeight: '500',
   },
-  filterToggleTextActive: {
+  mediaFilterTextActive: {
+    color: '#fff',
+  },
+  statusFilterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 10,
+    flexWrap: 'wrap',
+  },
+  filterLabel: {
+    color: colors.text.tertiary,
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  statusFilterChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: colors.surface.default,
+    borderWidth: 1,
+    borderColor: colors.border.subtle,
+  },
+  statusFilterChipActive: {
+    backgroundColor: colors.text.tertiary,
+    borderColor: colors.text.tertiary,
+  },
+  statusFilterText: {
+    color: colors.text.muted,
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  statusFilterTextActive: {
+    color: '#fff',
+  },
+  compactFilterBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 10,
+  },
+  filterButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: colors.surface.elevated,
+    borderWidth: 1,
+    borderColor: colors.border.subtle,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  filterButtonActive: {
+    backgroundColor: JELLYSEERR_PURPLE,
+    borderColor: JELLYSEERR_PURPLE,
+  },
+  filterBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#ef4444',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  filterBadgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'flex-end',
+  },
+  modalBackdrop: {
+    flex: 1,
+  },
+  filterModalContent: {
+    backgroundColor: colors.background.primary,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: '80%',
+  },
+  filterModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border.subtle,
+  },
+  filterModalTitle: {
+    color: '#fff',
+    fontSize: 20,
+    fontWeight: '700',
+  },
+  filterModalActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  clearAllButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: `${JELLYSEERR_PURPLE}20`,
+  },
+  clearAllText: {
     color: JELLYSEERR_PURPLE,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  closeModalButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.surface.elevated,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  filterModalScroll: {
+    paddingHorizontal: 20,
+  },
+  filterModalSection: {
+    marginTop: 20,
+  },
+  filterModalLabel: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '600',
+    marginBottom: 12,
+  },
+  filterModalLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  ratingValue: {
+    color: JELLYSEERR_PURPLE,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  filterModalChipGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  filterModalChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 20,
+    backgroundColor: colors.surface.elevated,
+    borderWidth: 1,
+    borderColor: colors.border.subtle,
+  },
+  filterModalChipActive: {
+    backgroundColor: JELLYSEERR_PURPLE,
+    borderColor: JELLYSEERR_PURPLE,
+  },
+  filterModalChipText: {
+    color: colors.text.muted,
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  filterModalChipTextActive: {
+    color: '#fff',
+  },
+  ratingSourceRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 16,
+  },
+  ratingSourceChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: colors.surface.elevated,
+    borderWidth: 1,
+    borderColor: colors.border.subtle,
+  },
+  ratingSourceChipActive: {
+    backgroundColor: JELLYSEERR_PURPLE,
+    borderColor: JELLYSEERR_PURPLE,
+  },
+  ratingSourceText: {
+    color: colors.text.muted,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  ratingSourceTextActive: {
+    color: '#fff',
+  },
+  sliderContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  slider: {
+    flex: 1,
+    height: 40,
+  },
+  sliderLabel: {
+    color: colors.text.tertiary,
+    fontSize: 12,
+    fontWeight: '600',
+    width: 20,
+    textAlign: 'center',
+  },
+  yearGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  yearGridChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    backgroundColor: colors.surface.elevated,
+    borderWidth: 1,
+    borderColor: colors.border.subtle,
+  },
+  yearGridChipActive: {
+    backgroundColor: JELLYSEERR_PURPLE,
+    borderColor: JELLYSEERR_PURPLE,
+  },
+  yearGridText: {
+    color: colors.text.muted,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  yearGridTextActive: {
+    color: '#fff',
+  },
+  statusGrid: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  statusGridChip: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: colors.surface.elevated,
+    borderWidth: 1,
+    borderColor: colors.border.subtle,
+  },
+  statusGridChipActive: {
+    backgroundColor: colors.text.tertiary,
+    borderColor: colors.text.tertiary,
+  },
+  statusGridText: {
+    color: colors.text.muted,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  statusGridTextActive: {
+    color: '#fff',
+  },
+  applyFiltersButton: {
+    paddingHorizontal: 20,
+    paddingBottom: 32,
+    paddingTop: 16,
+  },
+  applyFiltersGradient: {
+    paddingVertical: 16,
+    borderRadius: 14,
+    alignItems: 'center',
+  },
+  applyFiltersText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
   },
   section: {
     marginBottom: 28,
@@ -1646,6 +1579,16 @@ const styles = StyleSheet.create({
   gridContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    gap: 10,
+  },
+  searchGridRow: {
+    justifyContent: 'flex-start',
+    gap: 8,
+    marginBottom: 16,
+  },
+  searchGridItem: {
+    flex: 1,
+    maxWidth: '33%',
   },
   filterRow: {
     paddingHorizontal: 16,
@@ -1673,7 +1616,7 @@ const styles = StyleSheet.create({
   filterPillTextActive: {
     color: '#fff',
   },
-  filterBadge: {
+  filterPillBadge: {
     minWidth: 18,
     height: 18,
     borderRadius: 9,
@@ -1682,10 +1625,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 5,
     backgroundColor: 'rgba(255,255,255,0.2)',
   },
-  filterBadgeActive: {
+  filterPillBadgeActive: {
     backgroundColor: 'rgba(255,255,255,0.3)',
   },
-  filterBadgeText: {
+  filterPillBadgeText: {
     color: '#fff',
     fontSize: 10,
     fontWeight: '700',
@@ -1824,488 +1767,30 @@ const styles = StyleSheet.create({
     fontSize: 11,
     marginTop: 2,
   },
-  userTabBar: {
-    flexDirection: 'row',
-    paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: 8,
-    gap: 24,
-  },
-  userTab: {
-    paddingBottom: 8,
-  },
-  userSearchContainer: {
-    flexDirection: 'row',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    gap: 12,
-  },
-  userSearchInputContainer: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.surface.elevated,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    gap: 8,
-    borderWidth: 1,
-    borderColor: colors.border.subtle,
-  },
-  userSearchInput: {
-    flex: 1,
-    paddingVertical: 12,
-    color: '#fff',
-    fontSize: 15,
-  },
-  addUserButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    overflow: 'hidden',
-  },
-  addUserButtonGradient: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  userStatsContainer: {
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-    gap: 10,
-  },
-  userCard: {
-    backgroundColor: colors.surface.default,
-    borderRadius: 12,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: colors.border.subtle,
-    overflow: 'hidden',
-  },
-  userCardContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 14,
-  },
-  avatarContainer: {
-    position: 'relative',
-  },
-  avatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-  },
-  avatarPlaceholder: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarInitial: {
-    color: '#fff',
-    fontSize: 20,
-    fontWeight: '600',
-  },
-  adminBadge: {
-    position: 'absolute',
-    bottom: -2,
-    right: -2,
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: '#ef4444',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: colors.background.primary,
-  },
-  userInfo: {
-    flex: 1,
-    marginLeft: 12,
-  },
-  userNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  userName: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '600',
-    flex: 1,
-  },
-  youBadge: {
-    backgroundColor: `${JELLYSEERR_PURPLE}30`,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 10,
-  },
-  youBadgeText: {
-    color: JELLYSEERR_PURPLE,
-    fontSize: 10,
-    fontWeight: '600',
-  },
-  userEmail: {
-    color: colors.text.tertiary,
-    fontSize: 13,
-    marginTop: 2,
-  },
-  userMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 6,
-    gap: 10,
-  },
-  userTypeBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: colors.surface.elevated,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-  },
-  userTypeText: {
-    color: colors.text.tertiary,
-    fontSize: 11,
-    fontWeight: '500',
-  },
-  requestCount: {
-    color: colors.text.muted,
-    fontSize: 12,
-  },
-  userActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  deleteButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: 'rgba(239, 68, 68, 0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  jellyfinUserCard: {
-    backgroundColor: colors.surface.default,
-    borderRadius: 12,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: colors.border.subtle,
-  },
-  jellyfinUserCardImported: {
-    opacity: 0.5,
-  },
-  jellyfinUserCardSelected: {
-    borderColor: JELLYSEERR_PURPLE,
-    backgroundColor: `${JELLYSEERR_PURPLE}10`,
-  },
-  jellyfinUserContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 14,
-    gap: 12,
-  },
-  jellyfinCheckbox: {
-    width: 24,
-    height: 24,
-    borderRadius: 6,
-    borderWidth: 2,
-    borderColor: colors.border.default,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  jellyfinCheckboxDisabled: {
-    backgroundColor: colors.surface.elevated,
-    borderColor: colors.surface.elevated,
-  },
-  jellyfinCheckboxSelected: {
-    backgroundColor: JELLYSEERR_PURPLE,
-    borderColor: JELLYSEERR_PURPLE,
-  },
-  jellyfinUserInfo: {
-    flex: 1,
-  },
-  jellyfinUserName: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '500',
-  },
-  importedLabel: {
-    color: colors.text.muted,
-    fontSize: 12,
-    marginTop: 2,
-  },
-  importHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-    gap: 12,
-  },
-  importHeaderIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
-    backgroundColor: `${JELLYSEERR_PURPLE}20`,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  importHeaderText: {
-    flex: 1,
-  },
-  importTitle: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  importSubtitle: {
-    color: colors.text.tertiary,
-    fontSize: 13,
-    marginTop: 2,
-  },
-  importFooter: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    padding: 16,
-    paddingBottom: 32,
-    backgroundColor: colors.background.primary,
-    borderTopWidth: 1,
-    borderTopColor: colors.border.subtle,
-  },
-  importButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: JELLYSEERR_PURPLE,
-    borderRadius: 12,
-    paddingVertical: 16,
-    gap: 8,
-  },
-  importButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: colors.background.primary,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    maxHeight: '90%',
-    overflow: 'hidden',
-  },
-  createModalContent: {
-    backgroundColor: colors.background.primary,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingBottom: 32,
-  },
-  modalGradient: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 200,
-  },
-  modalSafeArea: {
-    flex: 1,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 12,
-  },
-  modalCloseButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    overflow: 'hidden',
-  },
-  blurButton: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.1)',
-  },
-  closeButtonCircle: {
-    flex: 1,
-    width: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.surface.elevated,
-    borderRadius: 20,
-  },
-  modalTitle: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '700',
-  },
-  modalScroll: {
-    flex: 1,
-  },
-  modalUserHeader: {
-    alignItems: 'center',
-    paddingVertical: 24,
-  },
-  modalAvatarContainer: {
-    marginBottom: 12,
-  },
-  modalAvatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-  },
-  modalAvatarPlaceholder: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modalAvatarInitial: {
-    color: '#fff',
-    fontSize: 32,
-    fontWeight: '600',
-  },
-  modalUserName: {
-    color: '#fff',
-    fontSize: 20,
-    fontWeight: '600',
-  },
-  modalUserEmail: {
-    color: colors.text.tertiary,
-    fontSize: 14,
-    marginTop: 4,
-  },
-  modalSection: {
-    paddingHorizontal: 16,
-    marginBottom: 24,
-  },
-  modalSectionTitle: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 12,
-  },
-  modalSectionSubtitle: {
-    color: colors.text.muted,
-    fontSize: 12,
-    marginTop: -8,
-    marginBottom: 12,
-  },
-  permissionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border.subtle,
-  },
-  permissionInfo: {
-    flex: 1,
-    marginRight: 12,
-  },
-  permissionLabel: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  permissionDescription: {
-    color: colors.text.muted,
-    fontSize: 12,
-    marginTop: 2,
-  },
-  permissionToggle: {
-    width: 28,
-    height: 28,
-    borderRadius: 8,
-    borderWidth: 2,
-    borderColor: colors.border.default,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  quotaRow: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 12,
-  },
-  quotaItem: {
-    flex: 1,
-  },
-  quotaLabel: {
-    color: colors.text.tertiary,
-    fontSize: 12,
-    marginBottom: 6,
-  },
-  quotaInput: {
-    backgroundColor: colors.surface.elevated,
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    color: '#fff',
-    fontSize: 15,
-    borderWidth: 1,
-    borderColor: colors.border.subtle,
-  },
-  modalFooter: {
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-    borderTopWidth: 1,
-    borderTopColor: colors.border.subtle,
-  },
-  saveButton: {
-    backgroundColor: JELLYSEERR_PURPLE,
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: 'center',
-  },
-  saveButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  createForm: {
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-  },
-  inputLabel: {
-    color: colors.text.tertiary,
-    fontSize: 13,
-    marginBottom: 8,
-    marginTop: 12,
-  },
-  formInput: {
-    backgroundColor: colors.surface.elevated,
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    color: '#fff',
-    fontSize: 15,
-    borderWidth: 1,
-    borderColor: colors.border.subtle,
-  },
-  createButton: {
-    backgroundColor: JELLYSEERR_PURPLE,
-    borderRadius: 12,
-    paddingVertical: 16,
-    marginHorizontal: 16,
-    marginTop: 24,
-    alignItems: 'center',
-  },
-  createButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
+  settingsSection: { marginBottom: 24 },
+  settingsSectionTitle: { color: colors.text.tertiary, fontSize: 12, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 12, paddingHorizontal: 16 },
+  settingsCard: { flexDirection: "row", alignItems: "center", backgroundColor: colors.surface.default, borderRadius: 12, marginHorizontal: 16, marginBottom: 8, padding: 14, borderWidth: 1, borderColor: colors.border.subtle },
+  settingsCardIcon: { width: 40, height: 40, borderRadius: 10, alignItems: "center", justifyContent: "center" },
+  settingsCardContent: { flex: 1, marginLeft: 12 },
+  settingsCardTitle: { color: "#fff", fontSize: 14, fontWeight: "500" },
+  settingsCardSubtitle: { color: colors.text.muted, fontSize: 12, marginTop: 2 },
+  settingsCardValue: { color: "#fff", fontSize: 14, fontWeight: "600" },
+  settingsCardAction: { backgroundColor: JELLYSEERR_PURPLE, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, marginLeft: 8 },
+  settingsCardActionText: { color: "#fff", fontSize: 13, fontWeight: "600" },
+  jobCard: { backgroundColor: colors.surface.default, borderRadius: 12, marginHorizontal: 16, marginBottom: 8, padding: 14, borderWidth: 1, borderColor: colors.border.subtle },
+  jobCardHeader: { flexDirection: "row", alignItems: "center" },
+  jobCardIcon: { width: 36, height: 36, borderRadius: 10, alignItems: "center", justifyContent: "center" },
+  jobCardContent: { flex: 1, marginLeft: 12 },
+  jobCardTitle: { color: "#fff", fontSize: 14, fontWeight: "500" },
+  jobCardSubtitle: { color: colors.text.muted, fontSize: 12, marginTop: 2 },
+  jobCardButton: { flexDirection: "row", alignItems: "center", backgroundColor: JELLYSEERR_PURPLE, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, gap: 4 },
+  jobCardButtonCancel: { backgroundColor: "#ef4444" },
+  jobCardButtonText: { color: "#fff", fontSize: 12, fontWeight: "600" },
+  adminContent: { paddingHorizontal: 16, paddingTop: 8 },
+  syncProgress: { marginTop: 8, paddingHorizontal: 14 },
+  syncProgressBar: { height: 4, backgroundColor: colors.surface.default, borderRadius: 2, overflow: "hidden" },
+  syncProgressFill: { height: "100%", backgroundColor: "#22c55e", borderRadius: 2 },
+  syncProgressText: { color: colors.text.tertiary, fontSize: 11, marginTop: 6 },
+  noJobsText: { color: colors.text.tertiary, fontSize: 14, textAlign: "center", paddingVertical: 20 },
 });
+
