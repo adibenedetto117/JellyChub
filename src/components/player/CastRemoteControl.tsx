@@ -4,7 +4,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import Slider from '@react-native-community/slider';
 import { Image } from 'expo-image';
-import { useSettingsStore, useAuthStore } from '@/stores';
+import { useSettingsStore, useAuthStore, selectActiveServer } from '@/stores';
 import { formatPlayerTime } from '@/utils';
 import { useChromecast } from '@/hooks';
 import { stopCasting, type CastMediaInfo, type CastSessionState } from '@/utils/casting';
@@ -27,7 +27,7 @@ export function CastRemoteControl({
   onClose,
 }: CastRemoteControlProps) {
   const accentColor = useSettingsStore((s) => s.accentColor);
-  const activeServer = useAuthStore((s) => s.getActiveServer());
+  const activeServer = useAuthStore(selectActiveServer);
   const chromecast = useChromecast();
   const [isPlaying, setIsPlaying] = useState(true);
   const [currentPosition, setCurrentPosition] = useState(mediaInfo?.startPosition || 0);

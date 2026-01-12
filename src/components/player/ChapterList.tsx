@@ -1,7 +1,7 @@
 import { View, Text, Pressable, ScrollView, StyleSheet, Image } from 'react-native';
 import { memo, useMemo } from 'react';
 import { Ionicons } from '@expo/vector-icons';
-import { useSettingsStore, useAuthStore } from '@/stores';
+import { useSettingsStore, useAuthStore, selectActiveServer } from '@/stores';
 import { ticksToMs, formatPlayerTime } from '@/utils';
 
 export interface ChapterInfo {
@@ -39,7 +39,7 @@ export const ChapterList = memo(function ChapterList({
   itemId,
 }: Props) {
   const accentColor = useSettingsStore((s) => s.accentColor);
-  const activeServer = useAuthStore((s) => s.getActiveServer());
+  const activeServer = useAuthStore(selectActiveServer);
   const serverUrl = activeServer?.url;
 
   const currentChapterIndex = useMemo(() => {

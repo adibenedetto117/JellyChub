@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { View, Text, Pressable, ScrollView, TextInput, ActivityIndicator, Image } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getPublicUsers, authenticateByName } from '@/api';
-import { useAuthStore, useSettingsStore } from '@/stores';
+import { useAuthStore, useSettingsStore, selectActiveServer } from '@/stores';
 import type { JellyfinUser } from '@/types/jellyfin';
 
 function getHiddenUserName(index: number): string {
@@ -19,7 +19,7 @@ export function UserSwitcher({ onClose }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   const { setUser, currentUser } = useAuthStore();
-  const activeServer = useAuthStore((s) => s.getActiveServer());
+  const activeServer = useAuthStore(selectActiveServer);
   const hideMedia = useSettingsStore((s) => s.hideMedia);
   const queryClient = useQueryClient();
 

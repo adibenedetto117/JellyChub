@@ -1,7 +1,7 @@
 import { View, Text, Pressable, ScrollView, StyleSheet, Image, ActivityIndicator } from 'react-native';
 import { memo, useMemo, useCallback, useRef, useEffect, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
-import { useSettingsStore, useAuthStore } from '@/stores';
+import { useSettingsStore, useAuthStore, selectActiveServer } from '@/stores';
 import { getImageUrl } from '@/api';
 import { formatPlayerTime, ticksToMs, getWatchProgress } from '@/utils';
 import type { Episode, BaseItem } from '@/types/jellyfin';
@@ -33,7 +33,7 @@ export const EpisodeList = memo(function EpisodeList({
 }: Props) {
   const accentColor = useSettingsStore((s) => s.accentColor);
   const hideMedia = useSettingsStore((s) => s.hideMedia);
-  const activeServer = useAuthStore((s) => s.getActiveServer());
+  const activeServer = useAuthStore(selectActiveServer);
   const serverUrl = activeServer?.url;
   const scrollViewRef = useRef<ScrollView>(null);
   const [showSeasonPicker, setShowSeasonPicker] = useState(false);
