@@ -7,7 +7,7 @@ A modern, cross-platform Jellyfin client built with React Native and Expo. Enjoy
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/platform-iOS%20%7C%20Android%20%7C%20TV%20%7C%20Desktop-blue" alt="Platforms"/>
+  <img src="https://img.shields.io/badge/platform-Android%20%7C%20TV%20%7C%20Desktop-blue" alt="Platforms"/>
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License"/>
   <img src="https://img.shields.io/badge/version-1.2.3-orange" alt="Version"/>
 </p>
@@ -32,7 +32,7 @@ A modern, cross-platform Jellyfin client built with React Native and Expo. Enjoy
 <tr>
 <td width="33%" valign="top">
 
-#### Mobile (iOS & Android)
+#### Mobile (Android)
 - Touch gestures for volume, brightness, seeking
 - Picture-in-Picture playback
 - Background audio with lock screen controls
@@ -55,6 +55,8 @@ A modern, cross-platform Jellyfin client built with React Native and Expo. Enjoy
 <td width="33%" valign="top">
 
 #### Desktop (Win/Mac/Linux)
+⚠️ **EXPERIMENTAL** - Desktop support is WIP
+
 - Native window controls
 - Custom title bar
 - Keyboard shortcuts
@@ -191,7 +193,7 @@ src/
 ### Prerequisites
 
 - Node.js 18+
-- For mobile: Xcode 15+ (iOS) or Android Studio with SDK 34+ (Android)
+- For mobile: Android Studio with SDK 34+
 - For desktop: Electron dependencies for your platform
 
 ### Installation
@@ -213,9 +215,6 @@ npm start
 
 # Run on Android device/emulator
 npm run android
-
-# Run on iOS simulator (macOS only)
-npm run ios
 
 # Run on web browser
 npm run web
@@ -275,8 +274,7 @@ jellychub/
 │   └── package.json         # Build configuration
 │
 ├── assets/                  # Images, fonts, icons
-├── android/                 # Android native project
-└── ios/                     # iOS native project
+└── android/                 # Android native project
 ```
 
 ---
