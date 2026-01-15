@@ -9,7 +9,7 @@ A modern, cross-platform Jellyfin client built with React Native and Expo. Enjoy
 <p align="center">
   <img src="https://img.shields.io/badge/platform-Android%20%7C%20TV%20%7C%20Desktop-blue" alt="Platforms"/>
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License"/>
-  <img src="https://img.shields.io/badge/version-1.2.3-orange" alt="Version"/>
+  <img src="https://img.shields.io/badge/version-1.2.4-orange" alt="Version"/>
 </p>
 
 ---
@@ -54,9 +54,7 @@ A modern, cross-platform Jellyfin client built with React Native and Expo. Enjoy
 </td>
 <td width="33%" valign="top">
 
-#### Desktop (Win/Mac/Linux)
-⚠️ **EXPERIMENTAL** - Desktop support is WIP
-
+#### Desktop (Mac/Linux)
 - Native window controls
 - Custom title bar
 - Keyboard shortcuts
