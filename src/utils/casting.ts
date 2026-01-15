@@ -95,6 +95,9 @@ interface GoogleCastModule {
 let GoogleCast: GoogleCastModule | null = null;
 let castModule: GoogleCastModule | null = null;
 
+// Mock hook for non-Android platforms to maintain consistent hook call order
+const mockUseRemoteMediaClient = () => null;
+
 function getGoogleCast(): GoogleCastModule | null {
   if (!isChromecastSupported) return null;
   if (castModule) return castModule;
@@ -110,6 +113,13 @@ function getGoogleCast(): GoogleCastModule | null {
 
 export function getCastModule(): GoogleCastModule | null {
   return getGoogleCast();
+}
+
+// Returns the useRemoteMediaClient hook (or a mock on non-Android platforms)
+export function getUseRemoteMediaClient(): () => RemoteMediaClient | null {
+  if (!isChromecastSupported) return mockUseRemoteMediaClient;
+  const cast = getGoogleCast();
+  return cast?.useRemoteMediaClient ?? mockUseRemoteMediaClient;
 }
 
 export async function initializeChromecast(): Promise<boolean> {

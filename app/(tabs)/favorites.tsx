@@ -10,9 +10,9 @@ import { useTranslation } from 'react-i18next';
 import { useAuthStore, useSettingsStore, usePlayerStore } from '@/stores';
 import { useResponsive } from '@/hooks';
 import { getFavorites, getFavoriteSongs, getImageUrl } from '@/api';
-import { AnimatedGradient } from '@/components/ui';
-import { CachedImage } from '@/components/ui/CachedImage';
-import { SkeletonRow } from '@/components/ui/Skeleton';
+import { AnimatedGradient } from '@/components/shared/ui';
+import { CachedImage } from '@/components/shared/ui/CachedImage';
+import { SkeletonRow } from '@/components/shared/ui/Skeleton';
 import { formatDuration, ticksToMs, getDisplayName, getDisplayImageUrl, getDisplayArtist, navigateToDetails } from '@/utils';
 import type { BaseItem } from '@/types/jellyfin';
 

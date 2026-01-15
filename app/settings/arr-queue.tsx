@@ -1,6 +1,6 @@
 import { SafeAreaView } from '@/providers';
 import { Stack } from 'expo-router';
-import { ArrQueueDisplay } from '@/components/media/ArrQueueDisplay';
+import { ArrQueueDisplay } from '@/components/shared/media';
 import { colors } from '@/theme';
 
 export default function ArrQueueScreen() {

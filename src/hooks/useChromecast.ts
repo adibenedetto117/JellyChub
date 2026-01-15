@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Platform } from 'react-native';
 import {
   getCastModule,
+  getUseRemoteMediaClient,
   subscribeToCastState,
   stopCasting,
   showCastDialog as showCastDialogUtil,
@@ -32,8 +33,9 @@ export function useChromecast(): UseChromecastReturn {
   const isAvailable = Platform.OS === 'android';
   const clientRef = useRef<any>(null);
 
-  const cast = isAvailable ? getCastModule() : null;
-  const remoteClient = cast?.useRemoteMediaClient ? cast.useRemoteMediaClient() : null;
+  // Get the hook (or mock) to maintain consistent hook call order across platforms
+  const useRemoteMediaClient = getUseRemoteMediaClient();
+  const remoteClient = useRemoteMediaClient();
 
   useEffect(() => {
     clientRef.current = remoteClient;

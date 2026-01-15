@@ -20,3 +20,4 @@ export function Providers({ children }: Props) {
 export { QueryProvider, queryClient } from './QueryProvider';
 export { TVFocusProvider, useTVFocus, type FocusArea, type TVFocusState, type TVFocusContextValue } from './TVFocusProvider';
 export { SafeAreaView, StableSafeAreaView, useStableInsets } from './StableSafeAreaProvider';
+export { CastProvider } from './CastProvider';

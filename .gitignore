@@ -1,4 +1,4 @@
-# dependencies
+# Dependencies
 node_modules/
 
 # Expo
@@ -19,28 +19,53 @@ expo-env.d.ts
 # Metro
 .metro-health-check*
 
-# debug
+# Debug and logs
 npm-debug.*
 yarn-debug.*
 yarn-error.*
+*.log
 
 # macOS
 .DS_Store
 *.pem
 
-# local env files
+# Environment files
+.env
+.env.*
 .env*.local
 
-# typescript
+# TypeScript
 *.tsbuildinfo
 
-# generated native folders
+# Generated native folders
 /ios
 /android
+android/app/build/
 
-# APK builds
+# APK/AAB builds
 *.apk
 *.aab
+builds/
+
+# Desktop builds
+dist-desktop/
+desktop/node_modules/
+desktop/web-build/
+desktop/dist/
+*.AppImage
+*.deb
+*.blockmap
+
+# Editor/IDE
+.claude/
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Build artifacts
+builder-debug.yml
 
 # Dev scripts
 build-apk.sh

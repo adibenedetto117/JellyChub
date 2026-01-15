@@ -1,27 +1,20 @@
 export * from './jellyfin';
-export * from './player';
+export * from './jellyseerr';
 export * from './livetv';
+export * from './player';
 
-// App-specific types
+export type { ElectronAPI, ElectronPlatformInfo, ElectronThemeInfo } from './electron';
+
 export interface AppSettings {
-  // Server settings
   servers: import('./jellyfin').JellyfinServer[];
   activeServerId?: string;
-
-  // UI settings
   theme: 'dark' | 'light' | 'system';
   accentColor: string;
   enableAnimations: boolean;
-
-  // Playback settings
   player: import('./player').PlayerSettings;
-
-  // Download settings
   downloadQuality: 'original' | 'high' | 'medium' | 'low';
   downloadOverWifiOnly: boolean;
-  maxDownloadSize: number; // in GB
-
-  // TV mode
+  maxDownloadSize: number;
   isTVMode: boolean;
 }
 
@@ -31,7 +24,7 @@ export interface DownloadItem {
   serverId: string;
   item: import('./jellyfin').BaseItem;
   status: 'pending' | 'downloading' | 'paused' | 'completed' | 'failed';
-  progress: number; // 0-100
+  progress: number;
   totalBytes: number;
   downloadedBytes: number;
   localPath?: string;
@@ -47,7 +40,6 @@ export interface CachedImage {
   cachedAt: string;
 }
 
-// Navigation types
 export type RootStackParamList = {
   '(tabs)': undefined;
   '(auth)': undefined;

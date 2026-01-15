@@ -7,3 +7,4 @@ export * from './casting';
 export * from './externalPlayer';
 export * from './navigation';
 export * from './haptics';
+export * from './subtitleParser';

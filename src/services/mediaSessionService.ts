@@ -1,14 +1,27 @@
-import {
-  MediaControl,
-  PlaybackState,
-  Command,
-  MediaControlEvent,
-  MediaMetadata,
-} from 'expo-media-control';
+import { Platform } from 'react-native';
 import { usePlayerStore } from '@/stores';
 import { getImageUrl } from '@/api/client';
 import type { BaseItem } from '@/types/jellyfin';
 import { ticksToMs } from '@/utils';
+
+// Only import native module on native platforms
+let MediaControl: any = null;
+let PlaybackState: any = {};
+let Command: any = {};
+
+if (Platform.OS !== 'web') {
+  try {
+    const mediaControlModule = require('expo-media-control');
+    MediaControl = mediaControlModule.MediaControl;
+    PlaybackState = mediaControlModule.PlaybackState;
+    Command = mediaControlModule.Command;
+  } catch (e) {
+    // Module not available
+  }
+}
+
+type MediaControlEvent = any;
+type MediaMetadata = any;
 
 class MediaSessionService {
   private isEnabled = false;
@@ -22,6 +35,7 @@ class MediaSessionService {
 
   async initialize() {
     if (this.isEnabled) return;
+    if (!MediaControl) return; // Not available on web
 
     try {
       await MediaControl.enableMediaControls({
@@ -151,7 +165,7 @@ class MediaSessionService {
   ) {
     if (!this.isEnabled) return;
 
-    let playbackState: PlaybackState;
+    let playbackState: any;
     switch (state) {
       case 'playing':
         playbackState = PlaybackState.PLAYING;

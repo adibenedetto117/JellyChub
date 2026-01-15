@@ -1,0 +1,1 @@
+export { HeroSpotlight } from './HeroSpotlight';

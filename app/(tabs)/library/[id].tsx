@@ -1,5 +1,4 @@
-import { View, Text, SectionList, FlatList, Pressable, RefreshControl, ActivityIndicator, Dimensions, StyleSheet } from 'react-native';
-import { Image } from 'expo-image';
+import { View, Text, SectionList, FlatList, Pressable, RefreshControl, ActivityIndicator, StyleSheet } from 'react-native';
 import { useState, useCallback, useMemo, useRef } from 'react';
 import { useQuery, useInfiniteQuery } from '@tanstack/react-query';
 import { SafeAreaView } from '@/providers';
@@ -9,29 +8,30 @@ import { useAuthStore, useSettingsStore } from '@/stores';
 import {
   getLibraries,
   getItems,
-  getImageUrl,
   getLibraryItemTypes,
   shouldUseSquareVariant,
   getLibraryIcon,
   getGenres,
 } from '@/api';
-import { SearchButton, SkeletonGrid } from '@/components/ui';
-import { FilterSortModal, DEFAULT_FILTERS, getActiveFilterCount } from '@/components/library';
-import type { FilterOptions, SortOption } from '@/components/library';
-import { getDisplayName, getDisplayImageUrl, goBack, navigateToDetails } from '@/utils';
+import { SkeletonGrid } from '@/components/shared/ui';
+import {
+  FilterSortModal,
+  DEFAULT_FILTERS,
+  getActiveFilterCount,
+  ItemCard,
+  ItemRow,
+  AlphabetScroller,
+  LibraryDetailHeader,
+  SortInfoRow,
+  ITEM_CARD_DIMENSIONS,
+} from '@/components/shared/library';
+import type { FilterOptions } from '@/components/shared/library';
+import { goBack, navigateToDetails } from '@/utils';
 import { colors } from '@/theme';
 import type { BaseItem } from '@/types/jellyfin';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const NUM_COLUMNS = 3;
-const GRID_PADDING = 16;
-const GRID_GAP = 8;
-const POSTER_WIDTH = (SCREEN_WIDTH - (GRID_PADDING * 2) - (GRID_GAP * (NUM_COLUMNS - 1))) / NUM_COLUMNS;
-const POSTER_HEIGHT = POSTER_WIDTH * 1.5;
-const SQUARE_SIZE = POSTER_WIDTH;
-
+const { POSTER_WIDTH, POSTER_HEIGHT, GRID_PADDING, GRID_GAP, NUM_COLUMNS } = ITEM_CARD_DIMENSIONS;
 const ITEMS_PER_PAGE = 100;
-const FULL_ALPHABET = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '#'];
 
 function getIoniconName(iconName: string): keyof typeof Ionicons.glyphMap {
   const iconMap: Record<string, keyof typeof Ionicons.glyphMap> = {
@@ -47,121 +47,6 @@ function getIoniconName(iconName: string): keyof typeof Ionicons.glyphMap {
     library: 'library-outline',
   };
   return iconMap[iconName] ?? 'library-outline';
-}
-
-function ItemCard({ item, onPress, showRating, isSquare, hideMedia }: { item: BaseItem; onPress: () => void; showRating?: boolean; isSquare?: boolean; hideMedia: boolean }) {
-  // Early return for null/undefined items to prevent crashes
-  if (!item?.Id) return null;
-
-  const rawImageUrl = item.ImageTags?.Primary
-    ? getImageUrl(item.Id, 'Primary', { maxWidth: 300, tag: item.ImageTags.Primary })
-    : null;
-  const imageUrl = getDisplayImageUrl(item.Id, rawImageUrl, hideMedia, 'Primary');
-  const displayName = getDisplayName(item, hideMedia);
-
-  const yearAndRating = [
-    item.ProductionYear,
-    showRating && item.CommunityRating ? `${item.CommunityRating.toFixed(1)}` : null
-  ].filter(Boolean).join(' - ');
-
-  const cardWidth = isSquare ? SQUARE_SIZE : POSTER_WIDTH;
-  const cardHeight = isSquare ? SQUARE_SIZE : POSTER_HEIGHT;
-
-  return (
-    <Pressable onPress={onPress} style={[styles.itemCard, { width: cardWidth }]}>
-      <View style={[styles.posterContainer, { width: cardWidth, height: cardHeight }]}>
-        {imageUrl ? (
-          <Image
-            source={{ uri: imageUrl }}
-            style={styles.poster}
-            contentFit="cover"
-            cachePolicy="memory-disk"
-            recyclingKey={item.Id}
-          />
-        ) : (
-          <View style={styles.posterPlaceholder}>
-            <Text style={styles.posterPlaceholderText}>{displayName?.charAt(0) ?? '?'}</Text>
-          </View>
-        )}
-        {item.UserData?.Played && (
-          <View style={styles.watchedBadge}>
-            <Text style={styles.watchedBadgeText}>✓</Text>
-          </View>
-        )}
-      </View>
-      <Text style={styles.itemTitle} numberOfLines={1}>{displayName}</Text>
-      {yearAndRating ? <Text style={styles.itemYear}>{yearAndRating}</Text> : null}
-    </Pressable>
-  );
-}
-
-function ItemRow({ item, onPress, isSquare, hideMedia }: { item: BaseItem; onPress: () => void; isSquare?: boolean; hideMedia: boolean }) {
-  // Early return for null/undefined items to prevent crashes
-  if (!item?.Id) return null;
-
-  const rawImageUrl = item.ImageTags?.Primary
-    ? getImageUrl(item.Id, 'Primary', { maxWidth: 120, tag: item.ImageTags.Primary })
-    : null;
-  const imageUrl = getDisplayImageUrl(item.Id, rawImageUrl, hideMedia, 'Primary');
-  const displayName = getDisplayName(item, hideMedia);
-
-  const imgWidth = isSquare ? 48 : 48;
-  const imgHeight = isSquare ? 48 : 72;
-
-  return (
-    <Pressable onPress={onPress} style={styles.itemRow}>
-      <View style={[styles.itemRowImageContainer, { width: imgWidth, height: imgHeight }]}>
-        {imageUrl ? (
-          <Image
-            source={{ uri: imageUrl }}
-            style={styles.itemRowImage}
-            contentFit="cover"
-            cachePolicy="memory-disk"
-            recyclingKey={item.Id}
-          />
-        ) : (
-          <View style={styles.itemRowPlaceholder}>
-            <Text style={styles.itemRowPlaceholderText}>{displayName?.charAt(0) ?? '?'}</Text>
-          </View>
-        )}
-      </View>
-      <View style={styles.itemRowInfo}>
-        <Text style={styles.itemRowName} numberOfLines={1}>{displayName}</Text>
-        <Text style={styles.itemRowMeta} numberOfLines={1}>
-          {[item.ProductionYear, item.CommunityRating ? `${item.CommunityRating.toFixed(1)}` : null].filter(Boolean).join(' - ')}
-        </Text>
-      </View>
-      {item.UserData?.Played && (
-        <View style={styles.watchedIndicator}>
-          <Text style={styles.watchedIndicatorText}>✓</Text>
-        </View>
-      )}
-    </Pressable>
-  );
-}
-
-function AlphabetScroller({ availableLetters, onLetterPress, accentColor }: { availableLetters: string[]; onLetterPress: (letter: string) => void; accentColor: string }) {
-  return (
-    <View style={styles.alphabetContainer}>
-      {FULL_ALPHABET.map((letter) => {
-        const isAvailable = availableLetters.includes(letter);
-        return (
-          <Pressable
-            key={letter}
-            onPress={() => isAvailable && onLetterPress(letter)}
-            style={styles.alphabetLetter}
-          >
-            <Text style={[
-              styles.alphabetLetterText,
-              { color: isAvailable ? accentColor : 'rgba(255,255,255,0.2)' }
-            ]}>
-              {letter}
-            </Text>
-          </Pressable>
-        );
-      })}
-    </View>
-  );
 }
 
 export default function LibraryDetailScreen() {
@@ -251,12 +136,10 @@ export default function LibraryDetailScreen() {
     staleTime: filters.sortBy === 'Random' ? 0 : 1000 * 60 * 5,
   });
 
-  // Filter out any null/undefined items and ensure each has a valid Id
   const allItems = (data?.pages?.flatMap((p) => p?.Items ?? []) ?? []).filter(
     (item): item is BaseItem => item != null && item.Id != null
   );
   const totalCount = data?.pages?.[0]?.TotalRecordCount ?? 0;
-  // Filter out null/undefined items to prevent FlatList crashes
   const sortedItems = allItems.filter((item): item is BaseItem => item != null && item.Id != null);
 
   const { sections: itemSections, availableLetters } = useMemo(() => {
@@ -309,10 +192,9 @@ export default function LibraryDetailScreen() {
     setRefreshing(false);
   }, [refetch]);
 
-  const handleItemPress = (item: BaseItem) => {
+  const handleItemPress = useCallback((item: BaseItem) => {
     if (!item?.Id) return;
     const type = item.Type?.toLowerCase();
-    // Navigate to this collection screen so back returns here
     const sourceRoute = `/library/${libraryId}`;
     if (type === 'audiobook') {
       router.push(`/player/audiobook?itemId=${item.Id}`);
@@ -322,11 +204,10 @@ export default function LibraryDetailScreen() {
       const isPdf = container === 'pdf' || path.endsWith('.pdf');
       router.push(isPdf ? `/reader/pdf?itemId=${item.Id}` : `/reader/epub?itemId=${item.Id}`);
     } else {
-      // For detail routes, use navigateToDetails with source tracking
       const detailType = type === 'musicalbum' ? 'album' : type;
       navigateToDetails(detailType || 'item', item.Id, sourceRoute);
     }
-  };
+  }, [libraryId]);
 
   const handleFiltersApply = useCallback((newFilters: FilterOptions) => {
     setFilters(newFilters);
@@ -341,8 +222,9 @@ export default function LibraryDetailScreen() {
 
   const openFilterModal = useCallback(() => setShowFilterModal(true), []);
   const closeFilterModal = useCallback(() => setShowFilterModal(false), []);
+  const handleBack = useCallback(() => goBack(from, '/(tabs)/library'), [from]);
 
-  const renderFooter = () => {
+  const renderFooter = useCallback(() => {
     if (!isFetchingNextPage) return <View style={styles.bottomSpacer} />;
     return (
       <View style={styles.loadingFooter}>
@@ -350,13 +232,7 @@ export default function LibraryDetailScreen() {
         <Text style={styles.loadingFooterText}>Loading more...</Text>
       </View>
     );
-  };
-
-  const showRatingSort = useMemo(() => {
-    if (!library) return false;
-    const noRatingTypes = ['homevideos', 'boxsets', null, undefined];
-    return !noRatingTypes.includes(library.CollectionType);
-  }, [library]);
+  }, [isFetchingNextPage, accentColor]);
 
   const showRuntimeSort = useMemo(() => {
     if (!library) return false;
@@ -446,43 +322,21 @@ export default function LibraryDetailScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <View style={styles.header}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-          <Pressable
-            onPress={() => goBack(from, '/(tabs)/library')}
-            style={styles.backButton}
-          >
-            <Ionicons name="chevron-back" size={24} color="#fff" />
-          </Pressable>
-          <View style={[styles.libraryIcon, { backgroundColor: accentColor }]}>
-            <Ionicons name={getIoniconName(iconName)} size={18} color="#fff" />
-          </View>
-          <Text style={styles.headerTitle}>{library?.Name ?? 'Library'}</Text>
-        </View>
-        <View style={styles.headerRight}>
-          <Pressable onPress={openFilterModal} style={styles.filterButton}>
-            <Ionicons name="options-outline" size={22} color="#fff" />
-            {activeFilterCount > 0 && (
-              <View style={[styles.filterBadge, { backgroundColor: accentColor }]}>
-                <Text style={styles.filterBadgeText}>{activeFilterCount}</Text>
-              </View>
-            )}
-          </Pressable>
-          <SearchButton />
-        </View>
-      </View>
+      <LibraryDetailHeader
+        title={library?.Name ?? 'Library'}
+        iconName={iconName}
+        accentColor={accentColor}
+        activeFilterCount={activeFilterCount}
+        onBack={handleBack}
+        onFilterPress={openFilterModal}
+      />
 
-      <View style={styles.sortInfoRow}>
-        <Text style={styles.sortInfoText}>
-          {totalCount} items
-          {filters.sortBy !== 'SortName' && ` • Sorted by ${filters.sortBy === 'DateCreated' ? 'Date Added' : filters.sortBy === 'PremiereDate' ? 'Year' : filters.sortBy === 'CommunityRating' ? 'Rating' : filters.sortBy === 'Runtime' ? 'Runtime' : filters.sortBy === 'Random' ? 'Random' : 'Name'}`}
-        </Text>
-        {activeFilterCount > 0 && (
-          <Text style={[styles.filterActiveText, { color: accentColor }]}>
-            {activeFilterCount} filter{activeFilterCount > 1 ? 's' : ''} active
-          </Text>
-        )}
-      </View>
+      <SortInfoRow
+        totalCount={totalCount}
+        sortBy={filters.sortBy}
+        activeFilterCount={activeFilterCount}
+        accentColor={accentColor}
+      />
 
       {isError ? (
         <View style={styles.emptyContainer}>
@@ -524,76 +378,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background.primary,
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-  },
-  headerTitle: {
-    color: '#fff',
-    fontSize: 24,
-    fontWeight: 'bold',
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-  },
-  libraryIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  filterButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  filterBadge: {
-    position: 'absolute',
-    top: 4,
-    right: 4,
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  filterBadgeText: {
-    color: '#fff',
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  sortInfoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-  },
-  sortInfoText: {
-    color: 'rgba(255,255,255,0.5)',
-    fontSize: 13,
-  },
-  filterActiveText: {
-    fontSize: 13,
-    fontWeight: '500',
-  },
   alphabeticalContainer: {
     flex: 1,
     flexDirection: 'row',
@@ -629,139 +413,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     paddingVertical: 12,
     paddingHorizontal: 4,
-  },
-  itemCard: {
-    width: POSTER_WIDTH,
-  },
-  posterContainer: {
-    borderRadius: 8,
-    overflow: 'hidden',
-    backgroundColor: colors.surface.default,
-  },
-  poster: {
-    width: '100%',
-    height: '100%',
-  },
-  posterPlaceholder: {
-    width: '100%',
-    height: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.surface.elevated,
-  },
-  posterPlaceholderText: {
-    color: 'rgba(255,255,255,0.3)',
-    fontSize: 32,
-    fontWeight: 'bold',
-  },
-  watchedBadge: {
-    position: 'absolute',
-    top: 6,
-    right: 6,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: 'rgba(76, 175, 80, 0.9)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  watchedBadgeText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-  itemTitle: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '500',
-    marginTop: 6,
-  },
-  itemYear: {
-    color: 'rgba(255,255,255,0.5)',
-    fontSize: 11,
-    marginTop: 2,
-    height: 14,
-  },
-  itemRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 4,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.08)',
-  },
-  itemRowImageContainer: {
-    borderRadius: 4,
-    overflow: 'hidden',
-    backgroundColor: colors.surface.default,
-  },
-  itemRowImage: {
-    width: '100%',
-    height: '100%',
-  },
-  itemRowPlaceholder: {
-    width: '100%',
-    height: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.surface.elevated,
-  },
-  itemRowPlaceholderText: {
-    color: 'rgba(255,255,255,0.3)',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  itemRowInfo: {
-    flex: 1,
-    marginLeft: 12,
-  },
-  itemRowName: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '500',
-  },
-  itemRowMeta: {
-    color: 'rgba(255,255,255,0.5)',
-    fontSize: 13,
-    marginTop: 2,
-  },
-  watchedIndicator: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: 'rgba(76, 175, 80, 0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  watchedIndicatorText: {
-    color: '#4CAF50',
-    fontSize: 14,
-    fontWeight: 'bold',
-  },
-  alphabetContainer: {
-    width: 24,
-    paddingVertical: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  alphabetLetter: {
-    paddingVertical: 2,
-    paddingHorizontal: 4,
-  },
-  alphabetLetterText: {
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  loadingContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 60,
-  },
-  loadingText: {
-    color: 'rgba(255,255,255,0.5)',
-    marginTop: 12,
-    fontSize: 14,
   },
   loadingFooter: {
     paddingVertical: 24,

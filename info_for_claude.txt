@@ -1,0 +1,96 @@
+- NEVER PUSH CODE without me telling you its okay to do that. If you do get the okay then you must never include anymetion of claude code or AI every. Simple commits such as Added: etco or Fix: etc
+- NEver add descriptions for commits
+- When coding never add comments they take up too many tokens. Never add emojis ever. Follow the coding style. Think about the future when buildnig.
+-When coding never add comments
+-When coding never add comments
+
+-When coding never add comments
+
+-When coding never add comments
+
+-When coding never add comments
+
+-When coding never add comments
+
+-When coding never add comments
+
+
+This is a jellyfin clinet. With support for a multitude of different thigns. 
+
+my phone is typically plugged is plugged in you can install the apk so i can test. Makes sure when a task is done and tested we check it off.
+
+Tasks for today. Main one is to refactor the code base some files are massive need more speperated comonents.
+
+Alsoi this is what i was told from a user 
+
+Acknowledgements
+
+Note positive feedback on Jellyseerr show and movie screen visuals
+
+Books
+Improvements
+
+Highlight the currently active chapter in the chapter list
+
+Add swipe gestures for next page and previous page
+
+Bugs
+
+Investigate chapter navigation not responding to taps
+
+Chapters display correctly but clicking does nothing
+
+Issue persists after app restart
+
+Shows
+Improvements
+
+In season view, display watched status for each episode
+
+Add a dedicated episode details view when selecting an episode
+
+Show plot summary
+
+Show audio track details
+
+Show subtitle details
+
+Optional alternative: expand episode cards inline instead of navigating
+
+Home screen
+Improvements
+
+Fix play button behavior on episode cards
+
+Play button should immediately play the episode
+
+Or remove the play button to avoid confusion
+
+Display season number alongside episode information
+
+Player
+Bugs
+
+Fix Trickplay preview rendering
+
+Currently shows a black box instead of preview frames
+
+Fix playback timeline instability
+
+Timeline jumps between correct timestamp and 0:00 during playback
+
+Admin
+Bugs
+
+Fix users tab incorrectly showing “No users found”
+
+Codebase and architecture
+Technical debt
+
+Review large AI generated components for structure and maintainability
+
+Improve encapsulation and component boundaries
+
+Reduce risk of regressions in completed features
+
+Make codebase easier to contribute to with clean pull requests

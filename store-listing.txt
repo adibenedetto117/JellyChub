@@ -1,0 +1,31 @@
+Jellychub is a feature-rich Jellyfin client that puts your entire media library at your fingertips.
+
+STREAMING
+
+• Movies & TV Shows - Browse and stream your video library with full playback controls
+• Music - Background playback with queue management
+• Books - Built-in EPUB reader
+• Live TV - Watch live television from your Jellyfin server
+• Chromecast - Cast to compatible devices
+• Picture-in-Picture - Keep watching while multitasking
+
+MEDIA MANAGEMENT
+
+• Jellyseerr - Discover and request movies and TV shows
+• Radarr - View your movie queue, calendar, and manage your collection
+• Sonarr - Track your TV show queue, calendar, and manage episodes
+
+SERVER ADMINISTRATION
+
+• Dashboard - Monitor active streams, transcoding, and server health
+• Stream Control - Pause, stop, or kill active playback sessions
+• User Management - Create, edit, and delete users
+• Permissions - Configure library access, playback, and transcoding per user
+• Scheduled Tasks - Run and monitor server maintenance tasks
+• Server Control - Trigger library scans, restart, or shutdown
+
+REQUIREMENTS
+
+A Jellyfin server is required. Jellyseerr, Radarr, and Sonarr integrations are optional. Admin features require administrator privileges on your Jellyfin server.
+
+Jellyfin is free, open-source media server software. Learn more at jellyfin.org

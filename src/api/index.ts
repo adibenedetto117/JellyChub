@@ -1,4 +1,12 @@
-export { jellyfinClient, getImageUrl, getStreamUrl, getAudioStreamUrl, getBookDownloadUrl, getSubtitleUrl, getTrickplayTileUrl } from './client';
+export {
+  jellyfinClient,
+  getImageUrl,
+  getStreamUrl,
+  getAudioStreamUrl,
+  getBookDownloadUrl,
+  getSubtitleUrl,
+  getTrickplayTileUrl,
+} from './client';
 export type { TrickplayInfo, TrickplayData } from './client';
 
 export {
@@ -13,7 +21,6 @@ export {
   getCurrentUser,
   validateServerUrl,
 } from './auth';
-
 export type { ServerInfo, ServerPublicInfo } from './auth';
 
 export {
@@ -59,8 +66,16 @@ export {
   getRecentlyPlayed,
   getMostPlayed,
 } from './library';
-
-export type { LibraryQueryParams, LibraryConfig, Genre, CreatePlaylistResult, PersonDetails, GroupedLibraries, SearchMediaType, SearchOptions } from './library';
+export type {
+  LibraryQueryParams,
+  LibraryConfig,
+  Genre,
+  CreatePlaylistResult,
+  PersonDetails,
+  GroupedLibraries,
+  SearchMediaType,
+  SearchOptions,
+} from './library';
 
 export {
   getPlaybackInfo,
@@ -72,8 +87,11 @@ export {
   generatePlaySessionId,
   getMediaSegments,
 } from './playback';
-
-export type { PlaybackStartInfo, MediaSegment, MediaSegmentsResponse } from './playback';
+export type {
+  PlaybackStartInfo,
+  MediaSegment,
+  MediaSegmentsResponse,
+} from './playback';
 
 export {
   getSystemInfo,
@@ -85,8 +103,28 @@ export {
   shutdownServer,
   stopSession,
   sendSessionMessage,
+  broadcastMessage,
+  sendPlayCommand,
+  sendPauseCommand,
+  sendStopCommand,
+  sendSeekCommand,
+  sendNextTrackCommand,
+  sendPreviousTrackCommand,
+  getScheduledTasks,
+  runScheduledTask,
+  stopScheduledTask,
+  getLogFiles,
+  getUsers,
+  disableUser,
+  enableUser,
+  resetUserPassword,
+  deleteUser,
+  getUserById,
+  getMediaFolders,
+  updateUserPolicy,
+  updateUserName,
+  createUser,
 } from './admin';
-
 export type {
   SystemInfo,
   SessionInfo,
@@ -96,9 +134,11 @@ export type {
   ItemCounts,
   ActivityLogEntry,
   ActivityLogResponse,
+  ScheduledTask,
+  LogFile,
+  UserInfo,
+  MediaFolder,
 } from './admin';
-
-export { jellyseerrClient } from './jellyseerr';
 
 export {
   getLiveTvInfo,
@@ -125,7 +165,6 @@ export {
   cancelSeriesTimer,
   deleteRecording,
 } from './livetv';
-
 export type { SeriesTimerInfo } from './livetv';
 
 export {
@@ -142,3 +181,31 @@ export type {
   AudioStreamParams,
   HlsStreamParams,
 } from './urlParams';
+
+export {
+  jellyseerrClient,
+  sonarrService,
+  radarrService,
+} from './external';
+export type {
+  JellyseerrAuthMethod,
+  SonarrSeries,
+  SonarrQueueItem,
+  SonarrQueueResponse,
+  SonarrRootFolder,
+  SonarrQualityProfile,
+  SonarrLookupResult,
+  SonarrAddSeriesOptions,
+  SonarrEpisode,
+  SonarrCalendarEpisode,
+  SonarrRelease,
+  RadarrMovie,
+  RadarrQueueItem,
+  RadarrQueueResponse,
+  RadarrRootFolder,
+  RadarrQualityProfile,
+  RadarrLookupResult,
+  RadarrAddMovieOptions,
+  RadarrRelease,
+  RadarrCalendarMovie,
+} from './external';

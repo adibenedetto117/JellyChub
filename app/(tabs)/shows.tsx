@@ -1,134 +1,35 @@
-import { View, Text, SectionList, FlatList, Pressable, RefreshControl, ActivityIndicator, Dimensions, StyleSheet } from 'react-native';
-import { Image } from 'expo-image';
-import { useState, useCallback, useMemo, useRef, memo } from 'react';
+import { View, SectionList, FlatList, RefreshControl, StyleSheet } from 'react-native';
+import { useState, useCallback, useMemo, useRef } from 'react';
 import { useQuery, useInfiniteQuery } from '@tanstack/react-query';
 import { SafeAreaView } from '@/providers';
-import { router } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore, useSettingsStore } from '@/stores';
-import { getLibraries, getItems, getImageUrl, getLibraryIdsByType, getItemsFromMultipleLibraries, getGenres } from '@/api';
-import { SearchButton, AnimatedGradient, SkeletonGrid } from '@/components/ui';
-import { FilterSortModal, DEFAULT_FILTERS, getActiveFilterCount } from '@/components/library';
-import type { FilterOptions, SortOption } from '@/components/library';
-import { getDisplayName, getDisplayImageUrl, navigateToDetails } from '@/utils';
+import { getLibraries, getLibraryIdsByType, getItemsFromMultipleLibraries, getGenres } from '@/api';
+import { AnimatedGradient, SkeletonGrid } from '@/components/shared/ui';
+import { FilterSortModal, DEFAULT_FILTERS, getActiveFilterCount } from '@/components/shared/library';
+import type { FilterOptions } from '@/components/shared/library';
+import {
+  BrowseHeader,
+  BrowseInfoRow,
+  MediaGridCard,
+  MediaListRow,
+  AlphabetScroller,
+  AlphabetSectionHeader,
+  LoadingFooter,
+  ListHeader,
+  POSTER_WIDTH,
+  POSTER_HEIGHT,
+  GRID_PADDING,
+  GRID_GAP,
+  NUM_COLUMNS,
+  useMediaBrowse,
+} from '@/components/shared/browse';
+import { navigateToDetails } from '@/utils';
 import { colors } from '@/theme';
 import type { BaseItem, Series } from '@/types/jellyfin';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const NUM_COLUMNS = 3;
-const GRID_PADDING = 16;
-const GRID_GAP = 8;
-const POSTER_WIDTH = (SCREEN_WIDTH - (GRID_PADDING * 2) - (GRID_GAP * (NUM_COLUMNS - 1))) / NUM_COLUMNS;
-const POSTER_HEIGHT = POSTER_WIDTH * 1.5;
-
 const ITEMS_PER_PAGE = 100;
-const FULL_ALPHABET = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '#'];
-
-const ShowCard = memo(function ShowCard({ item, onPress, showRating, hideMedia }: { item: BaseItem; onPress: () => void; showRating?: boolean; hideMedia: boolean }) {
-  const rawImageUrl = item.ImageTags?.Primary
-    ? getImageUrl(item.Id, 'Primary', { maxWidth: 300, tag: item.ImageTags.Primary })
-    : null;
-  const imageUrl = getDisplayImageUrl(item.Id, rawImageUrl, hideMedia, 'Primary');
-  const displayName = getDisplayName(item, hideMedia);
-
-  const yearAndRating = [
-    item.ProductionYear,
-    showRating && item.CommunityRating ? `★ ${item.CommunityRating.toFixed(1)}` : null
-  ].filter(Boolean).join(' • ');
-
-  return (
-    <Pressable onPress={onPress} style={styles.showCard}>
-      <View style={styles.posterContainer}>
-        {imageUrl ? (
-          <Image
-            source={{ uri: imageUrl }}
-            style={styles.poster}
-            contentFit="cover"
-            cachePolicy="memory-disk"
-            recyclingKey={item.Id}
-          />
-        ) : (
-          <View style={styles.posterPlaceholder}>
-            <Text style={styles.posterPlaceholderText}>{displayName?.charAt(0) ?? '?'}</Text>
-          </View>
-        )}
-        {item.UserData?.UnplayedItemCount === 0 && (
-          <View style={styles.watchedBadge}>
-            <Text style={styles.watchedBadgeText}>✓</Text>
-          </View>
-        )}
-      </View>
-      <Text style={styles.showTitle} numberOfLines={1}>{displayName}</Text>
-      <Text style={styles.showYear}>{yearAndRating}</Text>
-    </Pressable>
-  );
-});
-
-const ShowRow = memo(function ShowRow({ item, onPress, hideMedia }: { item: BaseItem; onPress: () => void; hideMedia: boolean }) {
-  const rawImageUrl = item.ImageTags?.Primary
-    ? getImageUrl(item.Id, 'Primary', { maxWidth: 120, tag: item.ImageTags.Primary })
-    : null;
-  const imageUrl = getDisplayImageUrl(item.Id, rawImageUrl, hideMedia, 'Primary');
-  const displayName = getDisplayName(item, hideMedia);
-
-  return (
-    <Pressable onPress={onPress} style={styles.showRow}>
-      <View style={styles.showRowImageContainer}>
-        {imageUrl ? (
-          <Image
-            source={{ uri: imageUrl }}
-            style={styles.showRowImage}
-            contentFit="cover"
-            cachePolicy="memory-disk"
-            recyclingKey={item.Id}
-          />
-        ) : (
-          <View style={styles.showRowPlaceholder}>
-            <Text style={styles.showRowPlaceholderText}>{displayName?.charAt(0) ?? '?'}</Text>
-          </View>
-        )}
-      </View>
-      <View style={styles.showRowInfo}>
-        <Text style={styles.showRowName} numberOfLines={1}>{displayName}</Text>
-        <Text style={styles.showRowMeta} numberOfLines={1}>
-          {[item.ProductionYear, item.CommunityRating ? `★ ${item.CommunityRating.toFixed(1)}` : null].filter(Boolean).join(' • ')}
-        </Text>
-      </View>
-      {item.UserData?.UnplayedItemCount === 0 && (
-        <View style={styles.watchedIndicator}>
-          <Text style={styles.watchedIndicatorText}>✓</Text>
-        </View>
-      )}
-    </Pressable>
-  );
-});
-
-const AlphabetScroller = memo(function AlphabetScroller({ availableLetters, onLetterPress, accentColor }: { availableLetters: string[]; onLetterPress: (letter: string) => void; accentColor: string }) {
-  return (
-    <View style={styles.alphabetContainer}>
-      {FULL_ALPHABET.map((letter) => {
-        const isAvailable = availableLetters.includes(letter);
-        return (
-          <Pressable
-            key={letter}
-            onPress={() => isAvailable && onLetterPress(letter)}
-            style={styles.alphabetLetter}
-          >
-            <Text style={[
-              styles.alphabetLetterText,
-              { color: isAvailable ? accentColor : 'rgba(255,255,255,0.2)' }
-            ]}>
-              {letter}
-            </Text>
-          </Pressable>
-        );
-      })}
-    </View>
-  );
-});
 
 export default function ShowsScreen() {
-  const [refreshing, setRefreshing] = useState(false);
   const [filters, setFilters] = useState<FilterOptions>(DEFAULT_FILTERS);
   const [showFilterModal, setShowFilterModal] = useState(false);
   const sectionListRef = useRef<SectionList>(null);
@@ -203,107 +104,78 @@ export default function ShowsScreen() {
 
   const allShows = data?.pages.flatMap((p) => p.Items) ?? [];
   const totalCount = data?.pages[0]?.TotalRecordCount ?? 0;
-  // Filter out any null/undefined items to prevent FlatList crashes
-  const sortedShows = allShows.filter((item): item is Series => item != null);
 
-  const { sections: showSections, availableLetters } = useMemo(() => {
-    if (filters.sortBy !== 'SortName') {
-      return { sections: [], availableLetters: [] };
-    }
-
-    const grouped: Record<string, Series[]> = {};
-    sortedShows.forEach((show) => {
-      const sortName = show.SortName ?? show.Name ?? '?';
-      const firstChar = sortName.charAt(0).toUpperCase();
-      const letter = /[A-Z]/.test(firstChar) ? firstChar : '#';
-      if (!grouped[letter]) grouped[letter] = [];
-      grouped[letter].push(show);
-    });
-
-    const sortedLetters = Object.keys(grouped).sort((a, b) => {
-      if (a === '#') return 1;
-      if (b === '#') return -1;
-      return a.localeCompare(b);
-    });
-
-    return {
-      sections: sortedLetters.map((letter) => ({
-        title: letter,
-        data: grouped[letter],
-      })),
-      availableLetters: sortedLetters,
-    };
-  }, [sortedShows, filters.sortBy]);
+  const {
+    refreshing,
+    setRefreshing,
+    sections,
+    availableLetters,
+    filteredItems,
+    scrollToLetter,
+    resetScroll,
+    isAlphabetical,
+  } = useMediaBrowse({
+    items: allShows,
+    sortBy: filters.sortBy,
+    onItemPress: (item) => navigateToDetails('series', item.Id, '/(tabs)/shows'),
+  });
 
   const activeFilterCount = useMemo(() => getActiveFilterCount(filters), [filters]);
-
-  const scrollToLetter = useCallback((letter: string) => {
-    const sectionIndex = showSections.findIndex((s) => s.title === letter);
-    if (sectionIndex !== -1 && sectionListRef.current) {
-      sectionListRef.current.scrollToLocation({
-        sectionIndex,
-        itemIndex: 0,
-        animated: true,
-        viewOffset: 0,
-      });
-    }
-  }, [showSections]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await refetch();
     setRefreshing(false);
-  }, [refetch]);
+  }, [refetch, setRefreshing]);
+
+  const handleFiltersApply = useCallback((newFilters: FilterOptions) => {
+    setFilters(newFilters);
+    resetScroll(newFilters.sortBy === 'SortName');
+  }, [resetScroll]);
+
+  const openFilterModal = useCallback(() => setShowFilterModal(true), []);
+  const closeFilterModal = useCallback(() => setShowFilterModal(false), []);
 
   const handleItemPress = useCallback((item: BaseItem) => {
     navigateToDetails('series', item.Id, '/(tabs)/shows');
   }, []);
 
-  const handleFiltersApply = useCallback((newFilters: FilterOptions) => {
-    setFilters(newFilters);
-    if (newFilters.sortBy === 'SortName') {
-      setTimeout(() => {
-        sectionListRef.current?.scrollToLocation({ sectionIndex: 0, itemIndex: 0, animated: false, viewOffset: 0 });
-      }, 100);
-    } else {
-      flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
-    }
+  const isShowWatched = useCallback((item: BaseItem) => {
+    return item.UserData?.UnplayedItemCount === 0;
   }, []);
 
-  const openFilterModal = useCallback(() => setShowFilterModal(true), []);
-  const closeFilterModal = useCallback(() => setShowFilterModal(false), []);
-
-  const renderFooter = useCallback(() => {
-    if (!isFetchingNextPage) return <View style={styles.bottomSpacer} />;
-    return (
-      <View style={styles.loadingFooter}>
-        <ActivityIndicator color={accentColor} size="small" />
-        <Text style={styles.loadingFooterText}>Loading more...</Text>
-      </View>
-    );
-  }, [isFetchingNextPage, accentColor]);
-
-  // Memoized renderItem callbacks to prevent re-renders
   const renderShowRow = useCallback(({ item }: { item: BaseItem }) => (
-    <ShowRow item={item} onPress={() => handleItemPress(item)} hideMedia={hideMedia} />
-  ), [handleItemPress, hideMedia]);
+    <MediaListRow
+      item={item}
+      onPress={() => handleItemPress(item)}
+      hideMedia={hideMedia}
+      isWatched={isShowWatched(item)}
+    />
+  ), [handleItemPress, hideMedia, isShowWatched]);
 
   const renderShowCard = useCallback(({ item }: { item: BaseItem }) => (
-    <ShowCard item={item} onPress={() => handleItemPress(item)} showRating={filters.sortBy !== 'SortName'} hideMedia={hideMedia} />
-  ), [handleItemPress, filters.sortBy, hideMedia]);
+    <MediaGridCard
+      item={item}
+      onPress={() => handleItemPress(item)}
+      hideMedia={hideMedia}
+      showRating={!isAlphabetical}
+      isWatched={isShowWatched(item)}
+    />
+  ), [handleItemPress, isAlphabetical, hideMedia, isShowWatched]);
 
   const renderSectionHeader = useCallback(({ section }: any) => (
-    <View style={styles.sectionHeaderContainer}>
-      <Text style={[styles.sectionHeaderText, { color: accentColor }]}>{section.title}</Text>
-    </View>
+    <AlphabetSectionHeader title={section.title} accentColor={accentColor} />
   ), [accentColor]);
 
+  const renderFooter = useCallback(() => (
+    <LoadingFooter isLoading={isFetchingNextPage} accentColor={accentColor} />
+  ), [isFetchingNextPage, accentColor]);
+
   const renderAlphabeticalView = () => {
-    // Show skeleton OUTSIDE SectionList when loading to prevent "addViewAt: failed to insert" crash
     if (isLoading) {
       return (
         <View style={styles.alphabeticalContainer}>
-          <View style={[styles.sectionListContent, { flex: 1 }]}>
+          <View style={styles.sectionListContent}>
             <SkeletonGrid count={12} itemWidth={POSTER_WIDTH - 8} itemHeight={POSTER_HEIGHT} />
           </View>
         </View>
@@ -314,7 +186,7 @@ export default function ShowsScreen() {
       <View style={styles.alphabeticalContainer}>
         <SectionList
           ref={sectionListRef}
-          sections={showSections}
+          sections={sections}
           contentContainerStyle={styles.sectionListContent}
           renderItem={renderShowRow}
           renderSectionHeader={renderSectionHeader}
@@ -326,7 +198,7 @@ export default function ShowsScreen() {
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={accentColor} />
           }
           ListHeaderComponent={
-            <Text style={styles.listHeader}>{sortedShows.length} of {totalCount} shows</Text>
+            <ListHeader currentCount={filteredItems.length} totalCount={totalCount} itemLabel="shows" />
           }
           ListFooterComponent={renderFooter}
           initialNumToRender={15}
@@ -343,7 +215,6 @@ export default function ShowsScreen() {
   };
 
   const renderGridView = () => {
-    // Show skeleton OUTSIDE FlatList when loading to prevent "addViewAt: failed to insert" crash
     if (isLoading) {
       return (
         <View style={styles.gridContent}>
@@ -356,7 +227,7 @@ export default function ShowsScreen() {
       <FlatList
         ref={flatListRef}
         key={`shows-grid-${filters.sortBy}-${filters.sortOrder}`}
-        data={sortedShows}
+        data={filteredItems}
         renderItem={renderShowCard}
         keyExtractor={(item, index) => `${item.Id}-${index}`}
         numColumns={NUM_COLUMNS}
@@ -368,7 +239,7 @@ export default function ShowsScreen() {
         onEndReached={() => hasNextPage && !isFetchingNextPage && fetchNextPage()}
         onEndReachedThreshold={0.5}
         ListHeaderComponent={
-          <Text style={styles.listHeader}>{sortedShows.length} of {totalCount} shows</Text>
+          <ListHeader currentCount={filteredItems.length} totalCount={totalCount} itemLabel="shows" />
         }
         ListFooterComponent={renderFooter}
         initialNumToRender={12}
@@ -381,36 +252,22 @@ export default function ShowsScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <AnimatedGradient intensity="subtle" />
-      <View style={styles.header}>
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <Text style={styles.headerTitle}>TV Shows</Text>
-        </View>
-        <View style={styles.headerRight}>
-          <Pressable onPress={openFilterModal} style={styles.filterButton}>
-            <Ionicons name="options-outline" size={22} color="#fff" />
-            {activeFilterCount > 0 && (
-              <View style={[styles.filterBadge, { backgroundColor: accentColor }]}>
-                <Text style={styles.filterBadgeText}>{activeFilterCount}</Text>
-              </View>
-            )}
-          </Pressable>
-          <SearchButton filter="Series" />
-        </View>
-      </View>
+      <BrowseHeader
+        title="TV Shows"
+        searchFilter="Series"
+        onFilterPress={openFilterModal}
+        activeFilterCount={activeFilterCount}
+        accentColor={accentColor}
+      />
+      <BrowseInfoRow
+        totalCount={totalCount}
+        itemLabel="shows"
+        sortBy={filters.sortBy}
+        activeFilterCount={activeFilterCount}
+        accentColor={accentColor}
+      />
 
-      <View style={styles.sortInfoRow}>
-        <Text style={styles.sortInfoText}>
-          {totalCount} shows
-          {filters.sortBy !== 'SortName' && ` • Sorted by ${filters.sortBy === 'DateCreated' ? 'Date Added' : filters.sortBy === 'PremiereDate' ? 'Year' : filters.sortBy === 'CommunityRating' ? 'Rating' : filters.sortBy === 'Random' ? 'Random' : 'Name'}`}
-        </Text>
-        {activeFilterCount > 0 && (
-          <Text style={[styles.filterActiveText, { color: accentColor }]}>
-            {activeFilterCount} filter{activeFilterCount > 1 ? 's' : ''} active
-          </Text>
-        )}
-      </View>
-
-      {filters.sortBy === 'SortName' ? renderAlphabeticalView() : renderGridView()}
+      {isAlphabetical ? renderAlphabeticalView() : renderGridView()}
 
       <FilterSortModal
         visible={showFilterModal}
@@ -430,61 +287,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background.primary,
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-  },
-  headerTitle: {
-    color: '#fff',
-    fontSize: 28,
-    fontWeight: 'bold',
-  },
-  headerRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  filterButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  filterBadge: {
-    position: 'absolute',
-    top: 4,
-    right: 4,
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  filterBadgeText: {
-    color: '#fff',
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  sortInfoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-  },
-  sortInfoText: {
-    color: 'rgba(255,255,255,0.5)',
-    fontSize: 13,
-  },
-  filterActiveText: {
-    fontSize: 13,
-    fontWeight: '500',
-  },
   alphabeticalContainer: {
     flex: 1,
     flexDirection: 'row',
@@ -501,175 +303,5 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-start',
     gap: GRID_GAP,
     marginBottom: 16,
-  },
-  sectionHeaderContainer: {
-    backgroundColor: colors.background.primary,
-    paddingVertical: 8,
-    paddingHorizontal: 4,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(255,255,255,0.15)',
-  },
-  sectionHeaderText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  listHeader: {
-    color: 'rgba(255,255,255,0.5)',
-    fontSize: 13,
-    paddingVertical: 12,
-    paddingHorizontal: 4,
-  },
-  // Show Card (Grid)
-  showCard: {
-    width: POSTER_WIDTH,
-  },
-  posterContainer: {
-    width: POSTER_WIDTH,
-    height: POSTER_HEIGHT,
-    borderRadius: 8,
-    overflow: 'hidden',
-    backgroundColor: colors.surface.default,
-  },
-  poster: {
-    width: '100%',
-    height: '100%',
-  },
-  posterPlaceholder: {
-    width: '100%',
-    height: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.surface.elevated,
-  },
-  posterPlaceholderText: {
-    color: 'rgba(255,255,255,0.3)',
-    fontSize: 32,
-    fontWeight: 'bold',
-  },
-  watchedBadge: {
-    position: 'absolute',
-    top: 6,
-    right: 6,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: 'rgba(76, 175, 80, 0.9)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  watchedBadgeText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-  showTitle: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '500',
-    marginTop: 6,
-  },
-  showYear: {
-    color: 'rgba(255,255,255,0.5)',
-    fontSize: 11,
-    marginTop: 2,
-    height: 14,
-  },
-  // Show Row (List)
-  showRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 4,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.08)',
-  },
-  showRowImageContainer: {
-    width: 48,
-    height: 72,
-    borderRadius: 4,
-    overflow: 'hidden',
-    backgroundColor: colors.surface.default,
-  },
-  showRowImage: {
-    width: '100%',
-    height: '100%',
-  },
-  showRowPlaceholder: {
-    width: '100%',
-    height: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.surface.elevated,
-  },
-  showRowPlaceholderText: {
-    color: 'rgba(255,255,255,0.3)',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  showRowInfo: {
-    flex: 1,
-    marginLeft: 12,
-  },
-  showRowName: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '500',
-  },
-  showRowMeta: {
-    color: 'rgba(255,255,255,0.5)',
-    fontSize: 13,
-    marginTop: 2,
-  },
-  watchedIndicator: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: 'rgba(76, 175, 80, 0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  watchedIndicatorText: {
-    color: '#4CAF50',
-    fontSize: 14,
-    fontWeight: 'bold',
-  },
-  // Alphabet Scroller
-  alphabetContainer: {
-    width: 24,
-    paddingVertical: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  alphabetLetter: {
-    paddingVertical: 2,
-    paddingHorizontal: 4,
-  },
-  alphabetLetterText: {
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  // Loading & Empty States
-  loadingContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 60,
-  },
-  loadingText: {
-    color: 'rgba(255,255,255,0.5)',
-    marginTop: 12,
-    fontSize: 14,
-  },
-  loadingFooter: {
-    paddingVertical: 24,
-    alignItems: 'center',
-  },
-  loadingFooterText: {
-    color: 'rgba(255,255,255,0.5)',
-    fontSize: 12,
-    marginTop: 8,
-  },
-  bottomSpacer: {
-    height: 100,
   },
 });

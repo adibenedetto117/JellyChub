@@ -1,4 +1,7 @@
 import { jellyfinClient } from './client';
+import type { UserPolicy } from '@/types/jellyfin';
+
+export type { UserPolicy };
 
 // Types for admin API responses
 export interface SystemInfo {
@@ -304,35 +307,6 @@ export async function getLogFiles(): Promise<LogFile[]> {
 /**
  * Get users list (admin only)
  */
-export interface UserPolicy {
-  IsAdministrator: boolean;
-  IsHidden: boolean;
-  IsDisabled: boolean;
-  EnableRemoteAccess: boolean;
-  EnableSharedDeviceControl: boolean;
-  EnableAllFolders: boolean;
-  EnabledFolders: string[];
-  MaxParentalRating?: number;
-  BlockUnratedItems?: string[];
-  EnableUserPreferenceAccess: boolean;
-  EnableContentDeletion: boolean;
-  EnableContentDownloading: boolean;
-  EnableSyncTranscoding: boolean;
-  EnableMediaPlayback: boolean;
-  EnableAudioPlaybackTranscoding: boolean;
-  EnableVideoPlaybackTranscoding: boolean;
-  EnablePlaybackRemuxing: boolean;
-  EnableLiveTvAccess: boolean;
-  EnableLiveTvManagement: boolean;
-  EnableAllDevices: boolean;
-  EnabledDevices?: string[];
-  EnableAllChannels: boolean;
-  EnabledChannels?: string[];
-  SimultaneousStreamLimit?: number;
-  InvalidLoginAttemptCount?: number;
-  LoginAttemptsBeforeLockout?: number;
-}
-
 export interface UserInfo {
   Id: string;
   Name: string;

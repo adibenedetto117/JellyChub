@@ -1,139 +1,39 @@
-import { View, Text, SectionList, FlatList, Pressable, RefreshControl, ActivityIndicator, Dimensions, StyleSheet } from 'react-native';
-import { Image } from 'expo-image';
-import { useState, useCallback, useMemo, useRef, memo } from 'react';
-import { useQuery, useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
+import { View, Text, SectionList, FlatList, RefreshControl, StyleSheet } from 'react-native';
+import { useState, useCallback, useMemo, useRef } from 'react';
+import { useQuery, useInfiniteQuery } from '@tanstack/react-query';
 import { SafeAreaView } from '@/providers';
-import { router } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore, useSettingsStore } from '@/stores';
-import { getLibraries, getItems, getImageUrl, getLibraryIdsByType, getItemsFromMultipleLibraries, getGenres } from '@/api';
-import { SearchButton, AnimatedGradient, SkeletonGrid } from '@/components/ui';
-import { FilterSortModal, DEFAULT_FILTERS, getActiveFilterCount } from '@/components/library';
-import type { FilterOptions, SortOption } from '@/components/library';
-import { getDisplayName, getDisplayImageUrl, navigateToDetails } from '@/utils';
+import { getLibraries, getImageUrl, getLibraryIdsByType, getItemsFromMultipleLibraries, getGenres } from '@/api';
+import { AnimatedGradient, SkeletonGrid } from '@/components/shared/ui';
+import { FilterSortModal, DEFAULT_FILTERS, getActiveFilterCount } from '@/components/shared/library';
+import type { FilterOptions } from '@/components/shared/library';
+import {
+  BrowseHeader,
+  BrowseInfoRow,
+  MediaGridCard,
+  MediaListRow,
+  AlphabetScroller,
+  AlphabetSectionHeader,
+  LoadingFooter,
+  ListHeader,
+  POSTER_WIDTH,
+  POSTER_HEIGHT,
+  GRID_PADDING,
+  GRID_GAP,
+  NUM_COLUMNS,
+  useMediaBrowse,
+} from '@/components/shared/browse';
+import { navigateToDetails } from '@/utils';
 import { colors } from '@/theme';
 import type { BaseItem, Movie } from '@/types/jellyfin';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const NUM_COLUMNS = 3;
-const GRID_PADDING = 16;
-const GRID_GAP = 8;
-const POSTER_WIDTH = (SCREEN_WIDTH - (GRID_PADDING * 2) - (GRID_GAP * (NUM_COLUMNS - 1))) / NUM_COLUMNS;
-const POSTER_HEIGHT = POSTER_WIDTH * 1.5;
-
 const ITEMS_PER_PAGE = 100;
-const FULL_ALPHABET = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '#'];
-
-const MovieCard = memo(function MovieCard({ item, onPress, showRating, hideMedia }: { item: BaseItem; onPress: () => void; showRating?: boolean; hideMedia: boolean }) {
-  const rawImageUrl = item.ImageTags?.Primary
-    ? getImageUrl(item.Id, 'Primary', { maxWidth: 300, tag: item.ImageTags.Primary })
-    : null;
-  const imageUrl = getDisplayImageUrl(item.Id, rawImageUrl, hideMedia, 'Primary');
-  const displayName = getDisplayName(item, hideMedia);
-
-  const yearAndRating = [
-    item.ProductionYear,
-    showRating && item.CommunityRating ? `★ ${item.CommunityRating.toFixed(1)}` : null
-  ].filter(Boolean).join(' • ');
-
-  return (
-    <Pressable onPress={onPress} style={styles.movieCard}>
-      <View style={styles.posterContainer}>
-        {imageUrl ? (
-          <Image
-            source={{ uri: imageUrl }}
-            style={styles.poster}
-            contentFit="cover"
-            cachePolicy="memory-disk"
-            recyclingKey={item.Id}
-          />
-        ) : (
-          <View style={styles.posterPlaceholder}>
-            <Text style={styles.posterPlaceholderText}>{displayName?.charAt(0) ?? '?'}</Text>
-          </View>
-        )}
-        {item.UserData?.Played && (
-          <View style={styles.watchedBadge}>
-            <Text style={styles.watchedBadgeText}>✓</Text>
-          </View>
-        )}
-      </View>
-      <Text style={styles.movieTitle} numberOfLines={1}>{displayName}</Text>
-      <Text style={styles.movieYear}>{yearAndRating}</Text>
-    </Pressable>
-  );
-});
-
-const MovieRow = memo(function MovieRow({ item, onPress, hideMedia }: { item: BaseItem; onPress: () => void; hideMedia: boolean }) {
-  const rawImageUrl = item.ImageTags?.Primary
-    ? getImageUrl(item.Id, 'Primary', { maxWidth: 120, tag: item.ImageTags.Primary })
-    : null;
-  const imageUrl = getDisplayImageUrl(item.Id, rawImageUrl, hideMedia, 'Primary');
-  const displayName = getDisplayName(item, hideMedia);
-
-  return (
-    <Pressable onPress={onPress} style={styles.movieRow}>
-      <View style={styles.movieRowImageContainer}>
-        {imageUrl ? (
-          <Image
-            source={{ uri: imageUrl }}
-            style={styles.movieRowImage}
-            contentFit="cover"
-            cachePolicy="memory-disk"
-            recyclingKey={item.Id}
-          />
-        ) : (
-          <View style={styles.movieRowPlaceholder}>
-            <Text style={styles.movieRowPlaceholderText}>{displayName?.charAt(0) ?? '?'}</Text>
-          </View>
-        )}
-      </View>
-      <View style={styles.movieRowInfo}>
-        <Text style={styles.movieRowName} numberOfLines={1}>{displayName}</Text>
-        <Text style={styles.movieRowMeta} numberOfLines={1}>
-          {[item.ProductionYear, item.CommunityRating ? `★ ${item.CommunityRating.toFixed(1)}` : null].filter(Boolean).join(' • ')}
-        </Text>
-      </View>
-      {item.UserData?.Played && (
-        <View style={styles.watchedIndicator}>
-          <Text style={styles.watchedIndicatorText}>✓</Text>
-        </View>
-      )}
-    </Pressable>
-  );
-});
-
-const AlphabetScroller = memo(function AlphabetScroller({ availableLetters, onLetterPress, accentColor }: { availableLetters: string[]; onLetterPress: (letter: string) => void; accentColor: string }) {
-  return (
-    <View style={styles.alphabetContainer}>
-      {FULL_ALPHABET.map((letter) => {
-        const isAvailable = availableLetters.includes(letter);
-        return (
-          <Pressable
-            key={letter}
-            onPress={() => isAvailable && onLetterPress(letter)}
-            style={styles.alphabetLetter}
-          >
-            <Text style={[
-              styles.alphabetLetterText,
-              { color: isAvailable ? accentColor : 'rgba(255,255,255,0.2)' }
-            ]}>
-              {letter}
-            </Text>
-          </Pressable>
-        );
-      })}
-    </View>
-  );
-});
 
 export default function MoviesScreen() {
-  const [refreshing, setRefreshing] = useState(false);
   const [filters, setFilters] = useState<FilterOptions>(DEFAULT_FILTERS);
   const [showFilterModal, setShowFilterModal] = useState(false);
   const sectionListRef = useRef<SectionList>(null);
   const flatListRef = useRef<FlatList>(null);
-  const queryClient = useQueryClient();
 
   const currentUser = useAuthStore((state) => state.currentUser);
   const accentColor = useSettingsStore((s) => s.accentColor);
@@ -204,107 +104,68 @@ export default function MoviesScreen() {
 
   const allMovies = data?.pages.flatMap((p) => p.Items) ?? [];
   const totalCount = data?.pages[0]?.TotalRecordCount ?? 0;
-  const sortedMovies = allMovies;
 
-  const { sections: movieSections, availableLetters } = useMemo(() => {
-    if (filters.sortBy !== 'SortName') {
-      return { sections: [], availableLetters: [] };
-    }
-
-    const grouped: Record<string, Movie[]> = {};
-    sortedMovies.forEach((movie) => {
-      const sortName = movie.SortName ?? movie.Name ?? '?';
-      const firstChar = sortName.charAt(0).toUpperCase();
-      const letter = /[A-Z]/.test(firstChar) ? firstChar : '#';
-      if (!grouped[letter]) grouped[letter] = [];
-      grouped[letter].push(movie);
-    });
-
-    const sortedLetters = Object.keys(grouped).sort((a, b) => {
-      if (a === '#') return 1;
-      if (b === '#') return -1;
-      return a.localeCompare(b);
-    });
-
-    return {
-      sections: sortedLetters.map((letter) => ({
-        title: letter,
-        data: grouped[letter],
-      })),
-      availableLetters: sortedLetters,
-    };
-  }, [sortedMovies, filters.sortBy]);
+  const {
+    refreshing,
+    setRefreshing,
+    sections,
+    availableLetters,
+    filteredItems,
+    scrollToLetter,
+    resetScroll,
+    isAlphabetical,
+  } = useMediaBrowse({
+    items: allMovies,
+    sortBy: filters.sortBy,
+    onItemPress: (item) => navigateToDetails('movie', item.Id, '/(tabs)/movies'),
+  });
 
   const activeFilterCount = useMemo(() => getActiveFilterCount(filters), [filters]);
-
-  const scrollToLetter = useCallback((letter: string) => {
-    const sectionIndex = movieSections.findIndex((s) => s.title === letter);
-    if (sectionIndex !== -1 && sectionListRef.current) {
-      sectionListRef.current.scrollToLocation({
-        sectionIndex,
-        itemIndex: 0,
-        animated: true,
-        viewOffset: 0,
-      });
-    }
-  }, [movieSections]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await refetch();
     setRefreshing(false);
-  }, [refetch]);
+  }, [refetch, setRefreshing]);
+
+  const handleFiltersApply = useCallback((newFilters: FilterOptions) => {
+    setFilters(newFilters);
+    resetScroll(newFilters.sortBy === 'SortName');
+  }, [resetScroll]);
+
+  const openFilterModal = useCallback(() => setShowFilterModal(true), []);
+  const closeFilterModal = useCallback(() => setShowFilterModal(false), []);
 
   const handleItemPress = useCallback((item: BaseItem) => {
     navigateToDetails('movie', item.Id, '/(tabs)/movies');
   }, []);
 
-  const handleFiltersApply = useCallback((newFilters: FilterOptions) => {
-    setFilters(newFilters);
-    if (newFilters.sortBy === 'SortName') {
-      setTimeout(() => {
-        sectionListRef.current?.scrollToLocation({ sectionIndex: 0, itemIndex: 0, animated: false, viewOffset: 0 });
-      }, 100);
-    } else {
-      flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
-    }
-  }, []);
-
-  const openFilterModal = useCallback(() => setShowFilterModal(true), []);
-  const closeFilterModal = useCallback(() => setShowFilterModal(false), []);
-
-  const renderFooter = useCallback(() => {
-    if (!isFetchingNextPage) return <View style={styles.bottomSpacer} />;
-    return (
-      <View style={styles.loadingFooter}>
-        <ActivityIndicator color={accentColor} size="small" />
-        <Text style={styles.loadingFooterText}>Loading more...</Text>
-      </View>
-    );
-  }, [isFetchingNextPage, accentColor]);
-
-  // Memoized renderItem callbacks to prevent re-renders
   const renderMovieRow = useCallback(({ item }: { item: BaseItem }) => (
-    <MovieRow item={item} onPress={() => handleItemPress(item)} hideMedia={hideMedia} />
+    <MediaListRow
+      item={item}
+      onPress={() => handleItemPress(item)}
+      hideMedia={hideMedia}
+      isWatched={item.UserData?.Played}
+    />
   ), [handleItemPress, hideMedia]);
 
   const renderMovieCard = useCallback(({ item }: { item: BaseItem }) => (
-    <MovieCard item={item} onPress={() => handleItemPress(item)} showRating={filters.sortBy !== 'SortName'} hideMedia={hideMedia} />
-  ), [handleItemPress, filters.sortBy, hideMedia]);
+    <MediaGridCard
+      item={item}
+      onPress={() => handleItemPress(item)}
+      hideMedia={hideMedia}
+      showRating={!isAlphabetical}
+      isWatched={item.UserData?.Played}
+    />
+  ), [handleItemPress, isAlphabetical, hideMedia]);
 
   const renderSectionHeader = useCallback(({ section }: any) => (
-    <View style={styles.sectionHeaderContainer}>
-      <Text style={[styles.sectionHeaderText, { color: accentColor }]}>{section.title}</Text>
-    </View>
+    <AlphabetSectionHeader title={section.title} accentColor={accentColor} />
   ), [accentColor]);
 
-  // Filter out null/undefined items for alphabetical view
-  const filteredSections = useMemo(() => {
-    return movieSections.map(section => ({
-      ...section,
-      data: section.data.filter((item): item is Movie => item != null),
-    })).filter(section => section.data.length > 0);
-  }, [movieSections]);
+  const renderFooter = useCallback(() => (
+    <LoadingFooter isLoading={isFetchingNextPage} accentColor={accentColor} />
+  ), [isFetchingNextPage, accentColor]);
 
   const renderAlphabeticalView = () => {
     if (isLoading) {
@@ -322,7 +183,7 @@ export default function MoviesScreen() {
         <SectionList
           key={`movies-alphabetical-${userId}-${movieLibraryIds.join(',')}`}
           ref={sectionListRef}
-          sections={filteredSections}
+          sections={sections}
           contentContainerStyle={styles.sectionListContent}
           renderItem={renderMovieRow}
           renderSectionHeader={renderSectionHeader}
@@ -334,7 +195,7 @@ export default function MoviesScreen() {
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={accentColor} />
           }
           ListHeaderComponent={
-            <Text style={styles.listHeader}>{sortedMovies.length} of {totalCount} movies</Text>
+            <ListHeader currentCount={filteredItems.length} totalCount={totalCount} itemLabel="movies" />
           }
           ListFooterComponent={renderFooter}
           initialNumToRender={15}
@@ -350,11 +211,6 @@ export default function MoviesScreen() {
     );
   };
 
-  // Filter out null/undefined items for grid view
-  const filteredMovies = useMemo(() => {
-    return sortedMovies.filter((item): item is Movie => item != null);
-  }, [sortedMovies]);
-
   const renderGridView = () => {
     if (isLoading) {
       return (
@@ -368,7 +224,7 @@ export default function MoviesScreen() {
       <FlatList
         key={`movies-grid-${userId}-${movieLibraryIds.join(',')}-${filters.sortBy}`}
         ref={flatListRef}
-        data={filteredMovies}
+        data={filteredItems}
         renderItem={renderMovieCard}
         keyExtractor={(item, index) => `${item.Id}-${index}`}
         numColumns={NUM_COLUMNS}
@@ -380,7 +236,7 @@ export default function MoviesScreen() {
         onEndReached={() => hasNextPage && !isFetchingNextPage && fetchNextPage()}
         onEndReachedThreshold={0.5}
         ListHeaderComponent={
-          <Text style={styles.listHeader}>{filteredMovies.length} of {totalCount} movies</Text>
+          <ListHeader currentCount={filteredItems.length} totalCount={totalCount} itemLabel="movies" />
         }
         ListFooterComponent={renderFooter}
         initialNumToRender={12}
@@ -393,36 +249,22 @@ export default function MoviesScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <AnimatedGradient intensity="subtle" />
-      <View style={styles.header}>
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <Text style={styles.headerTitle}>Movies</Text>
-        </View>
-        <View style={styles.headerRight}>
-          <Pressable onPress={openFilterModal} style={styles.filterButton}>
-            <Ionicons name="options-outline" size={22} color="#fff" />
-            {activeFilterCount > 0 && (
-              <View style={[styles.filterBadge, { backgroundColor: accentColor }]}>
-                <Text style={styles.filterBadgeText}>{activeFilterCount}</Text>
-              </View>
-            )}
-          </Pressable>
-          <SearchButton filter="Movie" />
-        </View>
-      </View>
+      <BrowseHeader
+        title="Movies"
+        searchFilter="Movie"
+        onFilterPress={openFilterModal}
+        activeFilterCount={activeFilterCount}
+        accentColor={accentColor}
+      />
+      <BrowseInfoRow
+        totalCount={totalCount}
+        itemLabel="movies"
+        sortBy={filters.sortBy}
+        activeFilterCount={activeFilterCount}
+        accentColor={accentColor}
+      />
 
-      <View style={styles.sortInfoRow}>
-        <Text style={styles.sortInfoText}>
-          {totalCount} movies
-          {filters.sortBy !== 'SortName' && ` • Sorted by ${filters.sortBy === 'DateCreated' ? 'Date Added' : filters.sortBy === 'PremiereDate' ? 'Year' : filters.sortBy === 'CommunityRating' ? 'Rating' : filters.sortBy === 'Runtime' ? 'Runtime' : filters.sortBy === 'Random' ? 'Random' : 'Name'}`}
-        </Text>
-        {activeFilterCount > 0 && (
-          <Text style={[styles.filterActiveText, { color: accentColor }]}>
-            {activeFilterCount} filter{activeFilterCount > 1 ? 's' : ''} active
-          </Text>
-        )}
-      </View>
-
-      {filters.sortBy === 'SortName' ? renderAlphabeticalView() : renderGridView()}
+      {isAlphabetical ? renderAlphabeticalView() : renderGridView()}
 
       <FilterSortModal
         visible={showFilterModal}
@@ -442,61 +284,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background.primary,
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-  },
-  headerTitle: {
-    color: '#fff',
-    fontSize: 28,
-    fontWeight: 'bold',
-  },
-  headerRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  filterButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  filterBadge: {
-    position: 'absolute',
-    top: 4,
-    right: 4,
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  filterBadgeText: {
-    color: '#fff',
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  sortInfoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-  },
-  sortInfoText: {
-    color: 'rgba(255,255,255,0.5)',
-    fontSize: 13,
-  },
-  filterActiveText: {
-    fontSize: 13,
-    fontWeight: '500',
-  },
   alphabeticalContainer: {
     flex: 1,
     flexDirection: 'row',
@@ -513,175 +300,5 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-start',
     gap: GRID_GAP,
     marginBottom: 16,
-  },
-  sectionHeaderContainer: {
-    backgroundColor: colors.background.primary,
-    paddingVertical: 8,
-    paddingHorizontal: 4,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(255,255,255,0.15)',
-  },
-  sectionHeaderText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  listHeader: {
-    color: 'rgba(255,255,255,0.5)',
-    fontSize: 13,
-    paddingVertical: 12,
-    paddingHorizontal: 4,
-  },
-  // Movie Card (Grid)
-  movieCard: {
-    width: POSTER_WIDTH,
-  },
-  posterContainer: {
-    width: POSTER_WIDTH,
-    height: POSTER_HEIGHT,
-    borderRadius: 8,
-    overflow: 'hidden',
-    backgroundColor: colors.surface.default,
-  },
-  poster: {
-    width: '100%',
-    height: '100%',
-  },
-  posterPlaceholder: {
-    width: '100%',
-    height: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.surface.elevated,
-  },
-  posterPlaceholderText: {
-    color: 'rgba(255,255,255,0.3)',
-    fontSize: 32,
-    fontWeight: 'bold',
-  },
-  watchedBadge: {
-    position: 'absolute',
-    top: 6,
-    right: 6,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: 'rgba(76, 175, 80, 0.9)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  watchedBadgeText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-  movieTitle: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '500',
-    marginTop: 6,
-  },
-  movieYear: {
-    color: 'rgba(255,255,255,0.5)',
-    fontSize: 11,
-    marginTop: 2,
-    height: 14,
-  },
-  // Movie Row (List)
-  movieRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 4,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.08)',
-  },
-  movieRowImageContainer: {
-    width: 48,
-    height: 72,
-    borderRadius: 4,
-    overflow: 'hidden',
-    backgroundColor: colors.surface.default,
-  },
-  movieRowImage: {
-    width: '100%',
-    height: '100%',
-  },
-  movieRowPlaceholder: {
-    width: '100%',
-    height: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.surface.elevated,
-  },
-  movieRowPlaceholderText: {
-    color: 'rgba(255,255,255,0.3)',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  movieRowInfo: {
-    flex: 1,
-    marginLeft: 12,
-  },
-  movieRowName: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '500',
-  },
-  movieRowMeta: {
-    color: 'rgba(255,255,255,0.5)',
-    fontSize: 13,
-    marginTop: 2,
-  },
-  watchedIndicator: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: 'rgba(76, 175, 80, 0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  watchedIndicatorText: {
-    color: '#4CAF50',
-    fontSize: 14,
-    fontWeight: 'bold',
-  },
-  // Alphabet Scroller
-  alphabetContainer: {
-    width: 24,
-    paddingVertical: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  alphabetLetter: {
-    paddingVertical: 2,
-    paddingHorizontal: 4,
-  },
-  alphabetLetterText: {
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  // Loading & Empty States
-  loadingContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 60,
-  },
-  loadingText: {
-    color: 'rgba(255,255,255,0.5)',
-    marginTop: 12,
-    fontSize: 14,
-  },
-  loadingFooter: {
-    paddingVertical: 24,
-    alignItems: 'center',
-  },
-  loadingFooterText: {
-    color: 'rgba(255,255,255,0.5)',
-    fontSize: 12,
-    marginTop: 8,
-  },
-  bottomSpacer: {
-    height: 100,
   },
 });

@@ -486,6 +486,12 @@ class AudioService {
     store.clearCurrentItem();
   }
 
+  setVolume(volume: number) {
+    if (this.player) {
+      this.player.volume = Math.max(0, Math.min(1, volume));
+    }
+  }
+
   getPlayer() {
     return this.player;
   }
