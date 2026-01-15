@@ -1,6 +1,6 @@
 # JellyChub
 
-A modern, cross-platform Jellyfin client built with React Native and Expo. Enjoy your media library on mobile, TV, and desktop with a beautiful, consistent experience.
+A Jellyfin client for Android, Android TV, and Desktop.
 
 <p align="center">
   <img src="assets/icon.png" alt="JellyChub" width="128" height="128"/>
@@ -54,7 +54,7 @@ A modern, cross-platform Jellyfin client built with React Native and Expo. Enjoy
 </td>
 <td width="33%" valign="top">
 
-#### Desktop (Mac/Linux)
+#### Desktop (Win/Mac/Linux)
 - Native window controls
 - Custom title bar
 - Keyboard shortcuts
@@ -81,8 +81,6 @@ A modern, cross-platform Jellyfin client built with React Native and Expo. Enjoy
 ---
 
 ## Architecture
-
-JellyChub follows a clean, platform-aware component architecture that maximizes code reuse while allowing platform-specific optimizations.
 
 ```
 src/
@@ -297,7 +295,7 @@ Configure these services in Settings for enhanced functionality:
 
 ## Contributing
 
-Contributions are welcome! The codebase follows a clean architecture that makes it easy to add features.
+Contributions welcome!
 
 ### Guidelines
 
@@ -333,8 +331,3 @@ Contributions are welcome! The codebase follows a clean architecture that makes 
 
 MIT License - see [LICENSE](LICENSE) for details.
 
----
-
-<p align="center">
-  Built with care for the Jellyfin community
-</p>
