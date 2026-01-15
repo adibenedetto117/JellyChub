@@ -1,0 +1,1 @@
+export { TVDetailScreen } from './TVDetailScreen';

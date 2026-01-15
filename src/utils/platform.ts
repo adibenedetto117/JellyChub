@@ -14,11 +14,18 @@ export const isIOS = Platform.OS === 'ios';
 export const isAndroid = Platform.OS === 'android';
 export const isWeb = Platform.OS === 'web';
 
+// Desktop detection (Electron environment)
+export const isDesktop = isWeb && typeof window !== 'undefined' && !!(window as any).electronAPI;
+export const isMacOS = isDesktop && typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform);
+export const isWindows = isDesktop && typeof navigator !== 'undefined' && /Win/i.test(navigator.platform);
+export const isLinux = isDesktop && typeof navigator !== 'undefined' && /Linux/i.test(navigator.platform);
+
 // Platform-specific selection utility
 export function platformSelect<T>(options: {
   mobile: T;
   tablet?: T;
   tv?: T;
+  desktop?: T;
   ios?: T;
   android?: T;
   web?: T;
@@ -26,6 +33,11 @@ export function platformSelect<T>(options: {
   // TV takes priority
   if (isTV && options.tv !== undefined) {
     return options.tv;
+  }
+
+  // Desktop (Electron) takes priority over web
+  if (isDesktop && options.desktop !== undefined) {
+    return options.desktop;
   }
 
   // Platform-specific overrides
@@ -89,6 +101,12 @@ export const safeAreaDefaults = platformSelect({
     left: 48,
     right: 48,
   },
+  desktop: {
+    top: isMacOS ? 28 : 0, // macOS title bar
+    bottom: 0,
+    left: 0,
+    right: 0,
+  },
 });
 
 // TV-specific constants
@@ -117,4 +135,46 @@ export const tvConstants = {
   controlBarPadding: 48,
   buttonGap: 16,
   progressBarHeight: 8,
+};
+
+// Desktop-specific constants
+export const desktopConstants = {
+  // Window dimensions
+  minWindowWidth: 800,
+  minWindowHeight: 600,
+  defaultWindowWidth: 1280,
+  defaultWindowHeight: 720,
+
+  // Sidebar
+  sidebarWidth: 240,
+  sidebarCollapsedWidth: 64,
+
+  // Header
+  headerHeight: 48,
+  titleBarHeight: isMacOS ? 28 : 32,
+
+  // Video player controls
+  controlButtonSize: 40,
+  seekButtonSize: 36,
+  smallButtonSize: 28,
+
+  // Hover animations
+  hoverScale: 1.02,
+  hoverDuration: 100,
+
+  // Playback
+  seekStepMs: 5000, // 5 seconds for desktop (more precise)
+  volumeStep: 0.05, // 5% volume change
+
+  // Keyboard shortcuts
+  shortcuts: {
+    play: ' ', // Space
+    fullscreen: 'f',
+    mute: 'm',
+    seekForward: 'ArrowRight',
+    seekBackward: 'ArrowLeft',
+    volumeUp: 'ArrowUp',
+    volumeDown: 'ArrowDown',
+    escape: 'Escape',
+  },
 };

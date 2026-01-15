@@ -15,6 +15,10 @@ import type {
   VideoSleepTimer,
   VideoSleepTimerType,
 } from '@/types/player';
+import {
+  DEFAULT_PLAYER_CONTROLS_CONFIG,
+  DEFAULT_PLAYER_CONTROLS_ORDER,
+} from '@/types/player';
 
 interface PlayerActions {
   // Playback control
@@ -128,6 +132,8 @@ const initialState: PlayerStoreState = {
     hardwareAcceleration: true,
     maxStreamingBitrate: 20,
     externalPlayerEnabled: true,
+    controlsConfig: DEFAULT_PLAYER_CONTROLS_CONFIG,
+    controlsOrder: DEFAULT_PLAYER_CONTROLS_ORDER,
   },
 };
 

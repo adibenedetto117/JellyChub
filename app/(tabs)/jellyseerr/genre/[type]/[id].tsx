@@ -1,9 +1,9 @@
-import { View, Text, FlatList, ActivityIndicator, StyleSheet, Pressable } from 'react-native';
+import { View, Text, ActivityIndicator, StyleSheet, Pressable } from 'react-native';
 import { useLocalSearchParams, Stack, router } from 'expo-router';
 import { SafeAreaView } from '@/providers';
 import { Ionicons } from '@expo/vector-icons';
 import { useDiscoverByGenre } from '@/hooks';
-import { JellyseerrPosterCard } from '@/components/jellyseerr';
+import { PosterGrid } from '@/components/shared/jellyseerr';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { colors } from '@/theme';
 import { goBack } from '@/utils';
@@ -29,7 +29,6 @@ export default function GenreBrowseScreen() {
     isLoading,
   } = useDiscoverByGenre(mediaType, genreId);
 
-  // Filter out null/undefined items and ensure each has a valid id
   const items = (data?.pages.flatMap((page) =>
     page.results.map((item) => ({
       ...item,
@@ -40,20 +39,15 @@ export default function GenreBrowseScreen() {
   );
 
   const handleItemPress = (item: JellyseerrDiscoverItem) => {
-    // Pass current genre screen as source, so back navigates here
     const currentPath = `/(tabs)/jellyseerr/genre/${type}/${id}`;
     router.push(`/(tabs)/jellyseerr/${item.mediaType}/${item.id}?from=${encodeURIComponent(currentPath)}`);
   };
 
-  const renderItem = ({ item }: { item: JellyseerrDiscoverItem }) => (
-    <View style={styles.itemContainer}>
-      <JellyseerrPosterCard
-        item={item}
-        onPress={() => handleItemPress(item)}
-        size="medium"
-      />
-    </View>
-  );
+  const handleEndReached = () => {
+    if (hasNextPage && !isFetchingNextPage) {
+      fetchNextPage();
+    }
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -64,12 +58,12 @@ export default function GenreBrowseScreen() {
           headerStyle: { backgroundColor: colors.background.primary },
           headerTintColor: '#fff',
           headerLeft: () => (
-            <Pressable onPress={handleGoBack} style={{ marginRight: 16 }}>
+            <Pressable onPress={handleGoBack} style={styles.headerButton}>
               <Ionicons name="arrow-back" size={24} color="#fff" />
             </Pressable>
           ),
           headerRight: () => (
-            <Pressable onPress={() => router.push('/search')} style={{ marginLeft: 16 }}>
+            <Pressable onPress={() => router.push('/search')} style={styles.headerButtonRight}>
               <Ionicons name="search" size={22} color="#fff" />
             </Pressable>
           ),
@@ -86,30 +80,12 @@ export default function GenreBrowseScreen() {
           <Text style={styles.emptyText}>No {mediaType === 'movie' ? 'movies' : 'shows'} found</Text>
         </View>
       ) : (
-        <FlatList
-          key={`genre-${genreId}-${mediaType}`}
-          data={items}
-          keyExtractor={(item, index) => `${item.mediaType}-${item.id}-${index}`}
-          renderItem={renderItem}
-          numColumns={3}
-          contentContainerStyle={styles.listContent}
-          columnWrapperStyle={styles.columnWrapper}
-          onEndReached={() => {
-            if (hasNextPage && !isFetchingNextPage) {
-              fetchNextPage();
-            }
-          }}
-          onEndReachedThreshold={0.5}
-          ListFooterComponent={
-            isFetchingNextPage ? (
-              <View style={styles.footerLoader}>
-                <ActivityIndicator color={accentColor} />
-              </View>
-            ) : null
-          }
-          initialNumToRender={12}
-          maxToRenderPerBatch={12}
-          windowSize={5}
+        <PosterGrid
+          items={items}
+          onItemPress={handleItemPress}
+          onEndReached={handleEndReached}
+          isFetchingMore={isFetchingNextPage}
+          accentColor={accentColor}
         />
       )}
     </SafeAreaView>
@@ -121,28 +97,16 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background.primary,
   },
+  headerButton: {
+    marginRight: 16,
+  },
+  headerButtonRight: {
+    marginLeft: 16,
+  },
   loadingContainer: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  listContent: {
-    paddingHorizontal: 12,
-    paddingTop: 16,
-    paddingBottom: 100,
-  },
-  columnWrapper: {
-    justifyContent: 'flex-start',
-    gap: 8,
-  },
-  itemContainer: {
-    marginBottom: 16,
-    flex: 1,
-    maxWidth: '33.33%',
-  },
-  footerLoader: {
-    paddingVertical: 20,
-    alignItems: 'center',
   },
   emptyContainer: {
     flex: 1,

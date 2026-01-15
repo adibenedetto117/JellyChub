@@ -1,0 +1,1 @@
+export { DesktopDetailScreen } from './DesktopDetailScreen';

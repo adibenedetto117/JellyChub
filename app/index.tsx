@@ -1,9 +1,7 @@
 import { useEffect, useState } from 'react';
 import { View, ActivityIndicator } from 'react-native';
 import { Redirect, type Href } from 'expo-router';
-import { useAuthStore, useSettingsStore } from '@/stores';
-import { selectAuthHasHydrated, selectActiveServer } from '@/stores/authStore';
-import { selectHasHydrated } from '@/stores/settingsStore';
+import { useAuthStore, useSettingsStore, selectAuthHasHydrated, selectActiveServer, selectHasHydrated } from '@/stores';
 import { jellyfinClient } from '@/api';
 import { colors } from '@/theme';
 

@@ -1,7 +1,7 @@
 import { View, ScrollView } from 'react-native';
 import { SafeAreaView } from '@/providers';
 import { Stack } from 'expo-router';
-import { LibrarySelector } from '@/components/settings/LibrarySelector';
+import { LibrarySelector } from '@/components/shared/settings/LibrarySelector';
 
 export default function BottomBarSettingsScreen() {
   return (

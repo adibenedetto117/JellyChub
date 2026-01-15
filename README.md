@@ -1,183 +1,337 @@
 # JellyChub
 
-A modern Jellyfin client for Android that handles all your media in one app.
+A modern, cross-platform Jellyfin client built with React Native and Expo. Enjoy your media library on mobile, TV, and desktop with a beautiful, consistent experience.
 
 <p align="center">
   <img src="assets/icon.png" alt="JellyChub" width="128" height="128"/>
 </p>
 
-![Platform](https://img.shields.io/badge/platform-Android-green)
-![Android TV](https://img.shields.io/badge/Android%20TV-beta-yellow)
-![License](https://img.shields.io/badge/license-MIT-blue)
+<p align="center">
+  <img src="https://img.shields.io/badge/platform-iOS%20%7C%20Android%20%7C%20TV%20%7C%20Desktop-blue" alt="Platforms"/>
+  <img src="https://img.shields.io/badge/license-MIT-green" alt="License"/>
+  <img src="https://img.shields.io/badge/version-1.2.3-orange" alt="Version"/>
+</p>
 
-## Download
-
-**[Download Latest APK](https://github.com/adibenedetto117/JellyChub/releases/latest)**
-
-Requires Android 8.0 or higher.
+---
 
 ## Features
 
-### Video Player
-- Multiple audio track selection
-- Subtitle support (VTT, SRT, ASS, SSA)
-- Customizable subtitle appearance (size, color, background)
-- Subtitle timing offset adjustment
-- OpenSubtitles search and download
-- Skip intro and credits (Jellyfin media segments)
-- Chapter navigation with markers
-- Trickplay thumbnail previews
-- Playback speed control (0.25x - 2x)
-- A-B loop for repeating sections
-- Sleep timer
-- Lock controls mode
-- Picture-in-Picture
-- External player support (VLC, Infuse, nPlayer)
-- Chromecast support
-- Hardware acceleration
-- Auto-play next episode
-- Resume playback position
+### Core Media Support
 
-### Live TV (Beta)
-- Channel streaming
-- EPG grid view
-- Channel groups
-- Program details
+| Media Type | Features |
+|------------|----------|
+| **Video** | Movies & TV shows, trickplay preview, chapter navigation, skip intro/credits, A-B loop, PiP |
+| **Music** | Albums, artists, playlists, queue management, synced lyrics, equalizer, visualizer |
+| **Live TV** | Channel streaming, EPG grid, program guide, recordings, scheduled programs |
+| **Audiobooks** | Chapter navigation, sleep timer, bookmarks, playback speed control, M4B support |
+| **Books** | EPUB reader with themes, PDF viewer, comic reader (CBZ/CBR) |
 
-### Music Player
-- Background playback
-- Lock screen controls
-- Synced lyrics with auto-scroll
-- Equalizer presets
-- Mini player
-- Queue management
-- Playlist support
-- Sleep timer
-- Playback speed control
+### Platform Features
 
-### Audiobook Player
-- Chapter navigation
-- Sleep timer (5 min - 2 hours)
-- Bookmarks
-- Playback speed (0.5x - 2x)
-- M4B chapter parsing
-- Background playback
-- Progress sync
+<table>
+<tr>
+<td width="33%" valign="top">
 
-### EPUB Reader
-- Full EPUB rendering
-- Reading themes (Dark, Light, Sepia)
-- Adjustable font size
-- Bookmarks
-- Progress tracking
-
-### PDF Reader
-- Native rendering
-- Progress tracking
-
-### Comic Reader (Beta)
-- Page-by-page viewing
-- Progress tracking
-
-### Downloads
-- Download any media type
-- Encrypted storage (AES)
-- Quality selection (Original, High, Medium, Low)
-- Background downloads
-- WiFi-only option
-- Auto-remove watched content
-- Full offline playback
-
-### Offline Mode
-- Browse and play downloaded content
-- Access settings
-- No server connection required
-
-### Jellyseerr Integration
-- Browse trending content
-- Request movies and TV shows
-- View request status
-
-### Radarr & Sonarr Integration
-- Add movies to Radarr
-- Add shows to Sonarr
-- Quality profile selection
-- Root folder selection
-- Manage existing entries
-- Calendar view for upcoming releases
-
-### Server Administration
-- View active sessions
-- Remote playback control
-- Scheduled tasks
-- User management
-- Library refresh
-- Activity logs
-- Server restart/shutdown
-
-### Android TV (Beta)
-- D-pad navigation
-- Sidebar navigation
-- TV-optimized controls
-
-### Security
-- PIN lock
+#### Mobile (iOS & Android)
+- Touch gestures for volume, brightness, seeking
+- Picture-in-Picture playback
+- Background audio with lock screen controls
+- Haptic feedback
 - Biometric authentication
+- Notification controls
 
-### Customization
-- Customizable bottom navigation
-- Reorder tabs
-- Set landing page
-- Accent color themes
+</td>
+<td width="33%" valign="top">
 
-### Multi-Server
-- Multiple server connections
-- Quick Connect authentication
-- Easy user switching
+#### TV (Android TV)
+- D-pad navigation with spatial focus
+- 10-foot UI optimized layouts
+- Sidebar navigation
+- Remote control support
+- Large artwork display
+- Voice search ready
 
-## Building from Source
+</td>
+<td width="33%" valign="top">
 
-### Prerequisites
-- Node.js 18+
-- Android SDK (API 26+)
-- Java 17
+#### Desktop (Win/Mac/Linux)
+- Native window controls
+- Custom title bar
+- Keyboard shortcuts
+- Mouse hover interactions
+- Resizable panels
+- System tray integration
 
-### Build Steps
+</td>
+</tr>
+</table>
 
-```bash
-git clone https://github.com/adibenedetto117/JellyChub.git
-cd JellyChub
-npm install --legacy-peer-deps
-npx expo prebuild
-cd android && ./gradlew assembleRelease
+### Additional Features
+
+- **Offline Downloads** - Download media with quality selection, encrypted storage, WiFi-only option
+- **Chromecast** - Cast video and audio to compatible devices
+- **Multi-server** - Connect to multiple Jellyfin servers
+- **Multi-user** - Quick user switching with PIN/biometric lock
+- **Jellyseerr** - Browse trending content, request movies and TV shows
+- **Radarr/Sonarr** - Calendar view, add media, manage collections
+- **Admin Dashboard** - Active sessions, scheduled tasks, user management
+- **OpenSubtitles** - Search and download subtitles
+- **Internationalization** - English, Spanish, French, German
+
+---
+
+## Architecture
+
+JellyChub follows a clean, platform-aware component architecture that maximizes code reuse while allowing platform-specific optimizations.
+
+```
+src/
+├── components/
+│   ├── mobile/              # Mobile-optimized (touch, gestures)
+│   │   ├── home/            # Home screen, media rows
+│   │   ├── navigation/      # Bottom tab navigation
+│   │   ├── player/          # Video, music, audiobook, live TV
+│   │   ├── reader/          # EPUB, PDF, comic readers
+│   │   ├── livetv/          # Channel lists, EPG
+│   │   └── details/         # Media detail screens
+│   │
+│   ├── tv/                  # TV-optimized (D-pad, focus)
+│   │   ├── home/            # Focusable cards, TV home
+│   │   ├── navigation/      # Sidebar, focusable buttons
+│   │   ├── player/          # Remote-friendly controls
+│   │   ├── reader/          # Remote-friendly readers
+│   │   ├── livetv/          # TV channel experience
+│   │   └── details/         # TV detail screens
+│   │
+│   ├── desktop/             # Desktop-optimized (mouse, keyboard)
+│   │   ├── home/            # Desktop home, hover effects
+│   │   ├── navigation/      # Sidebar navigation
+│   │   ├── player/          # Desktop playback controls
+│   │   ├── reader/          # Panel-based readers
+│   │   ├── details/         # Desktop detail screens
+│   │   └── TitleBar.tsx     # Native window controls
+│   │
+│   └── shared/              # Cross-platform components
+│       ├── ui/              # Buttons, inputs, loading states
+│       ├── player/          # Mini player, trickplay preview
+│       ├── library/         # Filter/sort modals
+│       ├── music/           # Album cards, track lists
+│       ├── livetv/          # Channel cards, EPG grid
+│       ├── details/         # Media info, cast sections
+│       ├── downloads/       # Download management
+│       ├── admin/           # Server administration
+│       ├── security/        # PIN lock, biometric auth
+│       ├── jellyseerr/      # Request components
+│       ├── radarr/          # Radarr integration
+│       ├── sonarr/          # Sonarr integration
+│       └── arr/             # Shared *arr components
+│
+├── api/                     # API layer
+│   ├── client.ts            # Axios configuration
+│   ├── auth.ts              # Authentication
+│   ├── library.ts           # Media queries
+│   ├── playback.ts          # Playback reporting
+│   ├── livetv.ts            # Live TV endpoints
+│   ├── admin.ts             # Admin endpoints
+│   └── external/            # Third-party APIs
+│       ├── jellyseerr.ts
+│       ├── radarr.ts
+│       └── sonarr.ts
+│
+├── hooks/                   # Custom React hooks
+│   ├── usePlayer.ts         # Playback state
+│   ├── useResponsive.ts     # Platform detection
+│   ├── useChromecast.ts     # Cast functionality
+│   ├── useVideoPlayerCore.ts
+│   ├── useMusicPlayerCore.ts
+│   ├── useAudiobookPlayerCore.ts
+│   └── ...
+│
+├── stores/                  # Zustand state stores
+│   ├── authStore.ts         # Authentication
+│   ├── playerStore.ts       # Player state
+│   ├── settingsStore.ts     # User preferences
+│   ├── downloadStore.ts     # Download queue
+│   ├── securityStore.ts     # PIN/biometric
+│   └── ...
+│
+├── services/                # Business logic
+├── types/                   # TypeScript definitions
+├── utils/                   # Utilities
+├── theme/                   # Design tokens
+├── constants/               # App constants
+├── i18n/                    # Translations
+└── providers/               # React context
 ```
 
-The APK will be at `android/app/build/outputs/apk/release/app-release.apk`
+---
+
+## Tech Stack
+
+| Category | Technology |
+|----------|------------|
+| Framework | [React Native](https://reactnative.dev/) 0.81 |
+| Platform | [Expo](https://expo.dev/) SDK 54 |
+| Language | [TypeScript](https://www.typescriptlang.org/) 5.9 |
+| Navigation | [Expo Router](https://docs.expo.dev/router/introduction/) (File-based) |
+| Styling | [NativeWind](https://www.nativewind.dev/) (Tailwind CSS) |
+| State | [Zustand](https://zustand-demo.pmnd.rs/) 5 |
+| Data Fetching | [TanStack Query](https://tanstack.com/query) 5 |
+| HTTP Client | [Axios](https://axios-http.com/) |
+| Video | [expo-video](https://docs.expo.dev/versions/latest/sdk/video/) |
+| Audio | [expo-audio](https://docs.expo.dev/versions/latest/sdk/audio/) |
+| Storage | [MMKV](https://github.com/mrousavy/react-native-mmkv) |
+| Animations | [Reanimated](https://docs.swmansion.com/react-native-reanimated/) 4 |
+| Desktop | [Electron](https://www.electronjs.org/) 33 |
+
+---
+
+## Quick Start
+
+### Prerequisites
+
+- Node.js 18+
+- For mobile: Xcode 15+ (iOS) or Android Studio with SDK 34+ (Android)
+- For desktop: Electron dependencies for your platform
+
+### Installation
+
+```bash
+# Clone the repository
+git clone https://github.com/jellychub/jellychub.git
+cd jellychub
+
+# Install dependencies
+npm install
+```
 
 ### Development
 
 ```bash
-npx expo start
-npx expo run:android
+# Start Expo development server
+npm start
+
+# Run on Android device/emulator
+npm run android
+
+# Run on iOS simulator (macOS only)
+npm run ios
+
+# Run on web browser
+npm run web
 ```
 
-## Roadmap
+### Desktop Development
 
-### Planned
-- iOS release
-- SyncPlay (watch together)
-- Play Store release
-- Widget for currently playing
-- Wear OS companion app
-- CarPlay / Android Auto
+```bash
+cd desktop
+npm install
+npm run dev
+```
+
+### Building
+
+```bash
+# Generate native projects
+npm run prebuild
+
+# Build Android APK
+cd android && ./gradlew assembleRelease
+
+# Build desktop applications
+cd desktop
+npm run build:linux   # AppImage, deb
+npm run build:mac     # zip (x64, arm64)
+npm run build:win     # NSIS installer, portable
+npm run build:all     # All platforms
+```
+
+---
+
+## Project Structure
+
+```
+jellychub/
+├── app/                     # Expo Router screens
+│   ├── (auth)/              # Login, server selection
+│   ├── (tabs)/              # Main tab screens
+│   │   ├── home.tsx         # Home feed
+│   │   ├── library.tsx      # Media library
+│   │   ├── movies.tsx       # Movies
+│   │   ├── shows.tsx        # TV Shows
+│   │   ├── music.tsx        # Music
+│   │   ├── books.tsx        # Books
+│   │   ├── livetv.tsx       # Live TV
+│   │   └── settings.tsx     # Settings
+│   ├── player/              # Media players
+│   ├── reader/              # Book readers
+│   └── settings/            # Settings subscreens
+│
+├── src/                     # Source code (see Architecture)
+│
+├── desktop/                 # Electron wrapper
+│   ├── main.js              # Main process
+│   ├── preload.js           # Preload scripts
+│   └── package.json         # Build configuration
+│
+├── assets/                  # Images, fonts, icons
+├── android/                 # Android native project
+└── ios/                     # iOS native project
+```
+
+---
+
+## Configuration
+
+### Server Connection
+
+Connect to your Jellyfin server directly from the app. Server URL and credentials are stored securely on-device using encrypted storage.
+
+### Optional Integrations
+
+Configure these services in Settings for enhanced functionality:
+
+| Service | Features |
+|---------|----------|
+| **Jellyseerr** | Browse trending, request movies/shows, track requests |
+| **Radarr** | Add movies, select quality profiles, view calendar |
+| **Sonarr** | Add shows, manage series, upcoming episodes |
+
+---
+
+## Contributing
+
+Contributions are welcome! The codebase follows a clean architecture that makes it easy to add features.
+
+### Guidelines
+
+1. **Platform Components** - Place platform-specific UI in `mobile/`, `tv/`, or `desktop/`
+2. **Shared Logic** - Extract reusable code into `shared/` or custom hooks
+3. **Type Safety** - Maintain full TypeScript strict mode compliance
+4. **Styling** - Use NativeWind/Tailwind classes consistently
+5. **State** - Use Zustand for global state, TanStack Query for server state
+
+### Adding a New Feature
+
+```
+1. Create shared components in src/components/shared/
+2. Create platform variants in mobile/, tv/, desktop/ as needed
+3. Add hooks for business logic in src/hooks/
+4. Add API endpoints in src/api/
+5. Update types in src/types/
+```
+
+---
 
 ## Acknowledgments
 
 - [Jellyfin](https://jellyfin.org/) - The free software media system
-- [Expo](https://expo.dev/) - React Native framework
+- [Expo](https://expo.dev/) - React Native development platform
 - [Jellyseerr](https://github.com/Fallenbagel/jellyseerr) - Request management
 - [Radarr](https://radarr.video/) / [Sonarr](https://sonarr.tv/) - Media management
 - [OpenSubtitles](https://www.opensubtitles.org/) - Subtitle database
+
+---
 
 ## License
 
@@ -185,4 +339,6 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ---
 
-*JellyChub is not affiliated with or endorsed by Jellyfin.*
+<p align="center">
+  Built with care for the Jellyfin community
+</p>

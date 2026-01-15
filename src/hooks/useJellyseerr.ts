@@ -1,53 +1,9 @@
 import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tanstack/react-query';
-import { useEffect, useRef } from 'react';
-import { useSettingsStore, selectHasJellyseerr } from '@/stores/settingsStore';
-import { jellyseerrClient } from '@/api/jellyseerr';
+import { jellyseerrClient } from '@/api/external/jellyseerr';
 import type { JellyseerrRequestBody, JellyseerrCreateUserBody, JellyseerrUpdateUserBody } from '@/types/jellyseerr';
+import { useJellyseerrStatus } from './jellyseerr/useJellyseerrStatus';
 
-// Auto-initialize client from stored credentials
-function useJellyseerrInit() {
-  const jellyseerrUrl = useSettingsStore((s) => s.jellyseerrUrl);
-  const jellyseerrAuthToken = useSettingsStore((s) => s.jellyseerrAuthToken);
-  const jellyseerrSessionCookie = useSettingsStore((s) => s.jellyseerrSessionCookie);
-  const clearJellyseerrCredentials = useSettingsStore((s) => s.clearJellyseerrCredentials);
-
-  // Use ref to avoid re-running effect when function reference changes
-  const clearCredentialsRef = useRef(clearJellyseerrCredentials);
-  clearCredentialsRef.current = clearJellyseerrCredentials;
-
-  useEffect(() => {
-    if (jellyseerrUrl && jellyseerrAuthToken && !jellyseerrClient.isInitialized()) {
-      const isJellyfinAuth = jellyseerrAuthToken === 'jellyfin-auth';
-      const isLocalAuth = jellyseerrAuthToken === 'local-auth';
-
-      if (isJellyfinAuth && jellyseerrSessionCookie) {
-        // For Jellyfin auth with stored session cookie, use the session
-        console.log('[useJellyseerr] Initializing with session cookie');
-        jellyseerrClient.initializeWithSession(jellyseerrUrl, jellyseerrSessionCookie);
-      } else if (isJellyfinAuth || isLocalAuth) {
-        // For Jellyfin/local auth without session cookie, the session may have expired
-        // Initialize without auth - API calls may fail with 401
-        console.log('[useJellyseerr] Initializing without auth (session may have expired)');
-        jellyseerrClient.initialize(jellyseerrUrl);
-      } else {
-        // API key auth - use the token directly
-        console.log('[useJellyseerr] Initializing with API key');
-        jellyseerrClient.initialize(jellyseerrUrl, jellyseerrAuthToken);
-      }
-    }
-  }, [jellyseerrUrl, jellyseerrAuthToken, jellyseerrSessionCookie]);
-}
-
-// Hook to check if Jellyseerr is ready to use
-export function useJellyseerrStatus() {
-  const isConfigured = useSettingsStore(selectHasJellyseerr);
-  useJellyseerrInit();
-
-  return {
-    isConfigured,
-    isReady: isConfigured && jellyseerrClient.isInitialized(),
-  };
-}
+export { useJellyseerrStatus };
 
 export function useJellyseerrUser() {
   const { isReady } = useJellyseerrStatus();

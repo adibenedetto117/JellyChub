@@ -10,6 +10,35 @@ export interface JellyfinServer {
   customHeaders?: Record<string, string>;
 }
 
+export interface UserPolicy {
+  IsAdministrator: boolean;
+  IsHidden: boolean;
+  IsDisabled: boolean;
+  EnableRemoteAccess: boolean;
+  EnableSharedDeviceControl: boolean;
+  EnableAllFolders: boolean;
+  EnabledFolders: string[];
+  MaxParentalRating?: number;
+  BlockUnratedItems?: string[];
+  EnableUserPreferenceAccess: boolean;
+  EnableContentDeletion: boolean;
+  EnableContentDownloading: boolean;
+  EnableSyncTranscoding: boolean;
+  EnableMediaPlayback: boolean;
+  EnableAudioPlaybackTranscoding: boolean;
+  EnableVideoPlaybackTranscoding: boolean;
+  EnablePlaybackRemuxing: boolean;
+  EnableLiveTvAccess: boolean;
+  EnableLiveTvManagement: boolean;
+  EnableAllDevices: boolean;
+  EnabledDevices?: string[];
+  EnableAllChannels: boolean;
+  EnabledChannels?: string[];
+  SimultaneousStreamLimit?: number;
+  InvalidLoginAttemptCount?: number;
+  LoginAttemptsBeforeLockout?: number;
+}
+
 export interface JellyfinUser {
   Id: string;
   Name: string;
@@ -19,6 +48,9 @@ export interface JellyfinUser {
   HasConfiguredPassword: boolean;
   HasConfiguredEasyPassword: boolean;
   EnableAutoLogin: boolean;
+  LastLoginDate?: string;
+  LastActivityDate?: string;
+  Policy?: UserPolicy;
 }
 
 export interface AuthenticationResult {
@@ -109,6 +141,12 @@ export interface BaseItem {
   Chapters?: ChapterInfo[];
   Container?: string;
   Trickplay?: TrickplayData;
+  ProviderIds?: {
+    Tmdb?: string;
+    Imdb?: string;
+    Tvdb?: string;
+    [key: string]: string | undefined;
+  };
 }
 
 export interface Movie extends BaseItem {

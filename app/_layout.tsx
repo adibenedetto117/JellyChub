@@ -5,16 +5,16 @@ import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
 import * as SplashScreen from 'expo-splash-screen';
-import { QueryProvider } from '@/providers';
+import { QueryProvider, CastProvider } from '@/providers';
 import { useAuthStore, useSettingsStore, useNavigationStore, useDownloadStore, selectActiveServer, selectDownloadHasHydrated } from '@/stores';
 import { jellyfinClient, jellyseerrClient } from '@/api';
 import { notificationService, downloadManager } from '@/services';
 import { useDeepLinking, useGlobalBackHandler } from '@/hooks';
-import { ErrorBoundary } from '@/components/ui';
-import { MiniPlayer } from '@/components/player';
-import { BottomNav } from '@/components/navigation';
+import { ErrorBoundary } from '@/components/shared/ui';
+import { MiniPlayer } from '@/components/shared/player';
+import { BottomNav } from '@/components/mobile/navigation';
 import { TVSidebar } from '@/components/tv';
-import { SecurityLockScreen } from '@/components/security';
+import { SecurityLockScreen } from '@/components/shared/security';
 import { TVFocusProvider } from '@/contexts';
 import { isTV } from '@/utils/platform';
 import { colors } from '@/theme';
@@ -252,11 +252,13 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider initialMetrics={initialWindowMetrics}>
         <ErrorBoundary>
-          <QueryProvider>
-            <SecurityLockScreen>
-              <AppContent />
-            </SecurityLockScreen>
-          </QueryProvider>
+          <CastProvider>
+            <QueryProvider>
+              <SecurityLockScreen>
+                <AppContent />
+              </SecurityLockScreen>
+            </QueryProvider>
+          </CastProvider>
         </ErrorBoundary>
       </SafeAreaProvider>
     </GestureHandlerRootView>
