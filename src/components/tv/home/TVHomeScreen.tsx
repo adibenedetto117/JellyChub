@@ -1,34 +1,42 @@
 import { View, ScrollView, Text, StyleSheet, RefreshControl } from 'react-native';
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { useQuery, useQueries } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
-import { useAuthStore, useSettingsStore } from '@/stores';
+import { useAuthStore } from '@/stores';
 import {
   getResumeItems,
   getNextUp,
   getLibraries,
   getSuggestions,
   getFavorites,
-  shouldUseSquareVariant,
   groupLibrariesByType,
   getLatestMediaFromMultipleLibraries,
 } from '@/api';
-import { TVMediaRow } from './TVMediaRow';
-import { TVContinueWatchingRow } from './TVContinueWatchingRow';
+import { TVMediaRow, type TVMediaRowRef } from './TVMediaRow';
+import { TVContinueWatchingRow, type TVContinueWatchingRowRef } from './TVContinueWatchingRow';
+import { TVTopNavBar } from '../navigation/TVTopNavBar';
 import { tvConstants } from '@/utils/platform';
-import type { BaseItem, Episode } from '@/types/jellyfin';
+import type { BaseItem } from '@/types/jellyfin';
 import type { GroupedLibraries } from '@/api';
 
+const TV_ACCENT_GOLD = '#D4A84B';
 const EXCLUDED_COLLECTION_TYPES = ['playlists'];
 
 export function TVHomeScreen() {
   const { t } = useTranslation();
   const [refreshing, setRefreshing] = useState(false);
-  const [focusedRowIndex, setFocusedRowIndex] = useState(0);
   const currentUser = useAuthStore((state) => state.currentUser);
-  const accentColor = useSettingsStore((s) => s.accentColor);
   const userId = currentUser?.Id ?? '';
+
+  const [rowHandles, setRowHandles] = useState<Map<string, number | null>>(new Map());
+
+  const continueWatchingRef = useRef<TVContinueWatchingRowRef>(null);
+  const nextUpRef = useRef<TVMediaRowRef>(null);
+  const favoriteMoviesRef = useRef<TVMediaRowRef>(null);
+  const favoriteSeriesRef = useRef<TVMediaRowRef>(null);
+  const suggestionsRef = useRef<TVMediaRowRef>(null);
+  const libraryRefs = useRef<Map<string, React.RefObject<TVMediaRowRef | null>>>(new Map());
 
   const { data: libraries, refetch: refetchLibraries } = useQuery({
     queryKey: ['libraries', userId],
@@ -38,7 +46,7 @@ export function TVHomeScreen() {
     refetchOnMount: false,
   });
 
-  const { data: resumeItems, refetch: refetchResume, isLoading: isLoadingResume } = useQuery({
+  const { data: resumeItems, refetch: refetchResume } = useQuery({
     queryKey: ['resume', userId],
     queryFn: () => getResumeItems(userId, 12),
     enabled: !!userId,
@@ -46,7 +54,7 @@ export function TVHomeScreen() {
     refetchOnMount: 'always',
   });
 
-  const { data: nextUp, refetch: refetchNextUp, isLoading: isLoadingNextUp } = useQuery({
+  const { data: nextUp, refetch: refetchNextUp } = useQuery({
     queryKey: ['nextUp', userId],
     queryFn: () => getNextUp(userId),
     enabled: !!userId,
@@ -110,6 +118,64 @@ export function TVHomeScreen() {
     }));
   }, [groupedLibraries, latestMediaQueries]);
 
+  const getLibraryRef = useCallback((key: string): React.RefObject<TVMediaRowRef | null> => {
+    if (!libraryRefs.current.has(key)) {
+      libraryRefs.current.set(key, { current: null });
+    }
+    return libraryRefs.current.get(key)!;
+  }, []);
+
+  const visibleRows = useMemo(() => {
+    const rows: { key: string; ref: React.RefObject<any> }[] = [];
+
+    if ((resumeItems?.Items?.length ?? 0) > 0) {
+      rows.push({ key: 'continueWatching', ref: continueWatchingRef });
+    }
+    if ((nextUp?.Items?.length ?? 0) > 0) {
+      rows.push({ key: 'nextUp', ref: nextUpRef });
+    }
+    if (favoriteMovies.length > 0) {
+      rows.push({ key: 'favoriteMovies', ref: favoriteMoviesRef });
+    }
+    if (favoriteSeries.length > 0) {
+      rows.push({ key: 'favoriteSeries', ref: favoriteSeriesRef });
+    }
+    if ((suggestions?.length ?? 0) > 0) {
+      rows.push({ key: 'suggestions', ref: suggestionsRef });
+    }
+    libraryLatestMedia.forEach(({ group, data }) => {
+      if (data && data.length > 0) {
+        const key = `library-${group.collectionType ?? 'mixed'}`;
+        rows.push({ key, ref: getLibraryRef(key) });
+      }
+    });
+
+    return rows;
+  }, [resumeItems, nextUp, favoriteMovies, favoriteSeries, suggestions, libraryLatestMedia, getLibraryRef]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const handles = new Map<string, number | null>();
+      visibleRows.forEach(({ key, ref }) => {
+        const handle = ref.current?.getFirstItemHandle?.() ?? null;
+        handles.set(key, handle);
+      });
+      setRowHandles(handles);
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [visibleRows, resumeItems, nextUp, favoriteMovies, favoriteSeries, suggestions, libraryLatestMedia]);
+
+  const getRowNavigation = useCallback((rowKey: string) => {
+    const rowIndex = visibleRows.findIndex(r => r.key === rowKey);
+    const prevRow = rowIndex > 0 ? visibleRows[rowIndex - 1] : null;
+    const nextRow = rowIndex < visibleRows.length - 1 ? visibleRows[rowIndex + 1] : null;
+
+    return {
+      nextFocusUp: prevRow ? rowHandles.get(prevRow.key) ?? undefined : undefined,
+      nextFocusDown: nextRow ? rowHandles.get(nextRow.key) ?? undefined : undefined,
+    };
+  }, [visibleRows, rowHandles]);
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await Promise.all([
@@ -143,16 +209,6 @@ export function TVHomeScreen() {
     }
   }, []);
 
-  const handleEpisodePress = useCallback((item: Episode) => {
-    if (item.SeriesId) {
-      router.push(`/details/series/${item.SeriesId}`);
-    }
-  }, []);
-
-  const handleRowFocus = useCallback((rowIndex: number) => {
-    setFocusedRowIndex(rowIndex);
-  }, []);
-
   const getLatestSectionTitle = useCallback((group: GroupedLibraries): string => {
     const { collectionType, libraries: libs, label } = group;
 
@@ -183,10 +239,11 @@ export function TVHomeScreen() {
     }
   }, []);
 
-  let rowIndex = 0;
+  const firstRowRef = visibleRows[0]?.ref;
 
   return (
     <View style={styles.container}>
+      <TVTopNavBar firstContentRef={firstRowRef} />
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.contentContainer}
@@ -194,7 +251,7 @@ export function TVHomeScreen() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor={accentColor}
+            tintColor={TV_ACCENT_GOLD}
           />
         }
       >
@@ -206,57 +263,57 @@ export function TVHomeScreen() {
 
         {(resumeItems?.Items?.length ?? 0) > 0 && (
           <TVContinueWatchingRow
+            ref={continueWatchingRef}
             items={resumeItems?.Items ?? []}
             onItemPress={handleItemPress}
-            rowIndex={rowIndex++}
-            autoFocusFirstItem={rowIndex === 1}
-            onRowFocus={handleRowFocus}
+            autoFocusFirstItem={visibleRows[0]?.key === 'continueWatching'}
+            {...getRowNavigation('continueWatching')}
           />
         )}
 
         {(nextUp?.Items?.length ?? 0) > 0 && (
           <TVMediaRow
+            ref={nextUpRef}
             title={t('home.nextUp')}
             items={nextUp?.Items ?? []}
             onItemPress={handleItemPress}
             variant="backdrop"
             icon="arrow-forward-circle-outline"
-            rowIndex={rowIndex++}
-            autoFocusFirstItem={rowIndex === 1}
-            onRowFocus={handleRowFocus}
+            autoFocusFirstItem={visibleRows[0]?.key === 'nextUp'}
+            {...getRowNavigation('nextUp')}
           />
         )}
 
         {favoriteMovies.length > 0 && (
           <TVMediaRow
+            ref={favoriteMoviesRef}
             title="Favorite Movies"
             items={favoriteMovies}
             onItemPress={handleItemPress}
             icon="heart"
-            rowIndex={rowIndex++}
-            onRowFocus={handleRowFocus}
+            {...getRowNavigation('favoriteMovies')}
           />
         )}
 
         {favoriteSeries.length > 0 && (
           <TVMediaRow
+            ref={favoriteSeriesRef}
             title="Favorite Shows"
             items={favoriteSeries}
             onItemPress={handleItemPress}
             icon="heart"
-            rowIndex={rowIndex++}
-            onRowFocus={handleRowFocus}
+            {...getRowNavigation('favoriteSeries')}
           />
         )}
 
         {(suggestions?.length ?? 0) > 0 && (
           <TVMediaRow
+            ref={suggestionsRef}
             title="Recommended For You"
             items={suggestions ?? []}
             onItemPress={handleItemPress}
             icon="sparkles"
-            rowIndex={rowIndex++}
-            onRowFocus={handleRowFocus}
+            {...getRowNavigation('suggestions')}
           />
         )}
 
@@ -264,16 +321,17 @@ export function TVHomeScreen() {
           if (!data || data.length === 0) return null;
 
           const useBackdrop = group.collectionType === 'tvshows';
+          const key = `library-${group.collectionType ?? 'mixed'}`;
 
           return (
             <TVMediaRow
-              key={group.collectionType ?? 'mixed'}
+              key={key}
+              ref={getLibraryRef(key)}
               title={getLatestSectionTitle(group)}
               items={data}
               onItemPress={handleItemPress}
               variant={useBackdrop ? 'backdrop' : 'poster'}
-              rowIndex={rowIndex++}
-              onRowFocus={handleRowFocus}
+              {...getRowNavigation(key)}
             />
           );
         })}
@@ -294,21 +352,22 @@ function getGreeting(): string {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0a0a0a',
+    backgroundColor: '#050505',
   },
   scrollView: {
     flex: 1,
   },
   contentContainer: {
-    paddingTop: tvConstants.controlBarPadding,
+    paddingTop: 16,
   },
   header: {
     paddingHorizontal: tvConstants.controlBarPadding,
-    marginBottom: 32,
+    marginBottom: 48,
   },
   greeting: {
     color: '#fff',
-    fontSize: 32,
-    fontWeight: 'bold',
+    fontSize: 36,
+    fontWeight: '300',
+    letterSpacing: 0.5,
   },
 });

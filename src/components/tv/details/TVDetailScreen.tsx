@@ -3,10 +3,12 @@ import { useState, useCallback } from 'react';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useDetailsScreen } from '@/hooks';
+import { useAuthStore } from '@/stores';
 import { CachedImage } from '@/components/shared/ui/CachedImage';
 import { TVFocusableButton } from '@/components/tv/navigation/TVFocusableButton';
 import { TrackOptionsMenu } from '@/components/shared/music/TrackOptionsMenu';
 import { DownloadOptionsModal, PersonModal } from '@/components/shared/media';
+import { MetadataEditorModal } from '@/components/shared/admin/metadata';
 import {
   ProgressBar,
   SeriesProgressBar,
@@ -15,6 +17,7 @@ import {
   CollapsibleDescription,
   SeasonsList,
   EpisodesList,
+  EpisodeDetailsModal,
   TracksList,
   PlaylistTracksList,
   ArtistAlbumsList,
@@ -29,6 +32,8 @@ import { formatDuration, formatYear, formatRating, ticksToMs } from '@/utils';
 
 export function TVDetailScreen() {
   const details = useDetailsScreen();
+  const currentUser = useAuthStore((s) => s.currentUser);
+  const isAdmin = (currentUser as { Policy?: { IsAdministrator?: boolean } })?.Policy?.IsAdministrator ?? false;
   const [focusedSection, setFocusedSection] = useState<string>('actions');
 
   const contentAnimatedStyle = useAnimatedStyle(() => ({
@@ -216,6 +221,13 @@ export function TVDetailScreen() {
                       disabled={details.isFavoritePending}
                     />
                   )}
+                  {isAdmin && (
+                    <TVFocusableButton
+                      icon="pencil"
+                      size="large"
+                      onPress={details.openMetadataEditor}
+                    />
+                  )}
                   <TVFocusableButton icon="arrow-back" size="large" onPress={details.handleGoBack} />
                 </View>
 
@@ -279,6 +291,7 @@ export function TVDetailScreen() {
                 isItemDownloaded={details.isItemDownloaded}
                 onSeasonDownload={details.handleSeasonDownload}
                 onEpisodeDownload={details.handleEpisodeDownload}
+                onEpisodePress={details.handleEpisodePress}
                 t={details.t}
               />
             )}
@@ -374,6 +387,24 @@ export function TVDetailScreen() {
         visible={!!details.selectedPerson}
         onClose={() => details.setSelectedPerson(null)}
       />
+
+      <EpisodeDetailsModal
+        episodeId={details.selectedEpisodeId}
+        visible={details.showEpisodeDetails}
+        onClose={details.closeEpisodeDetails}
+        from={details.currentDetailsRoute}
+        accentColor={details.accentColor}
+        hideMedia={details.hideMedia}
+        t={details.t}
+      />
+
+      {details.item && (
+        <MetadataEditorModal
+          visible={details.showMetadataEditor}
+          onClose={details.closeMetadataEditor}
+          item={details.item}
+        />
+      )}
     </View>
   );
 }

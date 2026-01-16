@@ -6,6 +6,7 @@ const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 interface TocItem {
   label: string;
   href: string;
+  depth?: number;
 }
 
 interface TVEpubTOCProps {
@@ -45,34 +46,29 @@ export function TVEpubTOC({
             ) : (
               toc.map((t, i) => {
                 const isCurrentChapter = currentChapterHref === t.href;
+                const depth = t.depth || 0;
+                const isSubItem = depth > 0;
                 return (
                   <Pressable
                     key={`toc-${i}-${t.href}`}
                     onPress={() => onSelect(t.href)}
                     style={({ pressed }) => [
                       styles.tocItem,
+                      { paddingLeft: 24 + depth * 20 },
                       isCurrentChapter && { backgroundColor: accentColor + '20' },
                       pressed && { backgroundColor: accentColor + '30' },
                     ]}
                   >
-                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <View style={styles.tocItemRow}>
                       {isCurrentChapter && (
-                        <View
-                          style={{
-                            width: 4,
-                            height: '100%',
-                            backgroundColor: accentColor,
-                            borderRadius: 2,
-                            marginRight: 16,
-                            minHeight: 32,
-                          }}
-                        />
+                        <View style={[styles.tocActiveBar, { backgroundColor: accentColor }]} />
                       )}
                       <Text
                         style={[
                           styles.tocItemText,
                           { color: isCurrentChapter ? accentColor : themeColors.text },
-                          isCurrentChapter && { fontWeight: '600' },
+                          isCurrentChapter && styles.tocItemActive,
+                          isSubItem && styles.tocItemSub,
                         ]}
                         numberOfLines={2}
                       >
@@ -126,12 +122,31 @@ const styles = StyleSheet.create({
   },
   tocItem: {
     paddingVertical: 20,
-    paddingHorizontal: 24,
+    paddingRight: 24,
     marginBottom: 4,
     borderRadius: 12,
   },
+  tocItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  tocActiveBar: {
+    width: 4,
+    height: 28,
+    borderRadius: 2,
+    marginRight: 16,
+  },
   tocItemText: {
     fontSize: 18,
+    flex: 1,
+    lineHeight: 26,
+  },
+  tocItemActive: {
+    fontWeight: '600',
+  },
+  tocItemSub: {
+    fontSize: 17,
+    opacity: 0.85,
   },
   tocEmpty: {
     textAlign: 'center',

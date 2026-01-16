@@ -1,5 +1,5 @@
-import { View, Text, FlatList, Pressable, StyleSheet } from 'react-native';
-import { memo, useCallback, useRef, useState, useEffect } from 'react';
+import { View, Text, FlatList, Pressable, StyleSheet, findNodeHandle } from 'react-native';
+import { memo, useCallback, useRef, useState, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, {
   useSharedValue,
@@ -13,35 +13,48 @@ import { CachedImage } from '@/components/shared/ui/CachedImage';
 import { getWatchProgress, formatPlayerTime, ticksToMs, getDisplayName } from '@/utils';
 import type { BaseItem } from '@/types/jellyfin';
 
+const TV_ACCENT_GOLD = '#D4A84B';
+
+export interface TVContinueWatchingRowRef {
+  getFirstItemHandle: () => number | null;
+  getItemHandle: (index: number) => number | null;
+}
+
 interface Props {
   items: BaseItem[];
   onItemPress: (item: BaseItem) => void;
-  rowIndex?: number;
   autoFocusFirstItem?: boolean;
-  onRowFocus?: (rowIndex: number) => void;
+  onRowFocus?: () => void;
+  nextFocusUp?: number;
+  nextFocusDown?: number;
 }
 
-const CARD_WIDTH = 360;
-const CARD_HEIGHT = 200;
-const CARD_MARGIN = 16;
-
-const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+const CARD_WIDTH = 420;
+const CARD_HEIGHT = 236;
+const CARD_MARGIN = 20;
 
 interface ContinueWatchingCardProps {
   item: BaseItem;
   onPress: () => void;
   onFocus: () => void;
   autoFocus?: boolean;
+  nextFocusUp?: number;
+  nextFocusDown?: number;
+  nextFocusLeft?: number;
+  nextFocusRight?: number;
 }
 
-function ContinueWatchingCard({
+const ContinueWatchingCard = forwardRef<any, ContinueWatchingCardProps>(function ContinueWatchingCard({
   item,
   onPress,
   onFocus,
   autoFocus = false,
-}: ContinueWatchingCardProps) {
+  nextFocusUp,
+  nextFocusDown,
+  nextFocusLeft,
+  nextFocusRight,
+}, ref) {
   const [isFocused, setIsFocused] = useState(false);
-  const accentColor = useSettingsStore((s) => s.accentColor);
   const hideMedia = useSettingsStore((s) => s.hideMedia);
 
   const scale = useSharedValue(1);
@@ -106,21 +119,27 @@ function ContinueWatchingCard({
     : item.ProductionYear?.toString();
 
   return (
-    <AnimatedPressable
-      onPress={onPress}
-      onFocus={handleFocus}
-      onBlur={handleBlur}
-      style={[styles.cardPressable, animatedStyle]}
-      hasTVPreferredFocus={autoFocus}
-      accessible
-      accessibilityRole="button"
-      accessibilityLabel={`Continue ${displayName}, ${Math.round(progress)}% watched`}
-    >
+    <Animated.View style={animatedStyle}>
+      <Pressable
+        ref={ref}
+        onPress={onPress}
+        onFocus={handleFocus}
+        onBlur={handleBlur}
+        style={styles.cardPressable}
+        hasTVPreferredFocus={autoFocus}
+        accessible
+        accessibilityRole="button"
+        accessibilityLabel={`Continue ${displayName}, ${Math.round(progress)}% watched`}
+        nextFocusUp={nextFocusUp}
+        nextFocusDown={nextFocusDown}
+        nextFocusLeft={nextFocusLeft}
+        nextFocusRight={nextFocusRight}
+      >
       <View style={styles.cardContainer}>
         <CachedImage
           uri={imageUrl}
           style={{ width: CARD_WIDTH, height: CARD_HEIGHT }}
-          borderRadius={12}
+          borderRadius={8}
           fallbackText={item.Name?.charAt(0)?.toUpperCase() || '?'}
           priority="high"
         />
@@ -128,7 +147,7 @@ function ContinueWatchingCard({
         <View style={styles.cardOverlay}>
           <View style={styles.cardContent}>
             <View style={styles.playIconContainer}>
-              <Ionicons name="play" size={32} color="#fff" />
+              <Ionicons name="play" size={28} color="#fff" />
             </View>
             <View style={styles.cardInfo}>
               <Text style={styles.cardTitle} numberOfLines={1}>
@@ -151,7 +170,7 @@ function ContinueWatchingCard({
             <View
               style={[
                 styles.progressFill,
-                { width: `${progress}%`, backgroundColor: accentColor },
+                { width: `${progress}%`, backgroundColor: TV_ACCENT_GOLD },
               ]}
             />
           </View>
@@ -160,29 +179,51 @@ function ContinueWatchingCard({
         <Animated.View
           style={[
             styles.focusBorder,
-            { borderColor: accentColor },
+            { borderColor: TV_ACCENT_GOLD },
             borderStyle,
           ]}
         />
       </View>
-    </AnimatedPressable>
+      </Pressable>
+    </Animated.View>
   );
-}
+});
 
-export const TVContinueWatchingRow = memo(function TVContinueWatchingRow({
+export const TVContinueWatchingRow = memo(forwardRef<TVContinueWatchingRowRef, Props>(function TVContinueWatchingRow({
   items,
   onItemPress,
-  rowIndex = 0,
   autoFocusFirstItem = false,
   onRowFocus,
-}: Props) {
-  const accentColor = useSettingsStore((s) => s.accentColor);
+  nextFocusUp,
+  nextFocusDown,
+}, ref) {
   const flatListRef = useRef<FlatList<BaseItem>>(null);
-  const [focusedIndex, setFocusedIndex] = useState(-1);
+  const itemRefs = useRef<Map<number, any>>(new Map());
+  const [itemHandles, setItemHandles] = useState<Map<number, number>>(new Map());
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const handles = new Map<number, number>();
+      itemRefs.current.forEach((itemRef, index) => {
+        if (itemRef) {
+          const handle = findNodeHandle(itemRef);
+          if (handle) {
+            handles.set(index, handle);
+          }
+        }
+      });
+      setItemHandles(handles);
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [items]);
+
+  useImperativeHandle(ref, () => ({
+    getFirstItemHandle: () => itemHandles.get(0) ?? null,
+    getItemHandle: (index: number) => itemHandles.get(index) ?? null,
+  }), [itemHandles]);
 
   const handleItemFocus = useCallback((index: number) => {
-    setFocusedIndex(index);
-    onRowFocus?.(rowIndex);
+    onRowFocus?.();
 
     if (flatListRef.current) {
       flatListRef.current.scrollToIndex({
@@ -191,16 +232,30 @@ export const TVContinueWatchingRow = memo(function TVContinueWatchingRow({
         viewPosition: 0.3,
       });
     }
-  }, [onRowFocus, rowIndex]);
+  }, [onRowFocus]);
 
-  const renderItem = useCallback(({ item, index }: { item: BaseItem; index: number }) => (
-    <ContinueWatchingCard
-      item={item}
-      onPress={() => onItemPress(item)}
-      onFocus={() => handleItemFocus(index)}
-      autoFocus={autoFocusFirstItem && index === 0}
-    />
-  ), [onItemPress, autoFocusFirstItem, handleItemFocus]);
+  const renderItem = useCallback(({ item, index }: { item: BaseItem; index: number }) => {
+    const leftHandle = index > 0 ? itemHandles.get(index - 1) : undefined;
+    const rightHandle = index < items.length - 1 ? itemHandles.get(index + 1) : undefined;
+
+    return (
+      <ContinueWatchingCard
+        ref={(r) => {
+          if (r) {
+            itemRefs.current.set(index, r);
+          }
+        }}
+        item={item}
+        onPress={() => onItemPress(item)}
+        onFocus={() => handleItemFocus(index)}
+        autoFocus={autoFocusFirstItem && index === 0}
+        nextFocusUp={nextFocusUp}
+        nextFocusDown={nextFocusDown}
+        nextFocusLeft={leftHandle}
+        nextFocusRight={rightHandle}
+      />
+    );
+  }, [onItemPress, autoFocusFirstItem, handleItemFocus, itemHandles, items.length, nextFocusUp, nextFocusDown]);
 
   const getItemLayout = useCallback((_: any, index: number) => ({
     length: CARD_WIDTH + CARD_MARGIN,
@@ -216,7 +271,7 @@ export const TVContinueWatchingRow = memo(function TVContinueWatchingRow({
     <View style={styles.container}>
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <Ionicons name="play-circle-outline" size={24} color={accentColor} />
+          <Ionicons name="play-circle-outline" size={22} color={TV_ACCENT_GOLD} />
           <Text style={styles.title}>Continue Watching</Text>
         </View>
       </View>
@@ -231,7 +286,7 @@ export const TVContinueWatchingRow = memo(function TVContinueWatchingRow({
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={{
           paddingHorizontal: tvConstants.controlBarPadding,
-          paddingVertical: 8,
+          paddingVertical: 12,
         }}
         initialNumToRender={4}
         maxToRenderPerBatch={4}
@@ -246,28 +301,29 @@ export const TVContinueWatchingRow = memo(function TVContinueWatchingRow({
       />
     </View>
   );
-});
+}));
 
 const styles = StyleSheet.create({
   container: {
-    marginBottom: 40,
+    marginBottom: 56,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: tvConstants.controlBarPadding,
-    marginBottom: 16,
+    marginBottom: 20,
   },
   headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 14,
   },
   title: {
     color: '#fff',
-    fontSize: 22,
-    fontWeight: '700',
+    fontSize: 24,
+    fontWeight: '500',
+    letterSpacing: 0.3,
   },
   cardPressable: {
     marginRight: CARD_MARGIN,
@@ -275,56 +331,58 @@ const styles = StyleSheet.create({
   cardContainer: {
     width: CARD_WIDTH,
     height: CARD_HEIGHT,
-    borderRadius: 12,
+    borderRadius: 8,
     overflow: 'hidden',
-    backgroundColor: '#1c1c1c',
+    backgroundColor: '#0c0c0c',
   },
   cardOverlay: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: 'rgba(0,0,0,0.8)',
-    padding: 12,
+    backgroundColor: 'rgba(0,0,0,0.85)',
+    padding: 16,
   },
   cardContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 12,
   },
   playIconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.15)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
+    marginRight: 14,
   },
   cardInfo: {
     flex: 1,
   },
   cardTitle: {
     color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 17,
+    fontWeight: '500',
+    letterSpacing: 0.2,
   },
   cardSubtitle: {
-    color: 'rgba(255,255,255,0.7)',
+    color: 'rgba(255,255,255,0.6)',
     fontSize: 14,
-    marginTop: 2,
+    marginTop: 3,
+    fontWeight: '400',
   },
   timeInfo: {
     marginTop: 4,
   },
   timeText: {
-    color: 'rgba(255,255,255,0.6)',
-    fontSize: 12,
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: 13,
     fontFamily: 'monospace',
   },
   progressTrack: {
-    height: 4,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    height: 3,
+    backgroundColor: 'rgba(255,255,255,0.15)',
     borderRadius: 2,
   },
   progressFill: {
@@ -337,7 +395,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    borderRadius: 12,
-    borderWidth: tvConstants.focusRingWidth,
+    borderRadius: 8,
+    borderWidth: 3,
   },
 });

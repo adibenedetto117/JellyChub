@@ -1,12 +1,18 @@
-import { View, Text, FlatList, StyleSheet } from 'react-native';
-import { memo, useCallback, useRef, useState } from 'react';
+import { View, Text, FlatList, StyleSheet, findNodeHandle } from 'react-native';
+import { memo, useCallback, useRef, useState, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { FocusableCard } from './FocusableCard';
-import { useSettingsStore } from '@/stores';
 import { tvConstants } from '@/utils/platform';
 import type { BaseItem } from '@/types/jellyfin';
 
 type IconName = keyof typeof Ionicons.glyphMap;
+
+const TV_ACCENT_GOLD = '#D4A84B';
+
+export interface TVMediaRowRef {
+  getFirstItemHandle: () => number | null;
+  getItemHandle: (index: number) => number | null;
+}
 
 interface Props {
   title: string;
@@ -15,17 +21,18 @@ interface Props {
   onSeeAllPress?: () => void;
   variant?: 'poster' | 'backdrop';
   icon?: IconName;
-  rowIndex?: number;
   autoFocusFirstItem?: boolean;
-  onRowFocus?: (rowIndex: number) => void;
+  onRowFocus?: () => void;
+  nextFocusUp?: number;
+  nextFocusDown?: number;
 }
 
 const CARD_DIMENSIONS = {
-  poster: { width: 180, height: 270 },
-  backdrop: { width: 320, height: 180 },
+  poster: { width: 200, height: 300 },
+  backdrop: { width: 380, height: 214 },
 };
 
-const CARD_MARGIN = 16;
+const CARD_MARGIN = 20;
 
 const getDefaultIcon = (title: string): IconName => {
   const lowerTitle = title.toLowerCase();
@@ -42,28 +49,49 @@ const getDefaultIcon = (title: string): IconName => {
   return 'grid-outline';
 };
 
-export const TVMediaRow = memo(function TVMediaRow({
+export const TVMediaRow = memo(forwardRef<TVMediaRowRef, Props>(function TVMediaRow({
   title,
   items,
   onItemPress,
   onSeeAllPress,
   variant = 'poster',
   icon,
-  rowIndex = 0,
   autoFocusFirstItem = false,
   onRowFocus,
-}: Props) {
-  const accentColor = useSettingsStore((s) => s.accentColor);
+  nextFocusUp,
+  nextFocusDown,
+}, ref) {
   const flatListRef = useRef<FlatList<BaseItem>>(null);
-  const [focusedIndex, setFocusedIndex] = useState(-1);
+  const itemRefs = useRef<Map<number, any>>(new Map());
+  const [itemHandles, setItemHandles] = useState<Map<number, number>>(new Map());
 
   const displayIcon = icon || getDefaultIcon(title);
   const dimensions = CARD_DIMENSIONS[variant];
   const itemWidth = dimensions.width + CARD_MARGIN;
 
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const handles = new Map<number, number>();
+      itemRefs.current.forEach((itemRef, index) => {
+        if (itemRef) {
+          const handle = findNodeHandle(itemRef);
+          if (handle) {
+            handles.set(index, handle);
+          }
+        }
+      });
+      setItemHandles(handles);
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [items]);
+
+  useImperativeHandle(ref, () => ({
+    getFirstItemHandle: () => itemHandles.get(0) ?? null,
+    getItemHandle: (index: number) => itemHandles.get(index) ?? null,
+  }), [itemHandles]);
+
   const handleItemFocus = useCallback((index: number) => {
-    setFocusedIndex(index);
-    onRowFocus?.(rowIndex);
+    onRowFocus?.();
 
     if (flatListRef.current) {
       flatListRef.current.scrollToIndex({
@@ -72,17 +100,33 @@ export const TVMediaRow = memo(function TVMediaRow({
         viewPosition: 0.3,
       });
     }
-  }, [onRowFocus, rowIndex]);
+  }, [onRowFocus]);
 
-  const renderItem = useCallback(({ item, index }: { item: BaseItem; index: number }) => (
-    <FocusableCard
-      item={item}
-      onPress={() => onItemPress(item)}
-      onFocus={() => handleItemFocus(index)}
-      variant={variant}
-      autoFocus={autoFocusFirstItem && index === 0}
-    />
-  ), [onItemPress, variant, autoFocusFirstItem, handleItemFocus]);
+  const renderItem = useCallback(({ item, index }: { item: BaseItem; index: number }) => {
+    const leftHandle = index > 0 ? itemHandles.get(index - 1) : undefined;
+    const rightHandle = index < items.length - 1 ? itemHandles.get(index + 1) : undefined;
+
+    return (
+      <FocusableCard
+        ref={(r) => {
+          if (r) {
+            itemRefs.current.set(index, r);
+          }
+        }}
+        item={item}
+        onPress={() => onItemPress(item)}
+        onFocus={() => handleItemFocus(index)}
+        variant={variant}
+        autoFocus={autoFocusFirstItem && index === 0}
+        cardWidth={dimensions.width}
+        cardHeight={dimensions.height}
+        nextFocusUp={nextFocusUp}
+        nextFocusDown={nextFocusDown}
+        nextFocusLeft={leftHandle}
+        nextFocusRight={rightHandle}
+      />
+    );
+  }, [onItemPress, variant, autoFocusFirstItem, handleItemFocus, dimensions, itemHandles, items.length, nextFocusUp, nextFocusDown]);
 
   const getItemLayout = useCallback((_: any, index: number) => ({
     length: itemWidth,
@@ -98,7 +142,7 @@ export const TVMediaRow = memo(function TVMediaRow({
     <View style={styles.container}>
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <Ionicons name={displayIcon} size={24} color={accentColor} />
+          <Ionicons name={displayIcon} size={22} color={TV_ACCENT_GOLD} />
           <Text style={styles.title}>{title}</Text>
         </View>
         {onSeeAllPress && (
@@ -116,7 +160,7 @@ export const TVMediaRow = memo(function TVMediaRow({
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={{
           paddingHorizontal: tvConstants.controlBarPadding,
-          paddingVertical: 8,
+          paddingVertical: 12,
         }}
         initialNumToRender={6}
         maxToRenderPerBatch={6}
@@ -131,31 +175,33 @@ export const TVMediaRow = memo(function TVMediaRow({
       />
     </View>
   );
-});
+}));
 
 const styles = StyleSheet.create({
   container: {
-    marginBottom: 40,
+    marginBottom: 56,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: tvConstants.controlBarPadding,
-    marginBottom: 16,
+    marginBottom: 20,
   },
   headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 14,
   },
   title: {
     color: '#fff',
-    fontSize: 22,
-    fontWeight: '700',
+    fontSize: 24,
+    fontWeight: '500',
+    letterSpacing: 0.3,
   },
   seeAll: {
-    color: 'rgba(255,255,255,0.6)',
+    color: 'rgba(255,255,255,0.5)',
     fontSize: 16,
+    fontWeight: '400',
   },
 });
