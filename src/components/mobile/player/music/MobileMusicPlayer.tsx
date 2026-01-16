@@ -1,5 +1,5 @@
 import { View, Text, Pressable, Modal, Image } from 'react-native';
-import { SafeAreaView } from '@/providers';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { useAnimatedStyle, interpolate } from 'react-native-reanimated';
@@ -8,7 +8,6 @@ import { useTranslation } from 'react-i18next';
 import { useSettingsStore } from '@/stores';
 import { getDisplayName } from '@/utils';
 import { SleepTimerSelector, SleepTimerIndicator } from '@/components/shared/player';
-import { EqualizerModal } from '@/components/mobile/player/audio';
 import { MobileMusicPlayerInfo } from './MobileMusicPlayerInfo';
 import { MobileMusicPlayerProgress } from './MobileMusicPlayerProgress';
 import { MobileMusicPlayerControls } from './MobileMusicPlayerControls';
@@ -21,6 +20,7 @@ interface MobileMusicPlayerProps {
 
 export function MobileMusicPlayer({ core }: MobileMusicPlayerProps) {
   const { t } = useTranslation();
+  const insets = useSafeAreaInsets();
   const hideMedia = useSettingsStore((s) => s.hideMedia);
 
   const {
@@ -50,8 +50,6 @@ export function MobileMusicPlayer({ core }: MobileMusicPlayerProps) {
     musicSleepTimer,
     showSleepTimer,
     setShowSleepTimer,
-    showEqualizer,
-    setShowEqualizer,
     addedToast,
     accentColor,
     albumScale,
@@ -70,6 +68,7 @@ export function MobileMusicPlayer({ core }: MobileMusicPlayerProps) {
     handleToggleRepeat,
     handleToggleFavorite,
     handleToggleLyrics,
+    handleSeekToLyric,
     handleGoToAlbum,
     handleGoToArtist,
     handleAddToPlaylist,
@@ -87,12 +86,16 @@ export function MobileMusicPlayer({ core }: MobileMusicPlayerProps) {
     localProgress,
   } = core;
 
-  const containerStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: translateY.value }],
-  }));
+  const containerStyle = useAnimatedStyle(() => {
+    const opacity = interpolate(translateY.value, [0, 150], [1, 0], 'clamp');
+    return {
+      transform: [{ translateY: translateY.value }],
+      opacity,
+    };
+  });
 
   const backgroundStyle = useAnimatedStyle(() => {
-    const opacity = interpolate(translateY.value, [0, 300], [1, 0], 'clamp');
+    const opacity = interpolate(translateY.value, [0, 100], [1, 0], 'clamp');
     return { opacity };
   });
 
@@ -113,33 +116,28 @@ export function MobileMusicPlayer({ core }: MobileMusicPlayerProps) {
   }));
 
   return (
-    <GestureDetector gesture={dismissGesture}>
-      <Animated.View style={[{ flex: 1, backgroundColor: 'transparent' }, containerStyle]}>
-        <Animated.View style={[{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#000' }, backgroundStyle]}>
-          {albumArtUrl && (
-            <Image
-              source={{ uri: albumArtUrl }}
-              style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-              resizeMode="cover"
-              blurRadius={80}
-            />
-          )}
-          <LinearGradient
-            colors={['rgba(0,0,0,0.3)', 'rgba(0,0,0,0.7)', 'rgba(0,0,0,0.95)']}
-            locations={[0, 0.5, 1]}
+    <View style={{ flex: 1, backgroundColor: '#000' }}>
+      <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
+        {albumArtUrl && (
+          <Image
+            source={{ uri: albumArtUrl }}
             style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+            resizeMode="cover"
+            blurRadius={80}
           />
-        </Animated.View>
+        )}
+        <LinearGradient
+          colors={['rgba(0,0,0,0.3)', 'rgba(0,0,0,0.7)', 'rgba(0,0,0,0.95)']}
+          locations={[0, 0.5, 1]}
+          style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+        />
+      </View>
 
-        <SafeAreaView style={{ flex: 1 }}>
-          <View style={{ alignItems: 'center', paddingTop: 8, paddingBottom: 4 }}>
-            <View style={{ width: 36, height: 4, backgroundColor: 'rgba(255,255,255,0.3)', borderRadius: 2 }} />
-          </View>
-
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 8 }}>
-            <Pressable onPress={handleClose} style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}>
-              <Ionicons name="chevron-down" size={28} color="#fff" />
-            </Pressable>
+      <View style={{ flex: 1, paddingTop: Math.max(insets.top, 44) + 8, paddingBottom: Math.max(insets.bottom, 20) + 16 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 8 }}>
+          <Pressable onPress={handleClose} style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}>
+            <Ionicons name="close" size={28} color="#fff" />
+          </Pressable>
 
             <View style={{ flex: 1, alignItems: 'center' }}>
               <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 11, fontWeight: '500', textTransform: 'uppercase', letterSpacing: 1 }}>
@@ -182,6 +180,7 @@ export function MobileMusicPlayer({ core }: MobileMusicPlayerProps) {
             albumStyle={albumStyle}
             onToggleFavorite={handleToggleFavorite}
             onGoToArtist={handleGoToArtist}
+            onSeekToLyric={handleSeekToLyric}
           />
 
           <View style={{ paddingHorizontal: 24, paddingBottom: 16 }}>
@@ -215,11 +214,10 @@ export function MobileMusicPlayer({ core }: MobileMusicPlayerProps) {
               onToggleShuffle={handleToggleShuffle}
               onToggleRepeat={handleToggleRepeat}
               onToggleLyrics={handleToggleLyrics}
-              onShowEqualizer={() => setShowEqualizer(true)}
               onShowSleepTimer={() => setShowSleepTimer(true)}
             />
           </View>
-        </SafeAreaView>
+        </View>
 
         <Modal
           visible={showOptions}
@@ -374,8 +372,6 @@ export function MobileMusicPlayer({ core }: MobileMusicPlayerProps) {
           </View>
         )}
 
-        <EqualizerModal visible={showEqualizer} onClose={() => setShowEqualizer(false)} />
-
         <SleepTimerSelector
           visible={showSleepTimer}
           onClose={() => setShowSleepTimer(false)}
@@ -383,7 +379,6 @@ export function MobileMusicPlayer({ core }: MobileMusicPlayerProps) {
           currentTimer={musicSleepTimer}
           isEpisode={false}
         />
-      </Animated.View>
-    </GestureDetector>
+    </View>
   );
 }

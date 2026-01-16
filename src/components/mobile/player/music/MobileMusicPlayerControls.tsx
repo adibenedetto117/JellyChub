@@ -19,7 +19,6 @@ interface MobileMusicPlayerControlsProps {
   onToggleShuffle: () => void;
   onToggleRepeat: () => void;
   onToggleLyrics: () => void;
-  onShowEqualizer: () => void;
   onShowSleepTimer: () => void;
 }
 
@@ -38,7 +37,6 @@ export function MobileMusicPlayerControls({
   onToggleShuffle,
   onToggleRepeat,
   onToggleLyrics,
-  onShowEqualizer,
   onShowSleepTimer,
 }: MobileMusicPlayerControlsProps) {
   return (
@@ -146,20 +144,6 @@ export function MobileMusicPlayerControls({
         >
           <Ionicons name="text" size={18} color="#fff" />
           <Text style={{ color: '#fff', fontSize: 13, marginLeft: 6 }}>Lyrics</Text>
-        </Pressable>
-        <Pressable
-          onPress={onShowEqualizer}
-          style={{
-            paddingHorizontal: 14,
-            paddingVertical: 8,
-            borderRadius: 20,
-            flexDirection: 'row',
-            alignItems: 'center',
-            backgroundColor: 'rgba(255,255,255,0.1)',
-          }}
-        >
-          <Ionicons name="options" size={18} color="#fff" />
-          <Text style={{ color: '#fff', fontSize: 13, marginLeft: 6 }}>EQ</Text>
         </Pressable>
         <Pressable
           onPress={onShowSleepTimer}

@@ -1,9 +1,11 @@
 import { View, ScrollView, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
-import { useDetailsScreen } from '@/hooks';
+import { useDetailsScreen, useMiniPlayerPadding } from '@/hooks';
+import { useAuthStore } from '@/stores';
 import { TrackOptionsMenu } from '@/components/shared/music/TrackOptionsMenu';
 import { DownloadOptionsModal, PersonModal } from '@/components/shared/media';
+import { MetadataEditorModal } from '@/components/shared/admin/metadata';
 import {
   MediaHeader,
   MediaInfo,
@@ -15,6 +17,7 @@ import {
   CollapsibleDescription,
   SeasonsList,
   EpisodesList,
+  EpisodeDetailsModal,
   TracksList,
   PlaylistTracksList,
   ArtistAlbumsList,
@@ -30,6 +33,9 @@ import {
 export function MobileDetailScreen() {
   const insets = useSafeAreaInsets();
   const details = useDetailsScreen();
+  const miniPlayerPadding = useMiniPlayerPadding();
+  const currentUser = useAuthStore((s) => s.currentUser);
+  const isAdmin = (currentUser as { Policy?: { IsAdministrator?: boolean } })?.Policy?.IsAdministrator ?? false;
 
   const contentAnimatedStyle = useAnimatedStyle(() => ({
     opacity: details.contentOpacity.value,
@@ -82,7 +88,7 @@ export function MobileDetailScreen() {
           className="flex-1"
           showsVerticalScrollIndicator={false}
           bounces={true}
-          contentContainerStyle={{ flexGrow: 1, paddingBottom: insets.bottom + 16 }}
+          contentContainerStyle={{ flexGrow: 1, paddingBottom: insets.bottom + 16 + miniPlayerPadding }}
         >
           <MediaHeader
             backdropUrl={details.backdropUrl}
@@ -126,6 +132,8 @@ export function MobileDetailScreen() {
               onShuffle={details.handleShuffle}
               onDownload={details.handleDownload}
               onToggleFavorite={details.handleToggleFavorite}
+              onEdit={details.openMetadataEditor}
+              canEdit={isAdmin}
               t={details.t}
             />
 
@@ -182,6 +190,7 @@ export function MobileDetailScreen() {
                 isItemDownloaded={details.isItemDownloaded}
                 onSeasonDownload={details.handleSeasonDownload}
                 onEpisodeDownload={details.handleEpisodeDownload}
+                onEpisodePress={details.handleEpisodePress}
                 t={details.t}
               />
             )}
@@ -278,6 +287,24 @@ export function MobileDetailScreen() {
         visible={!!details.selectedPerson}
         onClose={() => details.setSelectedPerson(null)}
       />
+
+      <EpisodeDetailsModal
+        episodeId={details.selectedEpisodeId}
+        visible={details.showEpisodeDetails}
+        onClose={details.closeEpisodeDetails}
+        from={details.currentDetailsRoute}
+        accentColor={details.accentColor}
+        hideMedia={details.hideMedia}
+        t={details.t}
+      />
+
+      {details.item && (
+        <MetadataEditorModal
+          visible={details.showMetadataEditor}
+          onClose={details.closeMetadataEditor}
+          item={details.item}
+        />
+      )}
     </View>
   );
 }

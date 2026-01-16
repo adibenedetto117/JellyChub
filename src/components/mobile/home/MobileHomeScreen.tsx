@@ -4,6 +4,7 @@ import { useQuery, useQueries } from '@tanstack/react-query';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore, useSettingsStore } from '@/stores';
+import { useMiniPlayerPadding } from '@/hooks';
 import {
   getResumeItems,
   getNextUp,
@@ -26,6 +27,7 @@ export function MobileHomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const currentUser = useAuthStore((state) => state.currentUser);
   const accentColor = useSettingsStore((s) => s.accentColor);
+  const miniPlayerPadding = useMiniPlayerPadding();
   const userId = currentUser?.Id ?? '';
 
   const { data: libraries, refetch: refetchLibraries } = useQuery({
@@ -190,7 +192,7 @@ export function MobileHomeScreen() {
     <View style={styles.container}>
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={styles.contentContainer}
+        contentContainerStyle={[styles.contentContainer, { paddingBottom: miniPlayerPadding }]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl

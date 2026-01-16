@@ -6,6 +6,7 @@ const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 interface TocItem {
   label: string;
   href: string;
+  depth?: number;
 }
 
 interface MobileEpubTOCProps {
@@ -55,34 +56,29 @@ export function MobileEpubTOC({
             ) : (
               toc.map((t, i) => {
                 const isCurrentChapter = currentChapterHref === t.href;
+                const depth = t.depth || 0;
+                const isSubItem = depth > 0;
                 return (
                   <Pressable
                     key={`toc-${i}-${t.href}`}
                     onPress={() => onSelect(t.href)}
                     style={({ pressed }) => [
                       styles.tocItem,
+                      { paddingLeft: 24 + depth * 16 },
                       isCurrentChapter && { backgroundColor: accentColor + '20' },
                       pressed && { backgroundColor: accentColor + '15' },
                     ]}
                   >
-                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <View style={styles.tocItemRow}>
                       {isCurrentChapter && (
-                        <View
-                          style={{
-                            width: 4,
-                            height: '100%',
-                            backgroundColor: accentColor,
-                            borderRadius: 2,
-                            marginRight: 12,
-                            minHeight: 24,
-                          }}
-                        />
+                        <View style={[styles.tocActiveBar, { backgroundColor: accentColor }]} />
                       )}
                       <Text
                         style={[
                           styles.tocItemText,
                           { color: isCurrentChapter ? accentColor : themeColors.text },
-                          isCurrentChapter && { fontWeight: '600' },
+                          isCurrentChapter && styles.tocItemActive,
+                          isSubItem && styles.tocItemSub,
                         ]}
                         numberOfLines={2}
                       >
@@ -110,37 +106,61 @@ const styles = StyleSheet.create({
   tocModalPanel: {
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    paddingTop: 16,
-    paddingHorizontal: 8,
+    paddingTop: 20,
+    paddingHorizontal: 0,
     maxHeight: '80%',
   },
   tocHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    marginBottom: 12,
+    paddingHorizontal: 20,
+    marginBottom: 16,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(128,128,128,0.15)',
   },
   tocTitle: {
     fontSize: 20,
-    fontWeight: 'bold',
+    fontWeight: '700',
+    letterSpacing: -0.3,
   },
   tocCloseBtn: {
-    width: 40,
-    height: 40,
+    width: 36,
+    height: 36,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 20,
-    backgroundColor: 'rgba(128,128,128,0.15)',
+    borderRadius: 18,
+    backgroundColor: 'rgba(128,128,128,0.12)',
   },
   tocItem: {
-    paddingVertical: 18,
-    paddingHorizontal: 24,
-    marginHorizontal: 8,
-    marginBottom: 4,
+    paddingVertical: 14,
+    paddingRight: 20,
+    marginHorizontal: 0,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(128,128,128,0.1)',
+  },
+  tocItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  tocActiveBar: {
+    width: 3,
+    height: 20,
+    borderRadius: 1.5,
+    marginRight: 12,
   },
   tocItemText: {
     fontSize: 16,
+    lineHeight: 22,
+    flex: 1,
+  },
+  tocItemActive: {
+    fontWeight: '600',
+  },
+  tocItemSub: {
+    fontSize: 15,
+    opacity: 0.85,
   },
   tocEmpty: {
     textAlign: 'center',

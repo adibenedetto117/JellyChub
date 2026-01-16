@@ -1,14 +1,72 @@
-import { View, Text, Pressable, Image, Dimensions, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, Pressable, Image, Dimensions, ScrollView, ActivityIndicator, StyleSheet } from 'react-native';
+import { memo, useEffect } from 'react';
 import { Ionicons } from '@expo/vector-icons';
-import Animated from 'react-native-reanimated';
+import Animated, { useSharedValue, useAnimatedStyle, withTiming, withSpring } from 'react-native-reanimated';
 import { useTranslation } from 'react-i18next';
 import type { ScrollView as ScrollViewType } from 'react-native';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
+interface AnimatedLyricLineProps {
+  text: string;
+  isCurrent: boolean;
+  isPast: boolean;
+  hasTiming: boolean;
+  accentColor: string;
+  onPress: () => void;
+}
+
+const AnimatedLyricLine = memo(function AnimatedLyricLine({
+  text,
+  isCurrent,
+  isPast,
+  hasTiming,
+  accentColor,
+  onPress,
+}: AnimatedLyricLineProps) {
+  const scale = useSharedValue(1);
+  const opacity = useSharedValue(isPast ? 0.5 : 0.8);
+
+  useEffect(() => {
+    if (isCurrent) {
+      scale.value = withSpring(1.05, { damping: 12, stiffness: 100 });
+      opacity.value = withTiming(1, { duration: 200 });
+    } else if (isPast) {
+      scale.value = withTiming(1, { duration: 200 });
+      opacity.value = withTiming(0.5, { duration: 300 });
+    } else {
+      scale.value = withTiming(1, { duration: 200 });
+      opacity.value = withTiming(0.8, { duration: 200 });
+    }
+  }, [isCurrent, isPast, scale, opacity]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+    opacity: opacity.value,
+  }));
+
+  return (
+    <Pressable
+      onPress={hasTiming ? onPress : undefined}
+      disabled={!hasTiming}
+      style={lyricsStyles.lyricLine}
+    >
+      <Animated.Text
+        style={[
+          lyricsStyles.lyricText,
+          isCurrent && [lyricsStyles.lyricTextCurrent, { color: accentColor }],
+          animatedStyle,
+        ]}
+      >
+        {text || '♪'}
+      </Animated.Text>
+    </Pressable>
+  );
+});
+
 interface LyricLine {
   text: string;
-  time?: number;
+  start?: number;
 }
 
 interface MobileMusicPlayerInfoProps {
@@ -26,6 +84,7 @@ interface MobileMusicPlayerInfoProps {
   albumStyle: any;
   onToggleFavorite: () => void;
   onGoToArtist: () => void;
+  onSeekToLyric: (index: number) => void;
 }
 
 export function MobileMusicPlayerInfo({
@@ -43,49 +102,46 @@ export function MobileMusicPlayerInfo({
   albumStyle,
   onToggleFavorite,
   onGoToArtist,
+  onSeekToLyric,
 }: MobileMusicPlayerInfoProps) {
   const { t } = useTranslation();
 
   if (showLyricsView) {
     return (
-      <ScrollView
-        ref={lyricsScrollRef}
-        style={{ flex: 1, paddingHorizontal: 24 }}
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={{ paddingVertical: 48, alignItems: 'center' }}>
+      <View style={lyricsStyles.container}>
+        <ScrollView
+          ref={lyricsScrollRef}
+          style={lyricsStyles.scrollView}
+          contentContainerStyle={lyricsStyles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          nestedScrollEnabled={true}
+          scrollEventThrottle={16}
+          onScrollBeginDrag={(e) => e.stopPropagation()}
+        >
           {lyricsLoading ? (
-            <ActivityIndicator color={accentColor} size="large" />
+            <View style={lyricsStyles.loadingContainer}>
+              <ActivityIndicator color={accentColor} size="large" />
+            </View>
           ) : lyrics && lyrics.length > 0 ? (
-            lyrics.map((line, index) => {
-              const isCurrent = index === currentLyricIndex;
-              const isPast = index < currentLyricIndex;
-
-              return (
-                <Text
-                  key={index}
-                  style={{
-                    color: isCurrent ? accentColor : isPast ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.8)',
-                    fontSize: isCurrent ? 24 : 20,
-                    fontWeight: isCurrent ? '700' : '600',
-                    textAlign: 'center',
-                    lineHeight: 40,
-                    marginBottom: 16,
-                  }}
-                >
-                  {line.text}
-                </Text>
-              );
-            })
+            lyrics.map((line, index) => (
+              <AnimatedLyricLine
+                key={index}
+                text={line.text}
+                isCurrent={index === currentLyricIndex}
+                isPast={index < currentLyricIndex}
+                hasTiming={line.start !== undefined}
+                accentColor={accentColor}
+                onPress={() => onSeekToLyric(index)}
+              />
+            ))
           ) : (
-            <View style={{ alignItems: 'center', paddingVertical: 80 }}>
-              <Ionicons name="text" size={48} color="rgba(255,255,255,0.3)" />
-              <Text style={{ color: 'rgba(255,255,255,0.4)', fontSize: 18, marginTop: 16 }}>{t('player.noLyrics')}</Text>
-              <Text style={{ color: 'rgba(255,255,255,0.3)', fontSize: 14, marginTop: 8 }}>Lyrics will appear here when available</Text>
+            <View style={lyricsStyles.emptyContainer}>
+              <Ionicons name="musical-notes" size={48} color="rgba(255,255,255,0.2)" />
+              <Text style={lyricsStyles.emptyTitle}>{t('player.noLyrics')}</Text>
             </View>
           )}
-        </View>
-      </ScrollView>
+        </ScrollView>
+      </View>
     );
   }
 
@@ -142,3 +198,46 @@ export function MobileMusicPlayerInfo({
     </View>
   );
 }
+
+const lyricsStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingVertical: 60,
+    paddingHorizontal: 24,
+  },
+  loadingContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 100,
+  },
+  lyricLine: {
+    paddingVertical: 8,
+  },
+  lyricText: {
+    color: '#ffffff',
+    fontSize: 22,
+    fontWeight: '600',
+    textAlign: 'center',
+    lineHeight: 32,
+  },
+  lyricTextCurrent: {
+    fontSize: 26,
+    fontWeight: '700',
+    lineHeight: 36,
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 100,
+    gap: 16,
+  },
+  emptyTitle: {
+    color: 'rgba(255,255,255,0.4)',
+    fontSize: 16,
+  },
+});
