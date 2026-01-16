@@ -1,5 +1,5 @@
 import { View, ScrollView, RefreshControl, Alert } from 'react-native';
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { SafeAreaView } from '@/providers';
 import { useAuthStore, useSettingsStore } from '@/stores';
@@ -96,10 +96,11 @@ export default function AdminScreen() {
   });
 
   const { data: users, refetch: refetchUsers } = useQuery({
-    queryKey: ['users', activeTab],
+    queryKey: ['users'],
     queryFn: getUsers,
     enabled: !!isAdmin && activeTab === 'users',
     staleTime: 0,
+    refetchOnMount: 'always',
   });
 
   const { data: mediaFolders } = useQuery({
@@ -113,6 +114,12 @@ export default function AdminScreen() {
     queryFn: () => (editingUser ? getUserById(editingUser.Id) : null),
     enabled: !!editingUser?.Id,
   });
+
+  useEffect(() => {
+    if (activeTab === 'users' && isAdmin) {
+      refetchUsers();
+    }
+  }, [activeTab, isAdmin, refetchUsers]);
 
   const refreshLibraryMutation = useMutation({
     mutationFn: refreshLibrary,
@@ -302,9 +309,10 @@ export default function AdminScreen() {
       refetchItemCounts(),
       refetchActivityLog(),
       refetchTasks(),
+      activeTab === 'users' ? refetchUsers() : Promise.resolve(),
     ]);
     setRefreshing(false);
-  }, [refetchSystemInfo, refetchSessions, refetchItemCounts, refetchActivityLog, refetchTasks]);
+  }, [refetchSystemInfo, refetchSessions, refetchItemCounts, refetchActivityLog, refetchTasks, activeTab, refetchUsers]);
 
   const handleKillStream = useCallback(
     (session: SessionInfo) => {

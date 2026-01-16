@@ -13,10 +13,10 @@ import { useDeepLinking, useGlobalBackHandler } from '@/hooks';
 import { ErrorBoundary } from '@/components/shared/ui';
 import { MiniPlayer } from '@/components/shared/player';
 import { BottomNav } from '@/components/mobile/navigation';
-import { TVSidebar } from '@/components/tv';
+import { DesktopSidebar } from '@/components/desktop/navigation';
 import { SecurityLockScreen } from '@/components/shared/security';
 import { TVFocusProvider } from '@/contexts';
-import { isTV } from '@/utils/platform';
+import { isTV, isDesktop } from '@/utils/platform';
 import { colors } from '@/theme';
 import initI18n from '@/i18n';
 import '../global.css';
@@ -186,12 +186,9 @@ function AppContent() {
   }
 
   return (
-    <View style={{ flex: 1, flexDirection: isTV ? 'row' : 'column' }}>
+    <View style={{ flex: 1, flexDirection: isDesktop ? 'row' : 'column' }}>
       <StatusBar style="light" />
-      {/* Connection status indicator - disabled */}
-      {/* {!isTV && <ConnectionStatusIndicator />} */}
-      {/* TV Sidebar - Left side navigation for TV */}
-      {isTV && <TVSidebar />}
+      {isDesktop && <DesktopSidebar />}
       <View style={{ flex: 1 }}>
         <Stack screenOptions={DEFAULT_SCREEN_OPTIONS}>
         {/* Auth screens - crossfade for seamless transition */}
@@ -240,8 +237,8 @@ function AppContent() {
         <Stack.Screen name="search" options={SEARCH_MODAL_OPTIONS} />
       </Stack>
       <MiniPlayer />
-      {/* Bottom navigation - hidden on TV (uses sidebar instead) */}
-      {!isTV && <BottomNav />}
+      {/* Bottom navigation - hidden on TV and desktop (use sidebar instead) */}
+      {!isTV && !isDesktop && <BottomNav />}
       </View>
     </View>
   );

@@ -4,6 +4,8 @@ import { SafeAreaView } from '@/providers';
 import { router } from 'expo-router';
 import Animated, { FadeInDown, FadeInRight } from 'react-native-reanimated';
 import { useSettingsStore, selectHasJellyseerr } from '@/stores/settingsStore';
+import { isTV } from '@/utils/platform';
+import { TVJellyseerrScreen } from '@/components/tv/jellyseerr';
 import {
   useJellyseerrUser,
   useTrending,
@@ -58,6 +60,10 @@ function getItemStatus(item: JellyseerrDiscoverItem): number | undefined {
 type TabType = 'discover' | 'requests' | 'admin';
 
 export default function RequestsScreen() {
+  if (isTV) {
+    return <TVJellyseerrScreen />;
+  }
+
   const [activeTab, setActiveTab] = useState<TabType>('discover');
   const [searchQuery, setSearchQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
