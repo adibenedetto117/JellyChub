@@ -10,6 +10,7 @@ interface AccountSectionProps {
   activeServerName?: string;
   hideMedia: boolean;
   onSwitchUser: () => void;
+  onQuickConnectAuthorize: () => void;
   onLogout: () => void;
 }
 
@@ -18,6 +19,7 @@ export function AccountSection({
   activeServerName,
   hideMedia,
   onSwitchUser,
+  onQuickConnectAuthorize,
   onLogout,
 }: AccountSectionProps) {
   const { t } = useTranslation();
@@ -41,6 +43,12 @@ export function AccountSection({
       <SettingsRow
         title="Custom Headers"
         onPress={() => router.push('/settings/custom-headers' as any)}
+        rightElement={<Text style={{ color: 'rgba(255,255,255,0.5)' }}>{'>'}</Text>}
+      />
+      <SettingsRow
+        title="Quick Connect"
+        subtitle="Authorize another device"
+        onPress={onQuickConnectAuthorize}
         rightElement={<Text style={{ color: 'rgba(255,255,255,0.5)' }}>{'>'}</Text>}
       />
       <SettingsRow

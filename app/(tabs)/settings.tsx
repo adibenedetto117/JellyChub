@@ -3,6 +3,7 @@ import { View, ScrollView, Alert } from 'react-native';
 import { SafeAreaView } from '@/providers';
 import { router } from 'expo-router';
 import { useAuthStore, useSettingsStore } from '@/stores';
+import { useMiniPlayerPadding } from '@/hooks';
 import {
   SettingsHeader,
   AccountSection,
@@ -13,6 +14,7 @@ import {
   DownloadsSection,
   AboutSection,
   OpenSubtitlesModal,
+  QuickConnectAuthorizeModal,
   NavigationSection,
   NotificationsSection,
   OfflineModeSection,
@@ -22,8 +24,10 @@ import {
 export default function SettingsScreen() {
   const [showUserSwitcher, setShowUserSwitcher] = useState(false);
   const [showOpenSubtitlesInput, setShowOpenSubtitlesInput] = useState(false);
+  const [showQuickConnectAuthorize, setShowQuickConnectAuthorize] = useState(false);
   const [showHideMediaToggle, setShowHideMediaToggle] = useState(false);
 
+  const miniPlayerPadding = useMiniPlayerPadding();
   const { currentUser, logout, servers, activeServerId } = useAuthStore();
   const {
     accentColor,
@@ -67,6 +71,7 @@ export default function SettingsScreen() {
             activeServerName={activeServer?.name}
             hideMedia={hideMedia}
             onSwitchUser={() => setShowUserSwitcher(true)}
+            onQuickConnectAuthorize={() => setShowQuickConnectAuthorize(true)}
             onLogout={handleLogout}
           />
         )}
@@ -104,7 +109,7 @@ export default function SettingsScreen() {
           onHideMediaToggleUnlocked={() => setShowHideMediaToggle(true)}
         />
 
-        <View className="h-24" />
+        <View style={{ height: 96 + miniPlayerPadding }} />
       </ScrollView>
 
       {showUserSwitcher && <UserSwitcher onClose={() => setShowUserSwitcher(false)} />}
@@ -115,6 +120,12 @@ export default function SettingsScreen() {
         accentColor={accentColor}
         onSave={setOpenSubtitlesApiKey}
         onClose={() => setShowOpenSubtitlesInput(false)}
+      />
+
+      <QuickConnectAuthorizeModal
+        visible={showQuickConnectAuthorize}
+        accentColor={accentColor}
+        onClose={() => setShowQuickConnectAuthorize(false)}
       />
     </SafeAreaView>
   );

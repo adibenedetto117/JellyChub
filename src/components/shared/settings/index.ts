@@ -60,6 +60,7 @@ export { NavigationSection } from './NavigationSection';
 export { NotificationsSection } from './NotificationsSection';
 export { OfflineModeSection } from './OfflineModeSection';
 export { OpenSubtitlesModal } from './OpenSubtitlesModal';
+export { QuickConnectAuthorizeModal } from './QuickConnectAuthorizeModal';
 export { PickerModal } from './PickerModal';
 export { PlaybackSection } from './PlaybackSection';
 export { SecuritySection } from './SecuritySection';

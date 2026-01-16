@@ -102,6 +102,22 @@ export async function authenticateWithQuickConnect(
   return response.data;
 }
 
+export async function authorizeQuickConnect(code: string): Promise<boolean> {
+  const response = await jellyfinClient.api.post<boolean>(
+    `/QuickConnect/Authorize?Code=${code}`
+  );
+  return response.data;
+}
+
+export async function isQuickConnectEnabled(): Promise<boolean> {
+  try {
+    const response = await jellyfinClient.api.get<boolean>('/QuickConnect/Enabled');
+    return response.data;
+  } catch {
+    return false;
+  }
+}
+
 export async function getCurrentUser(): Promise<JellyfinUser> {
   const response = await jellyfinClient.api.get<JellyfinUser>('/Users/Me');
   return response.data;

@@ -18,6 +18,8 @@ export {
   initiateQuickConnect,
   checkQuickConnectStatus,
   authenticateWithQuickConnect,
+  authorizeQuickConnect,
+  isQuickConnectEnabled,
   getCurrentUser,
   validateServerUrl,
 } from './auth';
