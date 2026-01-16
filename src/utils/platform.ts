@@ -14,8 +14,10 @@ export const isIOS = Platform.OS === 'ios';
 export const isAndroid = Platform.OS === 'android';
 export const isWeb = Platform.OS === 'web';
 
-// Desktop detection (Electron environment)
-export const isDesktop = isWeb && typeof window !== 'undefined' && !!(window as any).electronAPI;
+// Desktop detection (Electron or web browser on desktop-sized screen)
+export const isElectron = isWeb && typeof window !== 'undefined' && !!(window as any).electronAPI;
+export const isDesktopWeb = isWeb && !isTV && screenSize >= 1024;
+export const isDesktop = isElectron || isDesktopWeb;
 export const isMacOS = isDesktop && typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform);
 export const isWindows = isDesktop && typeof navigator !== 'undefined' && /Win/i.test(navigator.platform);
 export const isLinux = isDesktop && typeof navigator !== 'undefined' && /Linux/i.test(navigator.platform);

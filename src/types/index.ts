@@ -2,6 +2,7 @@ export * from './jellyfin';
 export * from './jellyseerr';
 export * from './livetv';
 export * from './player';
+import './react-native-tv';
 
 export type { ElectronAPI, ElectronPlatformInfo, ElectronThemeInfo } from './electron';
 

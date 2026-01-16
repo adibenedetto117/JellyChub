@@ -116,7 +116,7 @@ export const initialSettingsState: Omit<SettingsState, '_hasHydrated'> = {
   jellyseerrYearFilter: null,
   notifications: {
     downloadComplete: true,
-    nowPlaying: false,
+    nowPlaying: true,
   },
   language: null,
 };

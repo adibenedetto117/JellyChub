@@ -1,7 +1,41 @@
 import { jellyfinClient } from './client';
-import type { UserPolicy } from '@/types/jellyfin';
+import type { UserPolicy, BaseItem } from '@/types/jellyfin';
 
 export type { UserPolicy };
+
+export type RemoteSearchType = 'Movie' | 'Series' | 'Episode' | 'MusicAlbum' | 'MusicArtist' | 'Person' | 'Book';
+
+export interface RemoteSearchInfo {
+  SearchInfo: {
+    Name?: string;
+    Year?: number;
+    ProviderIds?: Record<string, string>;
+  };
+  ItemId?: string;
+  IncludeDisabledProviders?: boolean;
+}
+
+export interface RemoteSearchResult {
+  Name: string;
+  ProductionYear?: number;
+  ProviderIds?: Record<string, string>;
+  ImageUrl?: string;
+  SearchProviderName?: string;
+  Overview?: string;
+}
+
+export interface RefreshItemOptions {
+  metadataRefreshMode?: 'None' | 'ValidationOnly' | 'Default' | 'FullRefresh';
+  imageRefreshMode?: 'None' | 'ValidationOnly' | 'Default' | 'FullRefresh';
+  replaceAllMetadata?: boolean;
+  replaceAllImages?: boolean;
+  recursive?: boolean;
+}
+
+export interface ApplyRemoteSearchOptions {
+  replaceAllMetadata?: boolean;
+  replaceAllImages?: boolean;
+}
 
 // Types for admin API responses
 export interface SystemInfo {
@@ -403,4 +437,79 @@ export async function createUser(name: string, password?: string): Promise<UserI
     Password: password || '',
   });
   return response.data;
+}
+
+/**
+ * Update item metadata
+ */
+export async function updateItem(itemId: string, updates: Partial<BaseItem>): Promise<void> {
+  await jellyfinClient.api.post(`/Items/${itemId}`, {
+    Id: itemId,
+    ...updates,
+  });
+}
+
+/**
+ * Search remote metadata providers for item identification
+ */
+export async function searchRemoteMetadata(
+  type: RemoteSearchType,
+  searchInfo: RemoteSearchInfo
+): Promise<RemoteSearchResult[]> {
+  const response = await jellyfinClient.api.post<RemoteSearchResult[]>(
+    `/Items/RemoteSearch/${type}`,
+    searchInfo
+  );
+  return response.data;
+}
+
+/**
+ * Apply remote search result to an item
+ */
+export async function applyRemoteSearchResult(
+  itemId: string,
+  result: RemoteSearchResult,
+  options: ApplyRemoteSearchOptions = {}
+): Promise<void> {
+  const params = new URLSearchParams();
+  if (options.replaceAllMetadata !== undefined) {
+    params.set('ReplaceAllMetadata', String(options.replaceAllMetadata));
+  }
+  if (options.replaceAllImages !== undefined) {
+    params.set('ReplaceAllImages', String(options.replaceAllImages));
+  }
+
+  const queryString = params.toString();
+  const url = `/Items/RemoteSearch/Apply/${itemId}${queryString ? `?${queryString}` : ''}`;
+
+  await jellyfinClient.api.post(url, result);
+}
+
+/**
+ * Refresh item metadata from configured providers
+ */
+export async function refreshItemMetadata(
+  itemId: string,
+  options: RefreshItemOptions = {}
+): Promise<void> {
+  const params = new URLSearchParams();
+
+  if (options.metadataRefreshMode) {
+    params.set('MetadataRefreshMode', options.metadataRefreshMode);
+  }
+  if (options.imageRefreshMode) {
+    params.set('ImageRefreshMode', options.imageRefreshMode);
+  }
+  if (options.replaceAllMetadata !== undefined) {
+    params.set('ReplaceAllMetadata', String(options.replaceAllMetadata));
+  }
+  if (options.replaceAllImages !== undefined) {
+    params.set('ReplaceAllImages', String(options.replaceAllImages));
+  }
+  if (options.recursive !== undefined) {
+    params.set('Recursive', String(options.recursive));
+  }
+
+  const queryString = params.toString();
+  await jellyfinClient.api.post(`/Items/${itemId}/Refresh${queryString ? `?${queryString}` : ''}`);
 }
