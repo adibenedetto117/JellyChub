@@ -19,7 +19,9 @@ interface ServerConnectionStatus {
 
 export function useServerSelectScreen() {
   const { t } = useTranslation();
-  const [serverUrl, setServerUrl] = useState('');
+  const [protocol, setProtocol] = useState<'http' | 'https'>('https');
+  const [host, setHost] = useState('');
+  const [port, setPort] = useState('');
   const [isValidating, setIsValidating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showAddServer, setShowAddServer] = useState(false);
@@ -27,8 +29,16 @@ export function useServerSelectScreen() {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [customHeaders, setCustomHeaders] = useState<CustomHeader[]>([]);
 
-  const { servers, addServer, setActiveServer, removeServer } = useAuthStore();
+  const buildUrl = useCallback(() => {
+    const trimmedHost = host.trim();
+    if (!trimmedHost) return '';
+    return `${protocol}://${trimmedHost}${port ? ':' + port : ''}`;
+  }, [protocol, host, port]);
+
+  const { servers, addServer, setActiveServer, removeServer, currentUser, activeServerId } = useAuthStore();
   const { setOfflineMode } = useSettingsStore();
+
+  const isLoggedIn = !!currentUser && !!activeServerId;
 
   const getHeadersRecord = useCallback((headers: CustomHeader[]): Record<string, string> | undefined => {
     const validHeaders = headers.filter((h) => h.name.trim() && h.value.trim());
@@ -97,7 +107,8 @@ export function useServerSelectScreen() {
   }, [servers.length]);
 
   const handleAddServer = useCallback(async () => {
-    if (!serverUrl.trim()) {
+    const url = buildUrl();
+    if (!url) {
       setError(t('auth.invalidUrl'));
       return;
     }
@@ -106,11 +117,6 @@ export function useServerSelectScreen() {
     setError(null);
 
     try {
-      let url = serverUrl.trim();
-      if (!url.startsWith('http://') && !url.startsWith('https://')) {
-        url = `https://${url}`;
-      }
-
       const headersRecord = getHeadersRecord(customHeaders);
       const serverInfo = await validateServerUrl(url, headersRecord);
 
@@ -128,7 +134,9 @@ export function useServerSelectScreen() {
 
       jellyfinClient.initialize(url, headersRecord);
       setActiveServer(serverId);
-      setServerUrl('');
+      setProtocol('https');
+      setHost('');
+      setPort('');
       setCustomHeaders([]);
       setShowAdvanced(false);
       setShowAddServer(false);
@@ -138,7 +146,7 @@ export function useServerSelectScreen() {
     } finally {
       setIsValidating(false);
     }
-  }, [serverUrl, t, getHeadersRecord, customHeaders, addServer, servers.length, setActiveServer]);
+  }, [buildUrl, t, getHeadersRecord, customHeaders, addServer, servers.length, setActiveServer]);
 
   const handleSelectServer = useCallback((id: string) => {
     const server = servers.find((s) => s.id === id);
@@ -166,13 +174,25 @@ export function useServerSelectScreen() {
   const handleCancelAddServer = useCallback(() => {
     setShowAddServer(false);
     setError(null);
-    setServerUrl('');
+    setProtocol('https');
+    setHost('');
+    setPort('');
     setCustomHeaders([]);
     setShowAdvanced(false);
   }, []);
 
-  const handleServerUrlChange = useCallback((text: string) => {
-    setServerUrl(text);
+  const handleProtocolChange = useCallback((newProtocol: 'http' | 'https') => {
+    setProtocol(newProtocol);
+    setError(null);
+  }, []);
+
+  const handleHostChange = useCallback((text: string) => {
+    setHost(text);
+    setError(null);
+  }, []);
+
+  const handlePortChange = useCallback((text: string) => {
+    setPort(text);
     setError(null);
   }, []);
 
@@ -184,9 +204,21 @@ export function useServerSelectScreen() {
     setShowAddServer(true);
   }, []);
 
+  const handleGoBack = useCallback(() => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/(tabs)/home');
+    }
+  }, []);
+
   return {
+    isLoggedIn,
+    activeServerId,
     servers,
-    serverUrl,
+    protocol,
+    host,
+    port,
     isValidating,
     error,
     showAddServer,
@@ -198,11 +230,14 @@ export function useServerSelectScreen() {
     handleRemoveServer,
     handleEnterOfflineMode,
     handleCancelAddServer,
-    handleServerUrlChange,
+    handleProtocolChange,
+    handleHostChange,
+    handlePortChange,
     toggleAdvanced,
     openAddServer,
     addCustomHeader,
     updateCustomHeader,
     removeCustomHeader,
+    handleGoBack,
   };
 }

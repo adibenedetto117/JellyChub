@@ -1,4 +1,5 @@
-import { View, Text, ScrollView } from 'react-native';
+import { View, Text, ScrollView, Pressable } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from '@/providers';
 import { useServerSelectScreen } from '@/hooks';
 import {
@@ -11,8 +12,12 @@ import {
 
 export default function ServerSelectScreen() {
   const {
+    isLoggedIn,
+    activeServerId,
     servers,
-    serverUrl,
+    protocol,
+    host,
+    port,
     isValidating,
     error,
     showAddServer,
@@ -24,40 +29,60 @@ export default function ServerSelectScreen() {
     handleRemoveServer,
     handleEnterOfflineMode,
     handleCancelAddServer,
-    handleServerUrlChange,
+    handleProtocolChange,
+    handleHostChange,
+    handlePortChange,
     toggleAdvanced,
     openAddServer,
     addCustomHeader,
     updateCustomHeader,
     removeCustomHeader,
+    handleGoBack,
   } = useServerSelectScreen();
 
   return (
     <SafeAreaView className="flex-1 bg-background">
+      {isLoggedIn && (
+        <Pressable
+          className="flex-row items-center px-4 py-3"
+          onPress={handleGoBack}
+        >
+          <Ionicons name="arrow-back" size={24} color="white" />
+          <Text className="text-white ml-2">Back to App</Text>
+        </Pressable>
+      )}
       <ScrollView
         className="flex-1"
         contentContainerClassName="px-6 pb-8"
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <AuthHeader title="JellyChub" subtitle="Your media, everywhere" />
+        <AuthHeader
+          title="JellyChub"
+          subtitle={isLoggedIn ? "Manage your servers" : "Your media, everywhere"}
+        />
 
         <ServerList
           servers={servers}
           connectionStatus={connectionStatus}
+          activeServerId={activeServerId}
           onSelectServer={handleSelectServer}
           onRemoveServer={handleRemoveServer}
         />
 
         {showAddServer ? (
           <AddServerForm
-            serverUrl={serverUrl}
+            protocol={protocol}
+            host={host}
+            port={port}
             isValidating={isValidating}
             error={error}
             showAdvanced={showAdvanced}
             customHeaders={customHeaders}
             hasExistingServers={servers.length > 0}
-            onServerUrlChange={handleServerUrlChange}
+            onProtocolChange={handleProtocolChange}
+            onHostChange={handleHostChange}
+            onPortChange={handlePortChange}
             onToggleAdvanced={toggleAdvanced}
             onAddHeader={addCustomHeader}
             onUpdateHeader={updateCustomHeader}

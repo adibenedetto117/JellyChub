@@ -21,6 +21,7 @@ interface ServerCardProps {
         isChecking: boolean;
       }
     | undefined;
+  isActive?: boolean;
   onSelect: () => void;
   onRemove: () => void;
   index: number;
@@ -29,6 +30,7 @@ interface ServerCardProps {
 export function ServerCard({
   server,
   status,
+  isActive,
   onSelect,
   onRemove,
   index,
@@ -59,7 +61,9 @@ export function ServerCard({
       style={animatedStyle}
     >
       <Pressable
-        className="bg-surface rounded-2xl p-4 mb-3 border border-white/5"
+        className={`bg-surface rounded-2xl p-4 mb-3 border ${
+          isActive ? 'border-accent' : 'border-white/5'
+        }`}
         onPress={onSelect}
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
@@ -79,6 +83,11 @@ export function ServerCard({
               <Text className="text-white text-lg font-semibold" numberOfLines={1}>
                 {server.name}
               </Text>
+              {isActive && (
+                <View className="bg-accent/20 rounded px-2 py-0.5 ml-2">
+                  <Text className="text-accent text-xs font-medium">Active</Text>
+                </View>
+              )}
               {hasCustomHeaders && (
                 <Text className="text-text-muted text-xs ml-2">[Headers]</Text>
               )}
@@ -92,16 +101,18 @@ export function ServerCard({
               </Text>
             )}
           </View>
-          <Pressable
-            className="p-2 -mr-2 -mt-1"
-            onPress={(e) => {
-              e.stopPropagation();
-              onRemove();
-            }}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <Text className="text-text-tertiary text-lg">x</Text>
-          </Pressable>
+          {!isActive && (
+            <Pressable
+              className="p-2 -mr-2 -mt-1"
+              onPress={(e) => {
+                e.stopPropagation();
+                onRemove();
+              }}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Text className="text-text-tertiary text-lg">x</Text>
+            </Pressable>
+          )}
         </View>
       </Pressable>
     </Animated.View>

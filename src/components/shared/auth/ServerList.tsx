@@ -20,6 +20,7 @@ interface ServerConnectionStatus {
 interface ServerListProps {
   servers: Server[];
   connectionStatus: Record<string, ServerConnectionStatus | undefined>;
+  activeServerId?: string | null;
   onSelectServer: (id: string) => void;
   onRemoveServer: (id: string) => void;
   animationDelay?: number;
@@ -28,6 +29,7 @@ interface ServerListProps {
 export function ServerList({
   servers,
   connectionStatus,
+  activeServerId,
   onSelectServer,
   onRemoveServer,
   animationDelay = 200,
@@ -48,6 +50,7 @@ export function ServerList({
           key={server.id}
           server={server}
           status={connectionStatus[server.id]}
+          isActive={server.id === activeServerId}
           onSelect={() => onSelectServer(server.id)}
           onRemove={() => onRemoveServer(server.id)}
           index={index}

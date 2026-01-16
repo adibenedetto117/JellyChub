@@ -9,13 +9,17 @@ interface CustomHeader {
 }
 
 interface AddServerFormProps {
-  serverUrl: string;
+  protocol: 'http' | 'https';
+  host: string;
+  port: string;
   isValidating: boolean;
   error: string | null;
   showAdvanced: boolean;
   customHeaders: CustomHeader[];
   hasExistingServers: boolean;
-  onServerUrlChange: (text: string) => void;
+  onProtocolChange: (protocol: 'http' | 'https') => void;
+  onHostChange: (text: string) => void;
+  onPortChange: (text: string) => void;
   onToggleAdvanced: () => void;
   onAddHeader: () => void;
   onUpdateHeader: (id: string, field: 'name' | 'value', value: string) => void;
@@ -25,13 +29,17 @@ interface AddServerFormProps {
 }
 
 export function AddServerForm({
-  serverUrl,
+  protocol,
+  host,
+  port,
   isValidating,
   error,
   showAdvanced,
   customHeaders,
   hasExistingServers,
-  onServerUrlChange,
+  onProtocolChange,
+  onHostChange,
+  onPortChange,
   onToggleAdvanced,
   onAddHeader,
   onUpdateHeader,
@@ -52,17 +60,50 @@ export function AddServerForm({
         <Text className="text-text-tertiary text-xs uppercase tracking-wider mb-2">
           {t('auth.serverUrl')}
         </Text>
-        <TextInput
-          className="bg-background-secondary text-white px-4 py-3.5 rounded-xl text-base"
-          placeholder="jellyfin.example.com"
-          placeholderTextColor="rgba(255,255,255,0.25)"
-          value={serverUrl}
-          onChangeText={onServerUrlChange}
-          autoCapitalize="none"
-          autoCorrect={false}
-          keyboardType="url"
-          autoFocus={!hasExistingServers}
-        />
+
+        <View className="flex-row gap-2 items-center">
+          <View className="bg-background-secondary rounded-xl overflow-hidden">
+            <Pressable
+              className={`px-3 py-3 ${protocol === 'https' ? 'bg-accent' : ''}`}
+              onPress={() => onProtocolChange('https')}
+            >
+              <Text className={`text-xs font-medium ${protocol === 'https' ? 'text-white' : 'text-white/50'}`}>
+                https://
+              </Text>
+            </Pressable>
+            <Pressable
+              className={`px-3 py-3 ${protocol === 'http' ? 'bg-accent' : ''}`}
+              onPress={() => onProtocolChange('http')}
+            >
+              <Text className={`text-xs font-medium ${protocol === 'http' ? 'text-white' : 'text-white/50'}`}>
+                http://
+              </Text>
+            </Pressable>
+          </View>
+
+          <TextInput
+            className="flex-1 bg-background-secondary text-white px-4 py-3.5 rounded-xl text-base"
+            placeholder="jellyfin.example.com"
+            placeholderTextColor="rgba(255,255,255,0.25)"
+            value={host}
+            onChangeText={onHostChange}
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="url"
+            autoFocus={!hasExistingServers}
+          />
+
+          <TextInput
+            className="w-16 bg-background-secondary text-white px-3 py-3.5 rounded-xl text-base text-center"
+            placeholder="8096"
+            placeholderTextColor="rgba(255,255,255,0.25)"
+            value={port}
+            onChangeText={onPortChange}
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="number-pad"
+          />
+        </View>
       </View>
 
       <Pressable
