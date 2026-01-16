@@ -7,7 +7,6 @@ import { useAuthStore, selectActiveServer } from '@/stores';
 import { jellyseerrClient } from '@/api/external/jellyseerr';
 import { colors } from '@/theme';
 import {
-  BrandingSection,
   ConnectionStatus,
   ConnectionForm,
   styles,
@@ -259,8 +258,6 @@ export default function JellyseerrSettingsScreen() {
       />
 
       <ScrollView style={styles.scrollView} keyboardShouldPersistTaps="handled">
-        <BrandingSection />
-
         {isConnected ? (
           <ConnectionStatus
             connectionStatus={connectionStatus}
