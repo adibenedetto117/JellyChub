@@ -146,7 +146,7 @@ export const TrickplayPreview = memo(function TrickplayPreview({
                   ],
                 },
               ]}
-              resizeMode="cover"
+              resizeMode="stretch"
               onLoad={() => setLoadedTileIndex(tileIndex)}
               onError={() => setTileLoadError(true)}
             />

@@ -10,21 +10,21 @@ import {
 } from '../utils';
 
 export interface AudioTrackInfo {
-  index: number;
-  language?: string;
-  title?: string;
-  codec?: string;
-  channels?: number;
-  isDefault?: boolean;
+  Index: number;
+  Language?: string;
+  Title?: string;
+  Codec?: string;
+  Channels?: number;
+  IsDefault?: boolean;
 }
 
 export interface SubtitleTrackInfo {
-  index: number;
-  language?: string;
-  title?: string;
-  isDefault?: boolean;
-  isForced?: boolean;
-  codec?: string;
+  Index: number;
+  Language?: string;
+  Title?: string;
+  IsDefault?: boolean;
+  IsForced?: boolean;
+  Codec?: string;
 }
 
 interface Props {
@@ -51,15 +51,15 @@ export function AudioSubtitleSelector({
   const isWideScreen = screenWidth > 600;
 
   const getAudioTrackLabel = (track: AudioTrackInfo): string => {
-    if (track.title) return track.title;
-    if (track.language) return getLanguageName(track.language) || track.language.toUpperCase();
-    return `Track ${track.index + 1}`;
+    if (track.Title) return track.Title;
+    if (track.Language) return getLanguageName(track.Language) || track.Language.toUpperCase();
+    return `Track ${track.Index + 1}`;
   };
 
   const getSubtitleTrackLabel = (track: SubtitleTrackInfo): string => {
-    if (track.title) return track.title;
-    if (track.language) return getLanguageName(track.language) || track.language.toUpperCase();
-    return `Track ${track.index + 1}`;
+    if (track.Title) return track.Title;
+    if (track.Language) return getLanguageName(track.Language) || track.Language.toUpperCase();
+    return `Track ${track.Index + 1}`;
   };
 
   const renderAudioSection = () => (
@@ -74,15 +74,15 @@ export function AudioSubtitleSelector({
         contentContainerStyle={styles.trackListContent}
       >
         {audioTracks.map((track) => {
-          const isSelected = selectedAudioIndex === track.index;
-          const channelLabel = getChannelLabel(track.channels);
-          const codecLabel = getAudioCodecLabel(track.codec);
+          const isSelected = selectedAudioIndex === track.Index;
+          const channelLabel = getChannelLabel(track.Channels);
+          const codecLabel = getAudioCodecLabel(track.Codec);
           const detailParts = [channelLabel, codecLabel].filter(Boolean);
 
           return (
             <Pressable
-              key={track.index}
-              onPress={() => onSelectAudio(track.index)}
+              key={track.Index}
+              onPress={() => onSelectAudio(track.Index)}
               style={[
                 styles.trackItem,
                 isSelected && { backgroundColor: accentColor + '25' },
@@ -103,7 +103,7 @@ export function AudioSubtitleSelector({
                   </Text>
                 )}
               </View>
-              {track.isDefault && (
+              {track.IsDefault && (
                 <View style={[styles.badge, { backgroundColor: accentColor + '30' }]}>
                   <Text style={[styles.badgeText, { color: accentColor }]}>Default</Text>
                 </View>
@@ -152,14 +152,14 @@ export function AudioSubtitleSelector({
         </Pressable>
 
         {subtitleTracks.map((track) => {
-          const isSelected = selectedSubtitleIndex === track.index;
-          const formatLabel = getSubtitleFormatLabel(track.codec);
-          const isImageBased = isImageBasedCodec(track.codec);
+          const isSelected = selectedSubtitleIndex === track.Index;
+          const formatLabel = getSubtitleFormatLabel(track.Codec);
+          const isImageBased = isImageBasedCodec(track.Codec);
 
           return (
             <Pressable
-              key={track.index}
-              onPress={() => onSelectSubtitle(track.index)}
+              key={track.Index}
+              onPress={() => onSelectSubtitle(track.Index)}
               style={[
                 styles.trackItem,
                 isSelected && { backgroundColor: accentColor + '25' },
@@ -189,12 +189,12 @@ export function AudioSubtitleSelector({
                 )}
               </View>
               <View style={styles.badgeContainer}>
-                {track.isForced && (
+                {track.IsForced && (
                   <View style={[styles.badge, { backgroundColor: accentColor + '30' }]}>
                     <Text style={[styles.badgeText, { color: accentColor }]}>Forced</Text>
                   </View>
                 )}
-                {track.isDefault && !track.isForced && (
+                {track.IsDefault && !track.IsForced && (
                   <View style={[styles.badge, { backgroundColor: accentColor + '30' }]}>
                     <Text style={[styles.badgeText, { color: accentColor }]}>Default</Text>
                   </View>

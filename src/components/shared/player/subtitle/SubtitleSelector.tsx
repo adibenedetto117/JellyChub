@@ -3,12 +3,12 @@ import { useSettingsStore } from '@/stores';
 import { getLanguageName, isImageBasedCodec, getSubtitleFormatLabelVerbose } from '../utils';
 
 export interface SubtitleTrackInfo {
-  index: number;
-  language?: string;
-  title?: string;
-  isDefault?: boolean;
-  isForced?: boolean;
-  codec?: string;
+  Index: number;
+  Language?: string;
+  Title?: string;
+  IsDefault?: boolean;
+  IsForced?: boolean;
+  Codec?: string;
 }
 
 interface Props {
@@ -45,9 +45,9 @@ export function SubtitleSelector({ onClose, tracks, selectedIndex, onSelectTrack
   };
 
   const getTrackLabel = (track: SubtitleTrackInfo) => {
-    if (track.title) return track.title;
-    if (track.language) return getLanguageName(track.language) || track.language.toUpperCase();
-    return `Track ${track.index + 1}`;
+    if (track.Title) return track.Title;
+    if (track.Language) return getLanguageName(track.Language) || track.Language.toUpperCase();
+    return `Track ${track.Index + 1}`;
   };
 
   return (
@@ -88,20 +88,20 @@ export function SubtitleSelector({ onClose, tracks, selectedIndex, onSelectTrack
           {tracks.length > 0 && <View style={styles.divider} />}
 
           {tracks.map((track) => {
-            const isSelected = selectedIndex === track.index;
-            const formatLabel = getSubtitleFormatLabelVerbose(track.codec);
-            const langName = track.title ? getLanguageName(track.language) : null;
-            const isImageBased = isImageBasedCodec(track.codec);
+            const isSelected = selectedIndex === track.Index;
+            const formatLabel = getSubtitleFormatLabelVerbose(track.Codec);
+            const langName = track.Title ? getLanguageName(track.Language) : null;
+            const isImageBased = isImageBasedCodec(track.Codec);
 
             const badges: string[] = [];
-            if (track.isForced) badges.push('Forced');
-            if (track.isDefault) badges.push('Default');
+            if (track.IsForced) badges.push('Forced');
+            if (track.IsDefault) badges.push('Default');
             if (isImageBased) badges.push('Burn-in');
 
             return (
               <Pressable
-                key={track.index}
-                onPress={() => handleSelectTrack(track.index)}
+                key={track.Index}
+                onPress={() => handleSelectTrack(track.Index)}
                 style={[
                   styles.trackItem,
                   isSelected && { backgroundColor: accentColor + '20' },

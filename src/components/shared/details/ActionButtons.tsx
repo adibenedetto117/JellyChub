@@ -21,6 +21,8 @@ interface ActionButtonsProps {
   onShuffle: () => void;
   onDownload: () => void;
   onToggleFavorite: () => void;
+  onEdit?: () => void;
+  canEdit?: boolean;
   t: (key: string) => string;
 }
 
@@ -41,6 +43,8 @@ export function ActionButtons({
   onShuffle,
   onDownload,
   onToggleFavorite,
+  onEdit,
+  canEdit,
   t,
 }: ActionButtonsProps) {
   if (type === 'artist' || type === 'boxset') {
@@ -128,6 +132,15 @@ export function ActionButtons({
               color={isFavorite ? accentColor : 'rgba(255,255,255,0.8)'}
             />
           )}
+        </Pressable>
+      )}
+      {canEdit && onEdit && (
+        <Pressable
+          onPress={onEdit}
+          className="w-14 h-14 rounded-xl items-center justify-center"
+          style={{ backgroundColor: accentColor + '20' }}
+        >
+          <Ionicons name="pencil" size={22} color={accentColor} />
         </Pressable>
       )}
     </View>

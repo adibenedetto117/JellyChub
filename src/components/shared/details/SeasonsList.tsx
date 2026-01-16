@@ -4,8 +4,15 @@ import { CachedImage } from '@/components/shared/ui/CachedImage';
 import { getImageUrl, getDisplayImageUrl, getDisplayName, navigateToDetails } from '@/utils';
 import type { BaseItem } from '@/types/jellyfin';
 
+interface SeasonWithCounts extends BaseItem {
+  ChildCount?: number;
+  UserData?: BaseItem['UserData'] & {
+    UnplayedItemCount?: number;
+  };
+}
+
 interface SeasonsListProps {
-  seasons: { Items: BaseItem[] } | undefined;
+  seasons: { Items: SeasonWithCounts[] } | undefined;
   isLoading: boolean;
   accentColor: string;
   currentDetailsRoute: string;
@@ -38,11 +45,18 @@ export function SeasonsList({
             : null;
           const seasonImageUrl = getDisplayImageUrl(season.Id, rawSeasonImageUrl, hideMedia, 'Primary');
           const seasonDisplayName = getDisplayName(season, hideMedia);
+          const childCount = season.ChildCount ?? 0;
+          const unplayedCount = season.UserData?.UnplayedItemCount ?? 0;
+          const watchedCount = childCount - unplayedCount;
+          const isFullyWatched = childCount > 0 && unplayedCount === 0;
+          const hasProgress = childCount > 0 && watchedCount > 0 && !isFullyWatched;
+          const progressPercent = childCount > 0 ? (watchedCount / childCount) * 100 : 0;
 
           return (
             <Pressable
               key={season.Id}
               className="bg-surface rounded-xl mb-3 flex-row items-center overflow-hidden"
+              style={isFullyWatched ? { opacity: 0.7 } : undefined}
               onPress={() => navigateToDetails('season', season.Id, currentDetailsRoute)}
             >
               <View className="w-16 h-24 bg-surface-elevated">
@@ -58,22 +72,44 @@ export function SeasonsList({
                     </Text>
                   </View>
                 )}
+                {isFullyWatched && (
+                  <View
+                    className="absolute top-1 right-1 w-5 h-5 rounded-full items-center justify-center"
+                    style={{ backgroundColor: accentColor }}
+                  >
+                    <Ionicons name="checkmark" size={14} color="#fff" />
+                  </View>
+                )}
               </View>
               <View className="flex-1 pl-4 pr-3 py-2">
                 <Text className="text-white font-medium">{seasonDisplayName}</Text>
                 <View className="flex-row items-center mt-1">
-                  {(season as any).ChildCount != null && (
+                  {childCount > 0 && (
                     <Text className="text-text-tertiary text-xs">
-                      {t('details.episodesCount', { count: (season as any).ChildCount })}
+                      {t('details.episodesCount', { count: childCount })}
                     </Text>
                   )}
                   {season.CommunityRating && (
                     <Text className="text-text-tertiary text-xs">
-                      {(season as any).ChildCount != null ? ' • ' : ''}⭐ {season.CommunityRating.toFixed(1)}
+                      {childCount > 0 ? ' - ' : ''}
+                      {season.CommunityRating.toFixed(1)}
                     </Text>
                   )}
                 </View>
-                {season.ProductionYear && !hideMedia && (
+                {hasProgress && (
+                  <View className="mt-1.5">
+                    <View className="h-1 bg-surface-elevated rounded-full overflow-hidden">
+                      <View
+                        className="h-full rounded-full"
+                        style={{ width: `${progressPercent}%`, backgroundColor: accentColor }}
+                      />
+                    </View>
+                    <Text className="text-text-muted text-xs mt-0.5">
+                      {watchedCount}/{childCount} watched
+                    </Text>
+                  </View>
+                )}
+                {season.ProductionYear && !hideMedia && !hasProgress && (
                   <Text className="text-text-muted text-xs mt-0.5">
                     {season.ProductionYear}
                   </Text>

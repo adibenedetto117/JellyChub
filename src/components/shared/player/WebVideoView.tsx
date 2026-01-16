@@ -1,120 +1,146 @@
 /**
- * Web Video View - HTML5 video fallback for web/desktop platforms
+ * Web Video View - HTML5 video for web/desktop platforms
+ * Works independently of expo-video, uses native HTML5 video element
  */
 import React, { useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
 import { View, Platform } from 'react-native';
 
 interface WebVideoViewProps {
-  player: any;
+  player?: any;
   streamUrl: string;
   style?: any;
   onTimeUpdate?: (currentTime: number) => void;
   onDurationChange?: (duration: number) => void;
   onEnded?: () => void;
   onError?: (error: any) => void;
+  onPlay?: () => void;
+  onPause?: () => void;
+  onLoadStart?: () => void;
+  onCanPlay?: () => void;
 }
 
 export const WebVideoView = forwardRef<HTMLVideoElement, WebVideoViewProps>(
-  ({ player, streamUrl, style, onTimeUpdate, onDurationChange, onEnded, onError }, ref) => {
+  ({ player, streamUrl, style, onTimeUpdate, onDurationChange, onEnded, onError, onPlay, onPause, onLoadStart, onCanPlay }, ref) => {
     const videoRef = useRef<HTMLVideoElement>(null);
+    const hasLoadedSource = useRef(false);
 
     useImperativeHandle(ref, () => videoRef.current as HTMLVideoElement);
 
-    // Sync player state to video element
+    // Load video source
     useEffect(() => {
       const video = videoRef.current;
-      if (!video || !player) return;
-
-      // Handle play/pause from player
-      const handlePlayingChange = () => {
-        if (player.playing) {
-          video.play().catch(console.error);
-        } else {
-          video.pause();
-        }
-      };
-
-      // Handle seek
-      const handleSeek = () => {
-        if (player.currentTime !== undefined) {
-          video.currentTime = player.currentTime;
-        }
-      };
-
-      // Handle volume/mute
-      const handleVolumeChange = () => {
-        video.volume = player.volume ?? 1;
-        video.muted = player.muted ?? false;
-      };
-
-      // Handle playback rate
-      const handleRateChange = () => {
-        video.playbackRate = player.playbackRate ?? 1;
-      };
-
-      // Subscribe to player changes
-      if (player.addListener) {
-        const listeners = [
-          player.addListener('playingChange', handlePlayingChange),
-          player.addListener('currentTimeChange', handleSeek),
-          player.addListener('volumeChange', handleVolumeChange),
-          player.addListener('playbackRateChange', handleRateChange),
-        ];
-        return () => listeners.forEach(l => l?.remove?.());
+      if (!video || !streamUrl) {
+        console.log('[WebVideoView] No video element or streamUrl', { hasVideo: !!video, streamUrl });
+        return;
       }
-    }, [player]);
 
-    // Sync video element state back to player
+      console.log('[WebVideoView] Loading stream URL:', streamUrl);
+      hasLoadedSource.current = false;
+      video.src = streamUrl;
+      video.load();
+    }, [streamUrl]);
+
+    // Set up event listeners
     useEffect(() => {
       const video = videoRef.current;
       if (!video) return;
 
       const handleTimeUpdate = () => {
         onTimeUpdate?.(video.currentTime);
-        // Update player's currentTime if possible
-        if (player && typeof player.currentTime === 'number') {
-          // Don't set directly to avoid loops
-        }
       };
 
       const handleDurationChange = () => {
+        console.log('[WebVideoView] Duration changed:', video.duration);
         onDurationChange?.(video.duration);
       };
 
       const handleEnded = () => {
+        console.log('[WebVideoView] Video ended');
         onEnded?.();
       };
 
-      const handleError = (e: any) => {
-        onError?.(e);
+      const handleError = (e: Event) => {
+        const error = video.error;
+        console.error('[WebVideoView] Video error:', error?.code, error?.message);
+        onError?.(error);
+      };
+
+      const handleLoadStart = () => {
+        console.log('[WebVideoView] Load started');
+        onLoadStart?.();
+      };
+
+      const handleCanPlay = () => {
+        console.log('[WebVideoView] Can play');
+        hasLoadedSource.current = true;
+        onCanPlay?.();
+        // Auto-play when ready
+        video.play().catch((e) => {
+          console.log('[WebVideoView] Auto-play blocked:', e.name);
+        });
+      };
+
+      const handlePlay = () => {
+        console.log('[WebVideoView] Playing');
+        onPlay?.();
+      };
+
+      const handlePause = () => {
+        console.log('[WebVideoView] Paused');
+        onPause?.();
+      };
+
+      const handleWaiting = () => {
+        console.log('[WebVideoView] Buffering...');
+      };
+
+      const handlePlaying = () => {
+        console.log('[WebVideoView] Playing (buffered)');
       };
 
       video.addEventListener('timeupdate', handleTimeUpdate);
       video.addEventListener('durationchange', handleDurationChange);
       video.addEventListener('ended', handleEnded);
       video.addEventListener('error', handleError);
+      video.addEventListener('loadstart', handleLoadStart);
+      video.addEventListener('canplay', handleCanPlay);
+      video.addEventListener('play', handlePlay);
+      video.addEventListener('pause', handlePause);
+      video.addEventListener('waiting', handleWaiting);
+      video.addEventListener('playing', handlePlaying);
 
       return () => {
         video.removeEventListener('timeupdate', handleTimeUpdate);
         video.removeEventListener('durationchange', handleDurationChange);
         video.removeEventListener('ended', handleEnded);
         video.removeEventListener('error', handleError);
+        video.removeEventListener('loadstart', handleLoadStart);
+        video.removeEventListener('canplay', handleCanPlay);
+        video.removeEventListener('play', handlePlay);
+        video.removeEventListener('pause', handlePause);
+        video.removeEventListener('waiting', handleWaiting);
+        video.removeEventListener('playing', handlePlaying);
       };
-    }, [onTimeUpdate, onDurationChange, onEnded, onError, player]);
+    }, [onTimeUpdate, onDurationChange, onEnded, onError, onPlay, onPause, onLoadStart, onCanPlay]);
 
-    // Update source when streamUrl changes
+    // Expose control methods via ref
     useEffect(() => {
       const video = videoRef.current;
-      if (!video || !streamUrl) return;
+      if (!video) return;
 
-      video.src = streamUrl;
-      video.load();
+      // Expose play/pause methods on the video element for external control
+      (video as any).togglePlayPause = () => {
+        if (video.paused) {
+          video.play().catch(() => {});
+        } else {
+          video.pause();
+        }
+      };
 
-      // Auto-play if player is in playing state
-      if (player?.playing) {
-        video.play().catch(console.error);
-      }
-    }, [streamUrl, player]);
+      (video as any).seekTo = (timeInSeconds: number) => {
+        video.currentTime = timeInSeconds;
+      };
+    }, []);
 
     if (Platform.OS !== 'web') {
       return null;

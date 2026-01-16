@@ -155,11 +155,18 @@ export const ContinueWatchingCard = memo(function ContinueWatchingCard({
 
   const typeIcon = item.Type === 'Episode' ? 'tv-outline' : 'film-outline';
 
+  const seasonName = item.Type === 'Episode' ? (item as Episode).SeasonName : null;
+
   return (
-    <Pressable onPress={onPress} onPressIn={handlePressIn} onPressOut={handlePressOut} style={styles.cardPressable}>
+    <View style={styles.cardPressable}>
       <Animated.View entering={FadeIn.duration(150)} style={animatedStyle}>
         <View style={[styles.card, { width: cardWidth }]}>
-          <View style={[styles.imageContainer, { height: cardHeight }]}>
+          <Pressable
+            onPress={onPress}
+            onPressIn={handlePressIn}
+            onPressOut={handlePressOut}
+            style={[styles.imageContainer, { height: cardHeight }]}
+          >
             <CachedImage
               uri={imageUrl}
               style={StyleSheet.absoluteFill}
@@ -173,20 +180,13 @@ export const ContinueWatchingCard = memo(function ContinueWatchingCard({
               style={StyleSheet.absoluteFill}
             />
 
-            <Pressable
-              style={styles.playIconContainer}
-              onPress={(e) => {
-                e.stopPropagation();
-                onPlay?.();
-              }}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            >
+            <View style={styles.playIconContainer} pointerEvents="none">
               <View style={[styles.playIcon, { backgroundColor: accentColor }]}>
                 <Ionicons name="play" size={24} color="#fff" style={{ marginLeft: 2 }} />
               </View>
-            </Pressable>
+            </View>
 
-            <View style={styles.cardContent}>
+            <View style={styles.cardContent} pointerEvents="none">
               <View style={styles.titleRow}>
                 <Ionicons name={typeIcon} size={14} color="rgba(255,255,255,0.7)" />
                 <Text style={[styles.cardTitle, { fontSize: fontSize.base }]} numberOfLines={1}>
@@ -200,22 +200,29 @@ export const ContinueWatchingCard = memo(function ContinueWatchingCard({
               )}
             </View>
 
-            <View style={styles.progressTrack}>
+            <View style={styles.progressTrack} pointerEvents="none">
               <View style={[styles.progressFill, { width: `${progress}%`, backgroundColor: accentColor }]} />
             </View>
-          </View>
+          </Pressable>
 
-          <View style={styles.footer}>
+          <Pressable style={styles.footer} onPress={onPress}>
             <View style={styles.footerLeft}>
               <Ionicons name="time-outline" size={14} color="rgba(255,255,255,0.5)" />
               <Text style={[styles.remainingText, { fontSize: fontSize.xs }]}>
                 {remainingTime} left
               </Text>
             </View>
-          </View>
+            {seasonName && (
+              <View style={[styles.seasonBadge, { backgroundColor: accentColor }]}>
+                <Text style={[styles.seasonBadgeText, { fontSize: fontSize.xs }]}>
+                  {seasonName}
+                </Text>
+              </View>
+            )}
+          </Pressable>
         </View>
       </Animated.View>
-    </Pressable>
+    </View>
   );
 });
 
@@ -300,5 +307,14 @@ const styles = StyleSheet.create({
   },
   remainingText: {
     color: 'rgba(255,255,255,0.5)',
+  },
+  seasonBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 4,
+  },
+  seasonBadgeText: {
+    color: '#fff',
+    fontWeight: '600',
   },
 });

@@ -21,6 +21,7 @@ interface EpisodesListProps {
   isItemDownloaded: (id: string) => boolean;
   onSeasonDownload: () => void;
   onEpisodeDownload: (episode: BaseItem) => void;
+  onEpisodePress?: (episode: BaseItem) => void;
   t: (key: string, options?: Record<string, unknown>) => string;
 }
 
@@ -38,6 +39,7 @@ export function EpisodesList({
   isItemDownloaded,
   onSeasonDownload,
   onEpisodeDownload,
+  onEpisodePress,
   t,
 }: EpisodesListProps) {
   return (
@@ -94,9 +96,14 @@ export function EpisodesList({
             >
               <Pressable
                 className="flex-row"
+                style={isWatched ? { opacity: 0.7 } : undefined}
                 onPress={() => {
-                  const detailsRoute = `/details/${type}/${id}${from ? `?from=${encodeURIComponent(from)}` : ''}`;
-                  router.push(`/player/video?itemId=${episode.Id}&from=${encodeURIComponent(detailsRoute)}`);
+                  if (onEpisodePress) {
+                    onEpisodePress(episode);
+                  } else {
+                    const detailsRoute = `/details/${type}/${id}${from ? `?from=${encodeURIComponent(from)}` : ''}`;
+                    router.push(`/player/video?itemId=${episode.Id}&from=${encodeURIComponent(detailsRoute)}`);
+                  }
                 }}
               >
                 <View className="w-32 h-20 bg-surface-elevated">
@@ -127,7 +134,7 @@ export function EpisodesList({
                     </View>
                   )}
                 </View>
-                <View className="flex-1 ml-6 py-2 justify-center">
+                <View className="flex-1 ml-3 py-2 justify-center">
                   <Text className="text-text-tertiary text-xs mb-0.5">
                     {t('details.episode')} {episode.IndexNumber}
                   </Text>
@@ -142,19 +149,19 @@ export function EpisodesList({
                     )}
                     {episode.CommunityRating && (
                       <Text className="text-text-tertiary text-xs">
-                        {episode.RunTimeTicks ? ' • ' : ''}⭐ {episode.CommunityRating.toFixed(1)}
+                        {episode.RunTimeTicks ? ' - ' : ''}{episode.CommunityRating.toFixed(1)}
                       </Text>
                     )}
                   </View>
                 </View>
-                <View className="flex-row items-center ml-1 pr-1">
+                <View className="flex-row items-center pr-1">
                   <Pressable
                     onPress={(e) => {
                       e.stopPropagation();
                       onEpisodeDownload(episode);
                     }}
                     disabled={epIsDownloading}
-                    className="w-10 h-10 items-center justify-center"
+                    className="w-9 h-10 items-center justify-center"
                   >
                     {epIsDownloading ? (
                       <ActivityIndicator size="small" color={accentColor} />
@@ -171,9 +178,16 @@ export function EpisodesList({
                       <DownloadIcon size={18} color="rgba(255,255,255,0.6)" />
                     )}
                   </Pressable>
-                  <View className="items-center justify-center">
+                  <Pressable
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      const detailsRoute = `/details/${type}/${id}${from ? `?from=${encodeURIComponent(from)}` : ''}`;
+                      router.push(`/player/video?itemId=${episode.Id}&from=${encodeURIComponent(detailsRoute)}`);
+                    }}
+                    className="w-9 h-10 items-center justify-center"
+                  >
                     <Ionicons name="play-circle" size={28} color={accentColor} />
-                  </View>
+                  </Pressable>
                 </View>
               </Pressable>
             </View>

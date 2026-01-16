@@ -1,8 +1,8 @@
-import { View, Text, Pressable, StyleSheet, Dimensions } from 'react-native';
+import { View, Text, Pressable, StyleSheet, Platform } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets, initialWindowMetrics } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import Animated, { useSharedValue, useAnimatedStyle, withSpring, withTiming, FadeIn, runOnJS } from 'react-native-reanimated';
+import Animated, { useSharedValue, useAnimatedStyle, withSpring, withTiming, FadeIn, runOnJS, interpolate, Extrapolation } from 'react-native-reanimated';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useShallow } from 'zustand/react/shallow';
 import { usePlayerStore, useSettingsStore } from '@/stores';
@@ -11,6 +11,7 @@ import { audioService } from '@/services';
 import { getImageUrl } from '@/api';
 import { getDisplayName, getDisplayImageUrl, getDisplayArtist } from '@/utils';
 import { CachedImage } from '@/components/shared/ui/CachedImage';
+import { isDesktop } from '@/utils/platform';
 import { memo, useCallback, useMemo, useState, useEffect } from 'react';
 
 // Isolated progress bar component - only this re-renders on progress updates
@@ -25,10 +26,10 @@ const MiniPlayerProgress = memo(function MiniPlayerProgress({ accentColor }: { a
   );
 });
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const MINI_PLAYER_HEIGHT = 64;
-const BOTTOM_NAV_HEIGHT = 56; // Base height without safe area
-const SWIPE_THRESHOLD = 50; // Minimum swipe distance to trigger action
+const MINI_PLAYER_HEIGHT = 56;
+const BOTTOM_NAV_HEIGHT = 56;
+const SWIPE_THRESHOLD = 30;
+const DISMISS_THRESHOLD = 50;
 
 // Paths where MiniPlayer should be hidden
 const HIDDEN_PATHS = ['/player/music', '/player/video', '/player/audiobook', '/(auth)', '/login'];
@@ -128,10 +129,10 @@ export const MiniPlayer = memo(function MiniPlayer() {
   const handleClose = useCallback(async () => {
     if (isDismissing) return;
     setIsDismissing(true);
-    translateY.value = withTiming(MINI_PLAYER_HEIGHT + 20, { duration: 200 });
+    translateY.value = withTiming(DISMISS_THRESHOLD + 20, { duration: 150 });
     setTimeout(async () => {
       await stopAudio();
-    }, 200);
+    }, 150);
   }, [isDismissing, translateY, stopAudio]);
 
   const handlePlayPausePress = useCallback((e: any) => {
@@ -165,38 +166,49 @@ export const MiniPlayer = memo(function MiniPlayer() {
           runOnJS(handleSkipNext)();
         }
       }
-      // Vertical: dismiss if swiped down
       if (event.translationY > SWIPE_THRESHOLD) {
         runOnJS(handleClose)();
       } else {
-        translateY.value = withSpring(0, { damping: 20, stiffness: 300 });
+        translateY.value = withSpring(0, { damping: 15, stiffness: 400 });
       }
-      translateX.value = withSpring(0, { damping: 20, stiffness: 300 });
+      translateX.value = withSpring(0, { damping: 15, stiffness: 400 });
     });
 
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: translateX.value },
-      { translateY: translateY.value },
-    ],
-  }));
+  const animatedStyle = useAnimatedStyle(() => {
+    const opacity = interpolate(
+      translateY.value,
+      [0, DISMISS_THRESHOLD],
+      [1, 0],
+      Extrapolation.CLAMP
+    );
+    return {
+      transform: [
+        { translateX: translateX.value },
+        { translateY: translateY.value },
+      ],
+      opacity,
+    };
+  });
 
   if (!shouldShow) return null;
 
-  // Position above the bottom nav
-  const bottomPosition = BOTTOM_NAV_HEIGHT + insets.bottom;
+  // Use stable insets to match positioning
+  // Desktop: no bottom nav, position at bottom of content area
+  // Mobile: position above bottom nav
+  const stableBottomInset = initialWindowMetrics?.insets.bottom ?? insets.bottom;
+  const bottomPosition = isDesktop ? 8 : BOTTOM_NAV_HEIGHT + stableBottomInset;
 
   return (
     <GestureDetector gesture={panGesture}>
       <Animated.View
-        entering={FadeIn.duration(200)}
+        entering={FadeIn.duration(150)}
         style={[
           styles.container,
           { bottom: bottomPosition },
+          isDesktop && styles.containerDesktop,
           animatedStyle
         ]}
       >
-        {/* Progress bar at top - isolated component to avoid re-renders */}
         <MiniPlayerProgress accentColor={accentColor} />
 
         <Pressable onPress={handlePress} style={styles.content}>
@@ -274,10 +286,18 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: MINI_PLAYER_HEIGHT,
-    backgroundColor: '#1a1a1a',
+    backgroundColor: '#0a0a0a',
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(255,255,255,0.1)',
+    borderTopColor: 'rgba(255,255,255,0.08)',
     zIndex: 100,
+  },
+  containerDesktop: {
+    left: 16,
+    right: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    overflow: 'hidden',
   },
   progressContainer: {
     position: 'absolute',
@@ -298,8 +318,8 @@ const styles = StyleSheet.create({
     paddingTop: 2,
   },
   albumArt: {
-    width: 48,
-    height: 48,
+    width: 44,
+    height: 44,
   },
   trackInfo: {
     flex: 1,

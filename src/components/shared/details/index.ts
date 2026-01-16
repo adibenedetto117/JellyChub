@@ -5,6 +5,7 @@ export { CheckIcon } from './CheckIcon';
 export { CollapsibleDescription } from './CollapsibleDescription';
 export { CollectionItemsList } from './CollectionItemsList';
 export { DownloadIcon } from './DownloadIcon';
+export { EpisodeDetailsModal } from './EpisodeDetailsModal';
 export { EpisodesList } from './EpisodesList';
 export { ErrorState, MissingParamsError } from './ErrorState';
 export { GenreTags } from './GenreTags';

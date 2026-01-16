@@ -8,12 +8,12 @@ import {
 } from '../utils';
 
 export interface AudioTrackInfo {
-  index: number;
-  language?: string;
-  title?: string;
-  codec?: string;
-  channels?: number;
-  isDefault?: boolean;
+  Index: number;
+  Language?: string;
+  Title?: string;
+  Codec?: string;
+  Channels?: number;
+  IsDefault?: boolean;
 }
 
 interface Props {
@@ -48,9 +48,9 @@ export function AudioTrackSelector({ onClose, tracks, selectedIndex, onSelectTra
   };
 
   const getTrackLabel = (track: AudioTrackInfo) => {
-    if (track.title) return track.title;
-    if (track.language) return getLanguageName(track.language) || track.language.toUpperCase();
-    return `Track ${track.index + 1}`;
+    if (track.Title) return track.Title;
+    if (track.Language) return getLanguageName(track.Language) || track.Language.toUpperCase();
+    return `Track ${track.Index + 1}`;
   };
 
   return (
@@ -72,15 +72,15 @@ export function AudioTrackSelector({ onClose, tracks, selectedIndex, onSelectTra
 
         <ScrollView style={styles.trackList} showsVerticalScrollIndicator={false}>
           {tracks.map((track) => {
-            const isSelected = selectedIndex === track.index;
-            const channelLabel = getChannelLabelVerbose(track.channels);
-            const codecLabel = getAudioCodecLabelVerbose(track.codec);
-            const compatible = isAudioCodecCompatible(track.codec);
+            const isSelected = selectedIndex === track.Index;
+            const channelLabel = getChannelLabelVerbose(track.Channels);
+            const codecLabel = getAudioCodecLabelVerbose(track.Codec);
+            const compatible = isAudioCodecCompatible(track.Codec);
 
             return (
               <Pressable
-                key={track.index}
-                onPress={() => handleSelect(track.index)}
+                key={track.Index}
+                onPress={() => handleSelect(track.Index)}
                 style={[
                   styles.trackItem,
                   isSelected && { backgroundColor: accentColor + '20' },
@@ -92,7 +92,7 @@ export function AudioTrackSelector({ onClose, tracks, selectedIndex, onSelectTra
                     <Text style={[styles.trackLabel, isSelected && { color: accentColor }]}>
                       {getTrackLabel(track)}
                     </Text>
-                    {track.isDefault && (
+                    {track.IsDefault && (
                       <View style={[styles.defaultBadge, { backgroundColor: accentColor + '30' }]}>
                         <Text style={[styles.defaultText, { color: accentColor }]}>Default</Text>
                       </View>
