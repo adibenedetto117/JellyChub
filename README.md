@@ -72,10 +72,12 @@ A Jellyfin client for Android, Android TV, and Desktop.
 - **Chromecast** - Cast video and audio to compatible devices
 - **Multi-server** - Connect to multiple Jellyfin servers
 - **Multi-user** - Quick user switching with PIN/biometric lock
+- **Quick Connect** - Login via 6-digit code, authorize other devices
 - **Jellyseerr** - Browse trending content, request movies and TV shows
 - **Radarr/Sonarr** - Calendar view, add media, manage collections
 - **Admin Dashboard** - Active sessions, scheduled tasks, user management
 - **OpenSubtitles** - Search and download subtitles
+- **Subtitles** - Customizable styling (size, position, colors, outline)
 - **Internationalization** - English, Spanish, French, German
 
 ---
@@ -240,6 +242,21 @@ npm run build:mac     # zip (x64, arm64)
 npm run build:win     # NSIS installer, portable
 npm run build:all     # All platforms
 ```
+
+### iOS Builds (via EAS)
+
+```bash
+# Login to Expo
+npm run ios:login
+
+# Register your iOS device
+npm run ios:device
+
+# Build iOS app in cloud
+npm run ios:build
+```
+
+Builds with a free Apple ID expire after 7 days.
 
 ---
 
