@@ -61,6 +61,12 @@ import type { UseVideoPlayerCoreOptions } from './types';
 
 export type { UseVideoPlayerCoreOptions };
 
+const safeHaptics = () => {
+  try {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  } catch {}
+};
+
 export function useVideoPlayerCore({ itemId, from }: UseVideoPlayerCoreOptions) {
   // ============ STORE SELECTORS ============
   const currentUser = useAuthStore((state) => state.currentUser);
@@ -236,13 +242,15 @@ export function useVideoPlayerCore({ itemId, from }: UseVideoPlayerCoreOptions) 
       }
     });
 
-    // Progress tracking interval
     const progressTracker = setInterval(() => {
       if (player && isPlayerReady.current) {
-        const currentTimeMs = (player.currentTime || 0) * 1000;
+        const rawCurrentTimeMs = (player.currentTime || 0) * 1000;
         const durationMs = (player.duration || 0) * 1000;
         const bufferedMs = (player.bufferedPosition || 0) * 1000;
-        currentPositionRef.current = currentTimeMs;
+        const currentTimeMs = rawCurrentTimeMs > 0 ? rawCurrentTimeMs : currentPositionRef.current;
+        if (rawCurrentTimeMs > 0) {
+          currentPositionRef.current = rawCurrentTimeMs;
+        }
         setProgress(currentTimeMs, durationMs, bufferedMs);
 
         // Update current subtitle
@@ -294,12 +302,12 @@ export function useVideoPlayerCore({ itemId, from }: UseVideoPlayerCoreOptions) 
         }
       } catch {}
       if (currentPlaySessionId && currentMediaSourceId) {
-        reportPlaybackStopped({
-          ItemId: itemId,
-          MediaSourceId: currentMediaSourceId,
-          PlaySessionId: currentPlaySessionId,
-          PositionTicks: msToTicks(currentPosition),
-        }).catch(() => {});
+        reportPlaybackStopped(
+          itemId,
+          currentMediaSourceId,
+          currentPlaySessionId,
+          msToTicks(currentPosition)
+        ).catch(() => {});
       }
       setPlayerState('idle');
     };
@@ -663,8 +671,8 @@ export function useVideoPlayerCore({ itemId, from }: UseVideoPlayerCoreOptions) 
       return;
     }
 
-    const selectedTrack = jellyfinSubtitleTracks.find((t: any) => t.index === index);
-    if (selectedTrack && !isTextBasedSubtitle(selectedTrack.codec)) {
+    const selectedTrack = jellyfinSubtitleTracks.find((t: any) => t.Index === index);
+    if (selectedTrack && !isTextBasedSubtitle(selectedTrack.Codec)) {
       setSubtitleLoadError('Image-based subtitles require transcoding');
       setSubtitleCues([]);
       return;
@@ -695,7 +703,7 @@ export function useVideoPlayerCore({ itemId, from }: UseVideoPlayerCoreOptions) 
 
   const handlePlayPause = useCallback(() => {
     if (!player) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    safeHaptics();
     if (player.playing) {
       player.pause();
     } else {
@@ -713,19 +721,19 @@ export function useVideoPlayerCore({ itemId, from }: UseVideoPlayerCoreOptions) 
 
   const handleSkipIntro = useCallback(() => {
     if (!player || !introEnd) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    safeHaptics();
     handleSeek(introEnd);
     setShowSkipIntro(false);
   }, [player, introEnd, handleSeek]);
 
   const handleSkipCredits = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    safeHaptics();
     setShowSkipCredits(false);
   }, []);
 
   const handlePlayNextEpisode = useCallback(() => {
     if (!nextEpisode || !mediaSource) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    safeHaptics();
     isNavigatingRef.current = true;
     reportPlaybackStopped(itemId, mediaSource.Id, playSessionId, msToTicks(progress.position)).catch(() => {});
     clearCurrentItem();
@@ -734,7 +742,7 @@ export function useVideoPlayerCore({ itemId, from }: UseVideoPlayerCoreOptions) 
 
   const handleSelectEpisode = useCallback((episodeId: string) => {
     if (!mediaSource || episodeId === itemId) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    safeHaptics();
     isNavigatingRef.current = true;
     reportPlaybackStopped(itemId, mediaSource.Id, playSessionId, msToTicks(progress.position)).catch(() => {});
     clearCurrentItem();
@@ -798,7 +806,7 @@ export function useVideoPlayerCore({ itemId, from }: UseVideoPlayerCoreOptions) 
 
   const handleOpenExternalPlayer = useCallback(async () => {
     if (!streamUrl || !item) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    safeHaptics();
     const success = await openInExternalPlayer(streamUrl, {
       title: item.Name || 'Video',
       position: progress.position,
@@ -809,7 +817,7 @@ export function useVideoPlayerCore({ itemId, from }: UseVideoPlayerCoreOptions) 
   }, [streamUrl, item, player, progress.position]);
 
   const toggleControlsLock = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    safeHaptics();
     setControlsLocked(prev => !prev);
   }, []);
 

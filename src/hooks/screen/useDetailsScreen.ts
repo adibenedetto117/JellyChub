@@ -65,6 +65,9 @@ export function useDetailsScreen() {
   const [isBatchDownloading, setIsBatchDownloading] = useState(false);
   const [contentReady, setContentReady] = useState(false);
   const [autoplayTriggered, setAutoplayTriggered] = useState(false);
+  const [selectedEpisodeId, setSelectedEpisodeId] = useState<string | null>(null);
+  const [showEpisodeDetails, setShowEpisodeDetails] = useState(false);
+  const [showMetadataEditor, setShowMetadataEditor] = useState(false);
 
   const contentOpacity = useSharedValue(0);
 
@@ -457,6 +460,24 @@ export function useDetailsScreen() {
     setSelectedEpisodeForDownload(null);
   }, []);
 
+  const handleEpisodePress = useCallback((episode: BaseItem) => {
+    setSelectedEpisodeId(episode.Id);
+    setShowEpisodeDetails(true);
+  }, []);
+
+  const closeEpisodeDetails = useCallback(() => {
+    setShowEpisodeDetails(false);
+    setSelectedEpisodeId(null);
+  }, []);
+
+  const openMetadataEditor = useCallback(() => {
+    setShowMetadataEditor(true);
+  }, []);
+
+  const closeMetadataEditor = useCallback(() => {
+    setShowMetadataEditor(false);
+  }, []);
+
   return {
     t,
     rawType,
@@ -544,5 +565,14 @@ export function useDetailsScreen() {
     handleSeasonDownload,
     handleDownloadAlbum,
     handleItemPress,
+
+    selectedEpisodeId,
+    showEpisodeDetails,
+    handleEpisodePress,
+    closeEpisodeDetails,
+
+    showMetadataEditor,
+    openMetadataEditor,
+    closeMetadataEditor,
   };
 }

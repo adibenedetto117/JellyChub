@@ -73,6 +73,9 @@ export function useAudiobookPlayerCore(): AudiobookPlayerCore {
   const isInitializingRef = useRef(true);
   const chaptersParsedForRef = useRef<string | null>(null);
   const isSeekingRef = useRef(false);
+  const currentPositionRef = useRef(0);
+  const lastValidDisplayNameRef = useRef<string>('');
+  const lastValidDisplayAuthorRef = useRef<string>('');
   isSeekingRef.current = isSeeking;
 
   // Animations
@@ -94,10 +97,20 @@ export function useAudiobookPlayerCore(): AudiobookPlayerCore {
     ? getImageUrl(item.Id, 'Primary', { maxWidth: 800, tag: item.ImageTags.Primary })
     : null;
   const coverUrl = getDisplayImageUrl(item?.Id ?? '', rawCoverUrl, hideMedia, 'Primary');
-  const displayName = item ? getDisplayName(item, hideMedia) : t('player.unknownTrack');
+  const rawDisplayName = item ? getDisplayName(item, hideMedia) : t('player.unknownTrack');
   const rawArtists = (item as any)?.Artists || [(item as any)?.AlbumArtist || ''];
   const displayArtists = getDisplayArtist(rawArtists, hideMedia);
-  const displayAuthor = displayArtists[0] ?? t('player.unknownArtist');
+  const rawDisplayAuthor = displayArtists[0] ?? t('player.unknownArtist');
+
+  if (rawDisplayName && rawDisplayName !== t('player.unknownTrack')) {
+    lastValidDisplayNameRef.current = rawDisplayName;
+  }
+  if (rawDisplayAuthor && rawDisplayAuthor !== t('player.unknownArtist')) {
+    lastValidDisplayAuthorRef.current = rawDisplayAuthor;
+  }
+
+  const displayName = lastValidDisplayNameRef.current || rawDisplayName;
+  const displayAuthor = lastValidDisplayAuthorRef.current || rawDisplayAuthor;
 
   // Load chapters from item data or parse from M4B file
   useEffect(() => {
@@ -199,7 +212,11 @@ export function useAudiobookPlayerCore(): AudiobookPlayerCore {
       (state) => state.progress,
       (progress) => {
         if (!isSeekingRef.current && !isInitializingRef.current) {
-          setLocalProgress({ position: progress.position, duration: progress.duration });
+          const validPosition = progress.position > 0 ? progress.position : currentPositionRef.current;
+          if (progress.position > 0) {
+            currentPositionRef.current = progress.position;
+          }
+          setLocalProgress({ position: validPosition, duration: progress.duration });
         }
       }
     );
@@ -301,6 +318,7 @@ export function useAudiobookPlayerCore(): AudiobookPlayerCore {
 
   const handleSeek = useCallback(async (position: number) => {
     const { progress } = usePlayerStore.getState();
+    currentPositionRef.current = position;
     setLocalProgress({ position, duration: progress.duration });
     await audioService.seek(position);
   }, []);
@@ -322,6 +340,7 @@ export function useAudiobookPlayerCore(): AudiobookPlayerCore {
     const percent = Math.max(0, Math.min(1, x / barWidth));
     const newPosition = percent * progress.duration;
     seekPositionRef.current = newPosition;
+    currentPositionRef.current = newPosition;
     seekProgress.value = newPosition;
     setLocalProgress({ position: newPosition, duration: progress.duration });
   }, [seekProgress]);
@@ -352,8 +371,10 @@ export function useAudiobookPlayerCore(): AudiobookPlayerCore {
 
   const handleSkip = useCallback(async (seconds: number) => {
     const { progress } = usePlayerStore.getState();
-    const newPosition = Math.max(0, Math.min(progress.duration, progress.position + seconds * 1000));
+    const currentPos = progress.position > 0 ? progress.position : currentPositionRef.current;
+    const newPosition = Math.max(0, Math.min(progress.duration, currentPos + seconds * 1000));
     setIsSeeking(true);
+    currentPositionRef.current = newPosition;
     setLocalProgress({ position: newPosition, duration: progress.duration });
     await audioService.seek(newPosition);
     setTimeout(() => setIsSeeking(false), 600);
@@ -363,6 +384,7 @@ export function useAudiobookPlayerCore(): AudiobookPlayerCore {
     const position = ticksToMs(chapter.StartPositionTicks);
     const { progress } = usePlayerStore.getState();
     setIsSeeking(true);
+    currentPositionRef.current = position;
     setLocalProgress({ position, duration: progress.duration });
     setModalView('none');
     await audioService.seek(position);
@@ -383,6 +405,7 @@ export function useAudiobookPlayerCore(): AudiobookPlayerCore {
   const handleBookmarkPress = useCallback(async (positionTicks: number) => {
     const pos = ticksToMs(positionTicks);
     setIsSeeking(true);
+    currentPositionRef.current = pos;
     setLocalProgress({ position: pos, duration: localProgress.duration });
     setModalView('none');
     await audioService.seek(pos);

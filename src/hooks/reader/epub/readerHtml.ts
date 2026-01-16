@@ -17,277 +17,370 @@ export function getEpubReaderHtml({
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  <link rel="preconnect" href="https://unpkg.com">
+  <link rel="preconnect" href="https://cdnjs.cloudflare.com">
   <style>
-    *{margin:0;padding:0;box-sizing:border-box}
+    *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
     html,body{height:100%;overflow:hidden;background:${backgroundColor}}
-    #reader{width:100%;height:100%}
-    #loading{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:${textColor};font-family:system-ui;text-align:center}
+    #reader{width:100%;height:100%;position:relative}
+    #loading{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:${textColor};font-family:system-ui;text-align:center;z-index:1000}
+    .spinner{width:32px;height:32px;border:3px solid ${textColor}33;border-top-color:${accentColor};border-radius:50%;animation:spin 0.8s linear infinite;margin:0 auto 12px}
+    @keyframes spin{to{transform:rotate(360deg)}}
   </style>
 </head>
 <body>
   <div id="reader"></div>
-  <div id="loading">Loading libraries...</div>
+  <div id="loading"><div class="spinner"></div><div id="loadingText">Loading...</div></div>
   <script>
-    var librariesLoaded = 0;
-    window.epubBase64 = "";
+    var INIT_BG = "${backgroundColor}";
+    var INIT_TEXT = "${textColor}";
+    var INIT_FONTSIZE = ${fontSize};
+    var INIT_ACCENT = "${accentColor}";
+
+    var book = null;
+    var rendition = null;
+    var currentFontSize = INIT_FONTSIZE;
+    var currentBg = INIT_BG;
+    var currentText = INIT_TEXT;
+    var lastKnownCfi = null;
+    var lastKnownPercent = 0;
+    var locationsGenerated = false;
+    var highlightAnnotations = {};
+    var isInitializing = false;
+    var totalSpineItems = 0;
+    var currentSpineIndex = 0;
+
     function msg(type, data) {
-      try { window.ReactNativeWebView.postMessage(JSON.stringify({type, ...data})); } catch(e) {}
-    }
-    function log(m) { msg('log', {message: m}); }
-    window.onerror = function(m,s,l,c,e) { msg('error',{message:'JS Error: '+m}); return true; };
-
-    function libLoaded() {
-      librariesLoaded++;
-      if (librariesLoaded >= 2) {
-        log('Libraries loaded, waiting for data...');
-        document.getElementById('loading').textContent = 'Loading book data...';
-        msg('webviewReady', {});
-      }
-    }
-  </script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" onload="libLoaded()" onerror="msg('error',{message:'Failed to load jszip'})"></script>
-  <script src="https://cdn.jsdelivr.net/npm/epubjs@0.3.93/dist/epub.min.js" onload="libLoaded()" onerror="msg('error',{message:'Failed to load epubjs'})"></script>
-  <script>
-    var book, rendition, currentFontSize = ${fontSize}, lastKnownCfi = null, lastKnownPercent = 0, locationsGenerated = false;
-
-    function base64ToArrayBuffer(base64) {
       try {
-        var binaryString = atob(base64);
-        var bytes = new Uint8Array(binaryString.length);
-        for (var i = 0; i < binaryString.length; i++) {
-          bytes[i] = binaryString.charCodeAt(i);
+        window.ReactNativeWebView.postMessage(JSON.stringify(Object.assign({type: type}, data || {})));
+      } catch(e) {}
+    }
+
+    function log(m) {
+      msg('log', {message: String(m)});
+    }
+
+    window.onerror = function(m, s, l, c, e) {
+      msg('error', {message: 'JS: ' + m});
+      return true;
+    };
+
+    function setLoadingText(t) {
+      var el = document.getElementById('loadingText');
+      if (el) el.textContent = t;
+    }
+
+    function hideLoading() {
+      var el = document.getElementById('loading');
+      if (el) el.style.display = 'none';
+    }
+
+    function showLoading() {
+      var el = document.getElementById('loading');
+      if (el) el.style.display = 'block';
+    }
+
+    var scriptsToLoad = [
+      {url: 'https://unpkg.com/jszip@3.10.1/dist/jszip.min.js', backup: 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js', name: 'jszip'},
+      {url: 'https://unpkg.com/epubjs@0.3.93/dist/epub.min.js', backup: 'https://cdn.jsdelivr.net/npm/epubjs@0.3.93/dist/epub.min.js', name: 'epubjs'}
+    ];
+    var scriptsLoaded = 0;
+    var scriptsFailed = 0;
+
+    function loadScript(config, useBackup) {
+      var s = document.createElement('script');
+      s.src = useBackup ? config.backup : config.url;
+      s.onload = function() {
+        scriptsLoaded++;
+        if (scriptsLoaded === scriptsToLoad.length) {
+          setLoadingText('Ready');
+          msg('webviewReady', {});
         }
-        return bytes.buffer;
-      } catch(e) {
-        throw new Error('Base64 decode failed: ' + e.message);
+      };
+      s.onerror = function() {
+        if (!useBackup && config.backup) {
+          loadScript(config, true);
+        } else {
+          scriptsFailed++;
+          msg('error', {message: 'Failed to load ' + config.name + '. Check internet connection.'});
+        }
+      };
+      document.head.appendChild(s);
+    }
+
+    scriptsToLoad.forEach(function(c) { loadScript(c, false); });
+
+    window.epubBase64 = "";
+
+    function base64ToArrayBuffer(b64) {
+      var binary = atob(b64);
+      var len = binary.length;
+      var bytes = new Uint8Array(len);
+      for (var i = 0; i < len; i++) {
+        bytes[i] = binary.charCodeAt(i);
       }
+      return bytes.buffer;
+    }
+
+    function getThemeStyles(bg, text, fontPct, accent) {
+      return {
+        "body": {
+          "background": bg + " !important",
+          "color": text + " !important",
+          "font-size": fontPct + "% !important",
+          "line-height": "1.6 !important",
+          "padding": "12px !important"
+        },
+        "p,div,span,h1,h2,h3,h4,h5,h6,li,td,th": {
+          "color": text + " !important"
+        },
+        "a": {
+          "color": accent + " !important"
+        }
+      };
+    }
+
+    function getSpineProgress(href) {
+      if (!book || !book.spine || !totalSpineItems) return 0;
+      var idx = 0;
+      for (var i = 0; i < book.spine.items.length; i++) {
+        if (book.spine.items[i].href === href || book.spine.items[i].url === href) {
+          idx = i;
+          break;
+        }
+      }
+      return totalSpineItems > 1 ? (idx / (totalSpineItems - 1)) : 0;
+    }
+
+    function setupRenditionEvents(rend) {
+      rend.on("relocated", function(location) {
+        if (!location || !location.start) return;
+        lastKnownCfi = location.start.cfi;
+        var href = location.start.href || '';
+        var pct = 0;
+
+        if (locationsGenerated && book && book.locations && book.locations.length()) {
+          pct = book.locations.percentageFromCfi(location.start.cfi) || 0;
+        } else {
+          pct = getSpineProgress(href);
+        }
+        lastKnownPercent = pct;
+        msg("relocated", {cfi: location.start.cfi, progress: pct, href: href});
+      });
+
+      rend.on("keydown", function(e) {
+        if (e.key === "ArrowLeft") prevPage();
+        else if (e.key === "ArrowRight") nextPage();
+      });
+    }
+
+    function createRendition(targetCfi) {
+      if (rendition) {
+        try { rendition.destroy(); } catch(e) {}
+      }
+
+      document.body.style.background = currentBg;
+      document.getElementById('reader').innerHTML = '';
+
+      rendition = book.renderTo("reader", {
+        width: "100%",
+        height: "100%",
+        spread: "none",
+        flow: "paginated"
+      });
+
+      rendition.themes.default(getThemeStyles(currentBg, currentText, currentFontSize, INIT_ACCENT));
+      setupRenditionEvents(rendition);
+
+      return rendition.display(targetCfi || undefined);
     }
 
     async function initReaderWithData() {
-      log('initReaderWithData called, data length: ' + window.epubBase64.length);
-      document.getElementById('loading').textContent = 'Opening book...';
+      if (isInitializing) return;
+      isInitializing = true;
+
+      setLoadingText('Opening book...');
 
       try {
+        if (!window.JSZip) {
+          throw new Error('JSZip not loaded. Check internet connection.');
+        }
+        if (!window.ePub) {
+          throw new Error('epub.js not loaded. Check internet connection.');
+        }
+
         if (!window.epubBase64 || window.epubBase64.length === 0) {
           throw new Error('No book data received');
         }
 
-        log('Decoding base64...');
+        setLoadingText('Decoding...');
         var arrayBuffer = base64ToArrayBuffer(window.epubBase64);
-        log('Decoded ' + arrayBuffer.byteLength + ' bytes');
 
-        var firstBytes = new Uint8Array(arrayBuffer.slice(0, 5));
-        var header = String.fromCharCode.apply(null, firstBytes);
+        var header = String.fromCharCode.apply(null, new Uint8Array(arrayBuffer.slice(0, 5)));
         if (header.indexOf('%PDF') === 0) {
           msg("wrongFormat", {format: "pdf"});
-          throw new Error('This is a PDF file. Redirecting...');
+          return;
         }
 
         window.epubBase64 = "";
 
+        setLoadingText('Parsing...');
         book = ePub(arrayBuffer);
-        log('Book created');
 
-        rendition = book.renderTo("reader", {
-          width: "100%",
-          height: "100%",
-          spread: "none",
-          flow: "paginated"
-        });
-        log('Rendition created');
+        await book.ready;
+        if (book.spine) {
+          totalSpineItems = book.spine.items.length;
+        }
 
-        rendition.themes.default({
-          "body": {
-            "background": "${backgroundColor} !important",
-            "color": "${textColor} !important",
-            "font-size": currentFontSize + "% !important",
-            "line-height": "1.7 !important",
-            "padding": "16px !important"
-          },
-          "p,div,span,h1,h2,h3,h4,h5,h6,li": {"color": "${textColor} !important"},
-          "a": {"color": "${accentColor} !important"},
-          "img,svg,image,figure": {"display": "none !important"},
-          "picture": {"display": "none !important"}
-        });
-
-        document.getElementById('loading').style.display = 'none';
-        log('Calling display...');
-
-        var displayTimeout = setTimeout(function() {
-          log('Display timeout - trying fallback');
-          msg("error", {message: "Timeout loading book content. The file may be corrupted."});
-        }, 20000);
-
-        await rendition.display();
-        clearTimeout(displayTimeout);
-        log('Displayed');
+        setLoadingText('Rendering...');
+        await createRendition();
+        hideLoading();
 
         book.loaded.navigation.then(function(nav) {
-          log('Navigation loaded: ' + JSON.stringify(Object.keys(nav || {})));
-          if(nav) {
-            log('nav.toc exists: ' + !!nav.toc + ', length: ' + (nav.toc ? nav.toc.length : 0));
-          }
-          if(nav && nav.toc && nav.toc.length > 0) {
+          if (nav && nav.toc && nav.toc.length > 0) {
             var flattenToc = function(items, depth) {
-              depth = depth || 0;
               var result = [];
-              items.forEach(function(t) {
-                result.push({href: t.href, label: (depth > 0 ? '  '.repeat(depth) : '') + t.label});
-                if(t.subitems && t.subitems.length > 0) {
-                  result = result.concat(flattenToc(t.subitems, depth + 1));
+              (items || []).forEach(function(t) {
+                result.push({href: t.href, label: t.label, depth: depth || 0});
+                if (t.subitems && t.subitems.length > 0) {
+                  result = result.concat(flattenToc(t.subitems, (depth || 0) + 1));
                 }
               });
               return result;
             };
-            var items = flattenToc(nav.toc, 0);
-            log('TOC items: ' + items.length);
-            msg("toc", {items: items});
-          } else {
-            log('No TOC found in navigation');
+            msg("toc", {items: flattenToc(nav.toc, 0)});
           }
-        }).catch(function(e) { log('Nav error: ' + e.message); });
-
-        rendition.on("relocated", function(loc) {
-          try {
-            lastKnownCfi = loc.start.cfi;
-            if (locationsGenerated && book.locations && book.locations.length()) {
-              var pct = book.locations.percentageFromCfi(loc.start.cfi);
-              lastKnownPercent = pct || 0;
-              msg("relocated", {cfi: loc.start.cfi, progress: pct || 0});
-            } else {
-              msg("relocated", {cfi: loc.start.cfi});
-            }
-          } catch(e) { log('Relocated error: ' + e.message); }
-        });
-
-        book.locations.generate(1500).then(function() {
-          log('Locations generated: ' + book.locations.length());
-          locationsGenerated = true;
-          msg('locationsReady', {});
-          if (rendition.location && rendition.location.start) {
-            var pct = book.locations.percentageFromCfi(rendition.location.start.cfi);
-            msg("relocated", {cfi: rendition.location.start.cfi, progress: pct || 0});
-          }
-        }).catch(function(e) { log('Locations error: ' + e.message); });
+        }).catch(function(e) {});
 
         msg("ready", {});
+        msg('locationsReady', {});
+
+        setTimeout(function() {
+          book.locations.generate(1500).then(function() {
+            locationsGenerated = true;
+            if (rendition && rendition.location && rendition.location.start) {
+              var pct = book.locations.percentageFromCfi(rendition.location.start.cfi) || 0;
+              lastKnownPercent = pct;
+              msg("relocated", {cfi: rendition.location.start.cfi, progress: pct, href: rendition.location.start.href || ''});
+            }
+          }).catch(function(e) {});
+        }, 100);
+
       } catch(e) {
-        log('Error: ' + e.message);
         msg("error", {message: e.message});
-        document.getElementById('loading').innerHTML = 'Error loading book<br><small style="opacity:0.7">' + e.message + '</small>';
+        setLoadingText('Error: ' + e.message);
+      } finally {
+        isInitializing = false;
       }
     }
 
-    function goToCfi(cfi) {
-      try {
-        if(rendition && cfi) {
-          log('goToCfi called with: ' + cfi);
-          rendition.display(cfi).then(function() {
-            log('goToCfi display complete');
-            lastKnownCfi = cfi;
-            if (locationsGenerated && book.locations) {
-              var pct = book.locations.percentageFromCfi(cfi);
-              if (pct !== undefined) {
-                lastKnownPercent = pct;
-                msg("relocated", {cfi: cfi, progress: pct});
-              }
-            }
-            msg("navigationComplete", {});
-          }).catch(function(e) {
-            log('goToCfi display error: ' + e.message);
-            msg("navigationComplete", {});
-          });
-        }
-      } catch(e) { log('goToCfi error: ' + e.message); }
-    }
-    function goToHref(href) {
-      try {
-        if(rendition && href) {
-          log('goToHref called with: ' + href);
-          rendition.display(href).then(function() {
-            log('goToHref display complete');
-          }).catch(function(e) {
-            log('goToHref display error: ' + e.message);
-          });
-        }
-      } catch(e) { log('goToHref error: ' + e.message); }
-    }
     function nextPage() {
-      try {
-        if (!rendition || !book) return;
-        var currentLocation = rendition.currentLocation();
-        var currentCfi = currentLocation && currentLocation.start ? currentLocation.start.cfi : null;
-        rendition.next().then(function() {
-          var newLocation = rendition.currentLocation();
-          var newCfi = newLocation && newLocation.start ? newLocation.start.cfi : null;
-          if (currentCfi && newCfi && currentCfi === newCfi) {
-            var currentSection = book.spine.get(currentLocation.start.href);
-            if (currentSection && currentSection.next()) {
-              var nextSection = currentSection.next();
-              log('Advancing to next chapter: ' + nextSection.href);
-              rendition.display(nextSection.href);
-            }
-          }
-        });
-      } catch(e) { log('nextPage error: ' + e.message); }
+      if (!rendition) return;
+      rendition.next().catch(function(e) { log('next error: ' + e.message); });
     }
+
     function prevPage() {
-      try {
-        if (!rendition || !book) return;
-        var currentLocation = rendition.currentLocation();
-        var currentCfi = currentLocation && currentLocation.start ? currentLocation.start.cfi : null;
-        rendition.prev().then(function() {
-          var newLocation = rendition.currentLocation();
-          var newCfi = newLocation && newLocation.start ? newLocation.start.cfi : null;
-          if (currentCfi && newCfi && currentCfi === newCfi) {
-            var currentSection = book.spine.get(currentLocation.start.href);
-            if (currentSection && currentSection.prev()) {
-              var prevSection = currentSection.prev();
-              log('Going to previous chapter: ' + prevSection.href);
-              rendition.display(prevSection.href);
-            }
-          }
-        });
-      } catch(e) { log('prevPage error: ' + e.message); }
+      if (!rendition) return;
+      rendition.prev().catch(function(e) { log('prev error: ' + e.message); });
     }
+
+    function goToCfi(cfi) {
+      if (!rendition || !cfi) return;
+      rendition.display(cfi).then(function() {
+        lastKnownCfi = cfi;
+        msg("navigationComplete", {});
+      }).catch(function(e) {
+        log('goToCfi error: ' + e.message);
+        msg("navigationComplete", {});
+      });
+    }
+
+    function goToHref(href) {
+      if (!rendition || !href) return;
+      rendition.display(href).then(function() {
+        msg("navigationComplete", {});
+      }).catch(function(e) {
+        log('goToHref error: ' + e.message);
+        msg("navigationComplete", {});
+      });
+    }
+
     function goToPercent(percent) {
-      try {
-        log('goToPercent called: ' + (percent * 100) + '%');
-        if(rendition && book && book.locations && locationsGenerated) {
-          var cfi = book.locations.cfiFromPercentage(percent);
-          if (cfi) {
-            lastKnownPercent = percent;
-            rendition.display(cfi).then(function() {
-              log('goToPercent display complete at ' + (percent * 100) + '%');
-              lastKnownCfi = cfi;
-              msg("relocated", {cfi: cfi, progress: percent});
-              msg("navigationComplete", {});
-            }).catch(function(e) {
-              log('goToPercent display error: ' + e.message);
-              msg("navigationComplete", {});
-            });
-          } else {
-            log('goToPercent - no CFI returned');
-            msg("navigationComplete", {});
-          }
-        } else {
-          log('goToPercent failed - locations not ready');
-          msg("navigationComplete", {});
-        }
-      } catch(e) {
-        log('goToPercent error: ' + e.message);
+      if (!rendition || !book || !locationsGenerated) {
+        msg("navigationComplete", {});
+        return;
+      }
+      var cfi = book.locations.cfiFromPercentage(percent);
+      if (cfi) {
+        lastKnownPercent = percent;
+        goToCfi(cfi);
+      } else {
         msg("navigationComplete", {});
       }
     }
 
-    var highlightAnnotations = {};
+    function setReaderThemeWithProgress(bg, text, progressHint) {
+      if (!rendition) {
+        msg("styleChangeComplete", {});
+        return;
+      }
+
+      currentBg = bg;
+      currentText = text;
+      document.body.style.background = bg;
+
+      try {
+        rendition.themes.override('background', bg + ' !important');
+        rendition.themes.override('color', text + ' !important');
+        rendition.getContents().forEach(function(c) {
+          if (c && c.document) {
+            c.document.body.style.background = bg;
+            c.document.body.style.color = text;
+            var els = c.document.querySelectorAll('p,div,span,h1,h2,h3,h4,h5,h6,li,td,th');
+            els.forEach(function(el) { el.style.color = text; });
+          }
+        });
+      } catch(e) {
+        log('Theme override error: ' + e.message);
+      }
+
+      msg("styleChangeComplete", {cfi: lastKnownCfi, progress: lastKnownPercent});
+    }
+
+    function setFontSizeWithProgress(size, progressHint, bg, text) {
+      if (!rendition) {
+        msg("styleChangeComplete", {});
+        return;
+      }
+
+      currentFontSize = size;
+      currentBg = bg;
+      currentText = text;
+      document.body.style.background = bg;
+
+      try {
+        rendition.themes.override('font-size', size + '% !important');
+        rendition.themes.override('background', bg + ' !important');
+        rendition.themes.override('color', text + ' !important');
+        rendition.getContents().forEach(function(c) {
+          if (c && c.document) {
+            c.document.body.style.fontSize = size + '%';
+            c.document.body.style.background = bg;
+            c.document.body.style.color = text;
+          }
+        });
+      } catch(e) {
+        log('Font size override error: ' + e.message);
+      }
+
+      msg("styleChangeComplete", {cfi: lastKnownCfi, progress: lastKnownPercent});
+    }
 
     function addHighlightAnnotation(cfiRange, color, id) {
+      if (!rendition) return;
       try {
-        if (!rendition) return;
-        log('Adding highlight: ' + cfiRange);
-        rendition.annotations.add('highlight', cfiRange, {}, function(e) {
-          msg('highlightClicked', { cfiRange: cfiRange });
+        rendition.annotations.add('highlight', cfiRange, {}, function() {
+          msg('highlightClicked', {cfiRange: cfiRange});
         }, 'hl', {
           'fill': color,
           'fill-opacity': '0.4',
@@ -295,543 +388,97 @@ export function getEpubReaderHtml({
         });
         highlightAnnotations[cfiRange] = id;
       } catch(e) {
-        log('addHighlightAnnotation error: ' + e.message);
+        log('addHighlight error: ' + e.message);
       }
+    }
+
+    function addHighlightsBatch(highlights) {
+      if (!rendition || !highlights || !highlights.length) return;
+      highlights.forEach(function(h) {
+        try {
+          rendition.annotations.add('highlight', h.cfi, {}, function() {
+            msg('highlightClicked', {cfiRange: h.cfi});
+          }, 'hl', {
+            'fill': h.color,
+            'fill-opacity': '0.4',
+            'mix-blend-mode': 'multiply'
+          });
+          highlightAnnotations[h.cfi] = h.id;
+        } catch(e) {}
+      });
     }
 
     function removeHighlightAnnotation(cfiRange) {
+      if (!rendition) return;
       try {
-        if (!rendition) return;
-        log('Removing highlight: ' + cfiRange);
         rendition.annotations.remove(cfiRange, 'highlight');
         delete highlightAnnotations[cfiRange];
       } catch(e) {
-        log('removeHighlightAnnotation error: ' + e.message);
+        log('removeHighlight error: ' + e.message);
       }
     }
 
-    function setReaderTheme(bg, text, preservedCfi) {
-      try {
-        if(!book) { msg("styleChangeComplete", {}); return; }
+    var touchStartX = 0;
+    var touchStartY = 0;
+    var touchStartTime = 0;
+    var longPressTimer = null;
 
-        var cfiToRestore = null;
-        var percentToRestore = lastKnownPercent;
-
-        if (rendition) {
-          var currentLoc = rendition.currentLocation();
-          if (currentLoc && currentLoc.start && currentLoc.start.cfi) {
-            cfiToRestore = currentLoc.start.cfi;
-            if (locationsGenerated && book.locations) {
-              percentToRestore = book.locations.percentageFromCfi(cfiToRestore) || lastKnownPercent;
-            }
-          }
-        }
-
-        if (!cfiToRestore && preservedCfi && preservedCfi.length > 0) {
-          cfiToRestore = preservedCfi;
-        }
-        if (!cfiToRestore && lastKnownCfi) {
-          cfiToRestore = lastKnownCfi;
-        }
-
-        log('setReaderTheme: preserving CFI=' + cfiToRestore + ' percent=' + percentToRestore);
-
-        if (rendition) {
-          rendition.destroy();
-        }
-
-        document.body.style.background = bg;
-
-        rendition = book.renderTo("reader", {
-          width: "100%",
-          height: "100%",
-          flow: "paginated"
-        });
-
-        rendition.themes.default({
-          "body": {
-            "background": bg + " !important",
-            "color": text + " !important",
-            "font-size": currentFontSize + "% !important",
-            "line-height": "1.7 !important",
-            "padding": "16px !important"
-          },
-          "p,div,span,h1,h2,h3,h4,h5,h6,li": {"color": text + " !important"},
-          "a": {"color": "${accentColor} !important"},
-          "img,svg,image,figure,picture": {"display": "none !important"}
-        });
-
-        rendition.on("keydown", function(e) {
-          if (e.key === "ArrowLeft") prevPage();
-          if (e.key === "ArrowRight") nextPage();
-        });
-
-        var isStyleChangeNavigation = true;
-        rendition.on("relocated", function(loc) {
-          try {
-            lastKnownCfi = loc.start.cfi;
-            if (locationsGenerated && book.locations && book.locations.length()) {
-              var pct = book.locations.percentageFromCfi(loc.start.cfi);
-              lastKnownPercent = pct || 0;
-              if (!isStyleChangeNavigation) {
-                msg("relocated", {cfi: loc.start.cfi, progress: pct || 0});
-              }
-            } else if (!isStyleChangeNavigation) {
-              msg("relocated", {cfi: loc.start.cfi});
-            }
-          } catch(e) {}
-        });
-
-        var displayTarget = cfiToRestore;
-        if (!displayTarget && percentToRestore > 0 && locationsGenerated && book.locations) {
-          displayTarget = book.locations.cfiFromPercentage(percentToRestore);
-        }
-
-        rendition.display(displayTarget || undefined).then(function() {
-          isStyleChangeNavigation = false;
-          var finalCfi = displayTarget;
-          var finalPercent = percentToRestore;
-          if (rendition.location && rendition.location.start) {
-            finalCfi = rendition.location.start.cfi;
-            if (locationsGenerated && book.locations) {
-              finalPercent = book.locations.percentageFromCfi(finalCfi) || percentToRestore;
-            }
-          }
-          lastKnownCfi = finalCfi;
-          lastKnownPercent = finalPercent;
-          log('setReaderTheme complete: CFI=' + finalCfi + ' percent=' + finalPercent);
-          msg("styleChangeComplete", {cfi: finalCfi, progress: finalPercent});
-        }).catch(function(e) {
-          log('setReaderTheme display error: ' + e.message);
-          isStyleChangeNavigation = false;
-          if (percentToRestore > 0 && locationsGenerated && book.locations) {
-            var fallbackCfi = book.locations.cfiFromPercentage(percentToRestore);
-            if (fallbackCfi) {
-              rendition.display(fallbackCfi).then(function() {
-                lastKnownCfi = fallbackCfi;
-                lastKnownPercent = percentToRestore;
-                msg("styleChangeComplete", {cfi: fallbackCfi, progress: percentToRestore});
-              }).catch(function() {
-                msg("styleChangeComplete", {cfi: cfiToRestore, progress: percentToRestore});
-              });
-              return;
-            }
-          }
-          msg("styleChangeComplete", {cfi: cfiToRestore, progress: percentToRestore});
-        });
-
-      } catch(e) {
-        log('setTheme error: ' + e.message);
-        msg("styleChangeComplete", {});
-      }
-    }
-
-    function setFontSize(size, preservedCfi, bg, text) {
-      try {
-        currentFontSize = size;
-        if(!book) { msg("styleChangeComplete", {}); return; }
-
-        var cfiToRestore = null;
-        var percentToRestore = lastKnownPercent;
-
-        if (rendition) {
-          var currentLoc = rendition.currentLocation();
-          if (currentLoc && currentLoc.start && currentLoc.start.cfi) {
-            cfiToRestore = currentLoc.start.cfi;
-            if (locationsGenerated && book.locations) {
-              percentToRestore = book.locations.percentageFromCfi(cfiToRestore) || lastKnownPercent;
-            }
-          }
-        }
-
-        if (!cfiToRestore && preservedCfi && preservedCfi.length > 0) {
-          cfiToRestore = preservedCfi;
-        }
-        if (!cfiToRestore && lastKnownCfi) {
-          cfiToRestore = lastKnownCfi;
-        }
-
-        log('setFontSize: preserving CFI=' + cfiToRestore + ' percent=' + percentToRestore);
-
-        if (rendition) {
-          rendition.destroy();
-        }
-
-        rendition = book.renderTo("reader", {
-          width: "100%",
-          height: "100%",
-          flow: "paginated"
-        });
-
-        rendition.themes.default({
-          "body": {
-            "background": bg + " !important",
-            "color": text + " !important",
-            "font-size": size + "% !important",
-            "line-height": "1.7 !important",
-            "padding": "16px !important"
-          },
-          "p,div,span,h1,h2,h3,h4,h5,h6,li": {"color": text + " !important"},
-          "a": {"color": "${accentColor} !important"},
-          "img,svg,image,figure,picture": {"display": "none !important"}
-        });
-
-        rendition.on("keydown", function(e) {
-          if (e.key === "ArrowLeft") prevPage();
-          if (e.key === "ArrowRight") nextPage();
-        });
-
-        var isStyleChangeNavigation = true;
-        rendition.on("relocated", function(loc) {
-          try {
-            lastKnownCfi = loc.start.cfi;
-            if (locationsGenerated && book.locations && book.locations.length()) {
-              var pct = book.locations.percentageFromCfi(loc.start.cfi);
-              lastKnownPercent = pct || 0;
-              if (!isStyleChangeNavigation) {
-                msg("relocated", {cfi: loc.start.cfi, progress: pct || 0});
-              }
-            } else if (!isStyleChangeNavigation) {
-              msg("relocated", {cfi: loc.start.cfi});
-            }
-          } catch(e) {}
-        });
-
-        var displayTarget = cfiToRestore;
-        if (!displayTarget && percentToRestore > 0 && locationsGenerated && book.locations) {
-          displayTarget = book.locations.cfiFromPercentage(percentToRestore);
-        }
-
-        rendition.display(displayTarget || undefined).then(function() {
-          isStyleChangeNavigation = false;
-          var finalCfi = displayTarget;
-          var finalPercent = percentToRestore;
-          if (rendition.location && rendition.location.start) {
-            finalCfi = rendition.location.start.cfi;
-            if (locationsGenerated && book.locations) {
-              finalPercent = book.locations.percentageFromCfi(finalCfi) || percentToRestore;
-            }
-          }
-          lastKnownCfi = finalCfi;
-          lastKnownPercent = finalPercent;
-          log('setFontSize complete: CFI=' + finalCfi + ' percent=' + finalPercent);
-          msg("styleChangeComplete", {cfi: finalCfi, progress: finalPercent});
-        }).catch(function(e) {
-          log('setFontSize display error: ' + e.message);
-          isStyleChangeNavigation = false;
-          if (percentToRestore > 0 && locationsGenerated && book.locations) {
-            var fallbackCfi = book.locations.cfiFromPercentage(percentToRestore);
-            if (fallbackCfi) {
-              rendition.display(fallbackCfi).then(function() {
-                lastKnownCfi = fallbackCfi;
-                lastKnownPercent = percentToRestore;
-                msg("styleChangeComplete", {cfi: fallbackCfi, progress: percentToRestore});
-              }).catch(function() {
-                msg("styleChangeComplete", {cfi: cfiToRestore, progress: percentToRestore});
-              });
-              return;
-            }
-          }
-          msg("styleChangeComplete", {cfi: cfiToRestore, progress: percentToRestore});
-        });
-
-      } catch(e) {
-        log('setFontSize error: ' + e.message);
-        msg("styleChangeComplete", {});
-      }
-    }
-
-    function setFontSizeWithProgress(size, progressToRestore, bg, text) {
-      try {
-        currentFontSize = size;
-        if(!book) { msg("styleChangeComplete", {}); return; }
-
-        var actualProgress = progressToRestore;
-        if (rendition) {
-          var currentLoc = rendition.currentLocation();
-          if (currentLoc && currentLoc.start && currentLoc.start.cfi) {
-            if (locationsGenerated && book.locations) {
-              var pct = book.locations.percentageFromCfi(currentLoc.start.cfi);
-              if (pct !== undefined && pct > 0) {
-                actualProgress = pct;
-              }
-            }
-          }
-        }
-        if (!actualProgress && lastKnownPercent > 0) {
-          actualProgress = lastKnownPercent;
-        }
-
-        log('setFontSizeWithProgress: size=' + size + ' actualProgress=' + actualProgress + ' (passed=' + progressToRestore + ')');
-
-        if (rendition) {
-          rendition.destroy();
-        }
-
-        document.body.style.background = bg;
-
-        rendition = book.renderTo("reader", {
-          width: "100%",
-          height: "100%",
-          flow: "paginated"
-        });
-
-        rendition.themes.default({
-          "body": {
-            "background": bg + " !important",
-            "color": text + " !important",
-            "font-size": size + "% !important",
-            "line-height": "1.7 !important",
-            "padding": "16px !important"
-          },
-          "p,div,span,h1,h2,h3,h4,h5,h6,li": {"color": text + " !important"},
-          "a": {"color": "${accentColor} !important"},
-          "img,svg,image,figure,picture": {"display": "none !important"}
-        });
-
-        rendition.on("keydown", function(e) {
-          if (e.key === "ArrowLeft") prevPage();
-          if (e.key === "ArrowRight") nextPage();
-        });
-
-        rendition.on("relocated", function(loc) {
-          try {
-            lastKnownCfi = loc.start.cfi;
-            if (locationsGenerated && book.locations && book.locations.length()) {
-              var pct = book.locations.percentageFromCfi(loc.start.cfi);
-              lastKnownPercent = pct || 0;
-            }
-          } catch(e) {}
-        });
-
-        rendition.display().then(function() {
-          log('setFontSizeWithProgress: rendition displayed, regenerating locations...');
-          locationsGenerated = false;
-          book.locations.generate(1500).then(function() {
-            log('setFontSizeWithProgress: locations regenerated (' + book.locations.length() + '), navigating to ' + (actualProgress * 100) + '%');
-            locationsGenerated = true;
-            if (actualProgress > 0) {
-              var targetCfi = book.locations.cfiFromPercentage(actualProgress);
-              if (targetCfi) {
-                rendition.display(targetCfi).then(function() {
-                  lastKnownCfi = targetCfi;
-                  lastKnownPercent = actualProgress;
-                  log('setFontSizeWithProgress complete at ' + (actualProgress * 100) + '%');
-                  msg("styleChangeComplete", {cfi: targetCfi, progress: actualProgress});
-                }).catch(function(e) {
-                  log('setFontSizeWithProgress nav error: ' + e.message);
-                  msg("styleChangeComplete", {progress: actualProgress});
-                });
-              } else {
-                msg("styleChangeComplete", {progress: actualProgress});
-              }
-            } else {
-              msg("styleChangeComplete", {progress: 0});
-            }
-          }).catch(function(e) {
-            log('setFontSizeWithProgress locations error: ' + e.message);
-            msg("styleChangeComplete", {});
-          });
-        }).catch(function(e) {
-          log('setFontSizeWithProgress display error: ' + e.message);
-          msg("styleChangeComplete", {});
-        });
-
-      } catch(e) {
-        log('setFontSizeWithProgress error: ' + e.message);
-        msg("styleChangeComplete", {});
-      }
-    }
-
-    function setReaderThemeWithProgress(bg, text, progressToRestore) {
-      try {
-        if(!book) { msg("styleChangeComplete", {}); return; }
-
-        var actualProgress = progressToRestore;
-        if (rendition) {
-          var currentLoc = rendition.currentLocation();
-          if (currentLoc && currentLoc.start && currentLoc.start.cfi) {
-            if (locationsGenerated && book.locations) {
-              var pct = book.locations.percentageFromCfi(currentLoc.start.cfi);
-              if (pct !== undefined && pct > 0) {
-                actualProgress = pct;
-              }
-            }
-          }
-        }
-        if (!actualProgress && lastKnownPercent > 0) {
-          actualProgress = lastKnownPercent;
-        }
-
-        log('setReaderThemeWithProgress: actualProgress=' + actualProgress + ' (passed=' + progressToRestore + ')');
-
-        if (rendition) {
-          rendition.destroy();
-        }
-
-        document.body.style.background = bg;
-
-        rendition = book.renderTo("reader", {
-          width: "100%",
-          height: "100%",
-          flow: "paginated"
-        });
-
-        rendition.themes.default({
-          "body": {
-            "background": bg + " !important",
-            "color": text + " !important",
-            "font-size": currentFontSize + "% !important",
-            "line-height": "1.7 !important",
-            "padding": "16px !important"
-          },
-          "p,div,span,h1,h2,h3,h4,h5,h6,li": {"color": text + " !important"},
-          "a": {"color": "${accentColor} !important"},
-          "img,svg,image,figure,picture": {"display": "none !important"}
-        });
-
-        rendition.on("keydown", function(e) {
-          if (e.key === "ArrowLeft") prevPage();
-          if (e.key === "ArrowRight") nextPage();
-        });
-
-        rendition.on("relocated", function(loc) {
-          try {
-            lastKnownCfi = loc.start.cfi;
-            if (locationsGenerated && book.locations && book.locations.length()) {
-              var pct = book.locations.percentageFromCfi(loc.start.cfi);
-              lastKnownPercent = pct || 0;
-            }
-          } catch(e) {}
-        });
-
-        rendition.display().then(function() {
-          log('setReaderThemeWithProgress: rendition displayed, regenerating locations...');
-          locationsGenerated = false;
-          book.locations.generate(1500).then(function() {
-            log('setReaderThemeWithProgress: locations regenerated (' + book.locations.length() + '), navigating to ' + (actualProgress * 100) + '%');
-            locationsGenerated = true;
-            if (actualProgress > 0) {
-              var targetCfi = book.locations.cfiFromPercentage(actualProgress);
-              if (targetCfi) {
-                rendition.display(targetCfi).then(function() {
-                  lastKnownCfi = targetCfi;
-                  lastKnownPercent = actualProgress;
-                  log('setReaderThemeWithProgress complete at ' + (actualProgress * 100) + '%');
-                  msg("styleChangeComplete", {cfi: targetCfi, progress: actualProgress});
-                }).catch(function(e) {
-                  log('setReaderThemeWithProgress nav error: ' + e.message);
-                  msg("styleChangeComplete", {progress: actualProgress});
-                });
-              } else {
-                msg("styleChangeComplete", {progress: actualProgress});
-              }
-            } else {
-              msg("styleChangeComplete", {progress: 0});
-            }
-          }).catch(function(e) {
-            log('setReaderThemeWithProgress locations error: ' + e.message);
-            msg("styleChangeComplete", {});
-          });
-        }).catch(function(e) {
-          log('setReaderThemeWithProgress display error: ' + e.message);
-          msg("styleChangeComplete", {});
-        });
-
-      } catch(e) {
-        log('setReaderThemeWithProgress error: ' + e.message);
-        msg("styleChangeComplete", {});
-      }
-    }
-
-    function setFontSizeAndMaintainPosition(size, cfi) {
-      try {
-        currentFontSize = size;
-        if(rendition) {
-          rendition.themes.fontSize(size + "%");
-          setTimeout(function() {
-            if (cfi) {
-              rendition.display(cfi);
-            }
-            locationsGenerated = false;
-            book.locations.generate(1500).then(function() {
-              log('Locations regenerated after font change: ' + book.locations.length());
-              locationsGenerated = true;
-              if (rendition.location && rendition.location.start) {
-                var pct = book.locations.percentageFromCfi(rendition.location.start.cfi);
-                msg("relocated", {cfi: rendition.location.start.cfi, progress: pct || 0});
-              }
-            }).catch(function(e) { log('Locations regen error: ' + e.message); });
-          }, 150);
-        }
-      } catch(e) { log('setFontSize error: ' + e.message); }
-    }
-
-    var touchStartX=0, touchStartY=0, touchStartTime=0, longPressTimer=null;
     document.addEventListener("touchstart", function(e) {
       touchStartX = e.touches[0].clientX;
       touchStartY = e.touches[0].clientY;
       touchStartTime = Date.now();
       if (longPressTimer) clearTimeout(longPressTimer);
-      longPressTimer = setTimeout(function() {
-        checkTextSelection();
-      }, 500);
-    }, {passive:true});
+      longPressTimer = setTimeout(checkTextSelection, 500);
+    }, {passive: true});
 
     document.addEventListener("touchmove", function(e) {
       if (longPressTimer) {
         clearTimeout(longPressTimer);
         longPressTimer = null;
       }
-    }, {passive:true});
+    }, {passive: true});
 
     document.addEventListener("touchend", function(e) {
-      try {
-        if (longPressTimer) {
-          clearTimeout(longPressTimer);
-          longPressTimer = null;
-        }
-        var dx = e.changedTouches[0].clientX - touchStartX;
-        var dy = e.changedTouches[0].clientY - touchStartY;
-        var dt = Date.now() - touchStartTime;
+      if (longPressTimer) {
+        clearTimeout(longPressTimer);
+        longPressTimer = null;
+      }
 
-        if(Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy) && dt < 500) {
-          log('Swipe detected: ' + (dx > 0 ? 'right (prev)' : 'left (next)'));
-          dx > 0 ? prevPage() : nextPage();
-        } else if(Math.abs(dx) < 15 && Math.abs(dy) < 15 && dt < 300) {
-          msg("tap", {});
-        }
-      } catch(e) { log('Touch error: ' + e.message); }
-    }, {passive:true});
+      var dx = e.changedTouches[0].clientX - touchStartX;
+      var dy = e.changedTouches[0].clientY - touchStartY;
+      var dt = Date.now() - touchStartTime;
+
+      if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 2 && dt < 400) {
+        if (dx > 0) prevPage();
+        else nextPage();
+      } else if (Math.abs(dx) < 20 && Math.abs(dy) < 20 && dt < 250) {
+        msg("tap", {});
+      }
+    }, {passive: true});
 
     function checkTextSelection() {
+      if (!rendition) return;
       try {
-        if (!rendition) return;
         var contents = rendition.getContents();
-        if (!contents || contents.length === 0) return;
+        if (!contents || !contents.length) return;
         var doc = contents[0].document;
         var selection = doc.getSelection();
-        if (!selection || selection.isCollapsed || !selection.toString().trim()) return;
+        if (!selection || selection.isCollapsed) return;
         var text = selection.toString().trim();
         if (text.length < 2) return;
         var range = selection.getRangeAt(0);
         var cfiRange = contents[0].cfiFromRange(range);
         if (cfiRange) {
-          log('Text selected: ' + text.substring(0, 50) + '...');
-          msg('textSelected', { cfiRange: cfiRange, text: text });
+          msg('textSelected', {cfiRange: cfiRange, text: text});
           selection.removeAllRanges();
         }
-      } catch(e) {
-        log('checkTextSelection error: ' + e.message);
-      }
+      } catch(e) {}
     }
 
     document.addEventListener('selectionchange', function() {
       if (longPressTimer) {
         clearTimeout(longPressTimer);
-        longPressTimer = setTimeout(function() {
-          checkTextSelection();
-        }, 300);
+        longPressTimer = setTimeout(checkTextSelection, 300);
       }
     });
   </script>

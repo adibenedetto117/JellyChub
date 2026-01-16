@@ -76,6 +76,7 @@ export interface MusicPlayerCore {
   handleToggleRepeat: () => void;
   handleToggleFavorite: () => Promise<void>;
   handleToggleLyrics: () => void;
+  handleSeekToLyric: (index: number) => void;
   handleGoToAlbum: () => void;
   handleGoToArtist: () => void;
   handleAddToPlaylist: () => void;

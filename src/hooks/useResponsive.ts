@@ -1,12 +1,13 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Dimensions, ScaledSize, Platform } from 'react-native';
 
-export type DeviceType = 'phone' | 'tablet' | 'tv';
+export type DeviceType = 'phone' | 'tablet' | 'desktop' | 'tv';
 export type Orientation = 'portrait' | 'landscape';
 
 export interface ResponsiveBreakpoints {
   isPhone: boolean;
   isTablet: boolean;
+  isDesktop: boolean;
   isTV: boolean;
   isLandscape: boolean;
   isPortrait: boolean;
@@ -43,9 +44,12 @@ export interface ResponsiveBreakpoints {
 
 const PHONE_MAX_WIDTH = 600;
 const TABLET_MAX_WIDTH = 1024;
+const DESKTOP_MIN_WIDTH = 1024;
 
 function getDeviceType(width: number, height: number): DeviceType {
   if (Platform.isTV) return 'tv';
+  // Web with large screen is desktop
+  if (Platform.OS === 'web' && width >= DESKTOP_MIN_WIDTH) return 'desktop';
   const minDimension = Math.min(width, height);
   if (minDimension >= PHONE_MAX_WIDTH) return 'tablet';
   return 'phone';
@@ -57,13 +61,14 @@ function calculateBreakpoints(width: number, height: number): ResponsiveBreakpoi
   const isPortrait = !isLandscape;
   const isPhone = deviceType === 'phone';
   const isTablet = deviceType === 'tablet';
+  const isDesktop = deviceType === 'desktop';
   const isTV = deviceType === 'tv';
 
-  // Calculate grid columns based on width
-  const gridPadding = isPhone ? 16 : isTablet ? 24 : 48;
-  const gridGap = isPhone ? 8 : isTablet ? 12 : 16;
-  const minPosterWidth = isPhone ? 100 : isTablet ? 140 : 180;
-  const minSquareWidth = isPhone ? 100 : isTablet ? 140 : 180;
+  // Calculate grid columns based on width and device type
+  const gridPadding = isPhone ? 16 : isTablet ? 24 : isDesktop ? 32 : 48;
+  const gridGap = isPhone ? 8 : isTablet ? 12 : isDesktop ? 16 : 16;
+  const minPosterWidth = isPhone ? 100 : isTablet ? 140 : isDesktop ? 160 : 180;
+  const minSquareWidth = isPhone ? 100 : isTablet ? 140 : isDesktop ? 160 : 180;
 
   const availableWidth = width - (gridPadding * 2);
 
@@ -77,15 +82,15 @@ function calculateBreakpoints(width: number, height: number): ResponsiveBreakpoi
   const posterHeight = posterWidth * 1.5;
   const squareSize = (availableWidth - (gridGap * (squareColumns - 1))) / squareColumns;
 
-  // Horizontal scroll item sizes
-  const horizontalItemWidth = isPhone ? 120 : isTablet ? 150 : 180;
+  // Horizontal scroll item sizes - scale with screen width for desktop
+  const horizontalItemWidth = isPhone ? 120 : isTablet ? 150 : isDesktop ? Math.min(200, width / 8) : 200;
   const horizontalItemHeight = horizontalItemWidth * 1.5;
 
   // Spacing scale
-  const spacingBase = isPhone ? 4 : isTablet ? 6 : 8;
+  const spacingBase = isPhone ? 4 : isTablet ? 6 : isDesktop ? 8 : 8;
 
-  // Font sizes
-  const fontScale = isPhone ? 1 : isTablet ? 1.1 : 1.25;
+  // Font sizes - desktop gets slightly larger fonts
+  const fontScale = isPhone ? 1 : isTablet ? 1.1 : isDesktop ? 1.15 : 1.25;
   const fontSize = {
     xs: Math.round(10 * fontScale),
     sm: Math.round(12 * fontScale),
@@ -97,13 +102,14 @@ function calculateBreakpoints(width: number, height: number): ResponsiveBreakpoi
   };
 
   // Layout dimensions
-  const contentMaxWidth = isTV ? 1600 : isTablet ? 1200 : width;
-  const sidebarWidth = isTablet && isLandscape ? 280 : 0;
-  const headerHeight = isPhone ? 56 : isTablet ? 64 : 80;
+  const contentMaxWidth = isTV ? 1600 : isDesktop ? 1800 : isTablet ? 1200 : width;
+  const sidebarWidth = isDesktop ? 240 : isTablet && isLandscape ? 280 : 0;
+  const headerHeight = isPhone ? 56 : isTablet ? 64 : isDesktop ? 0 : 80;
 
   return {
     isPhone,
     isTablet,
+    isDesktop,
     isTV,
     isLandscape,
     isPortrait,
@@ -164,9 +170,10 @@ export function getColumnsForWidth(
 // Responsive value selector
 export function responsiveValue<T>(
   breakpoints: ResponsiveBreakpoints,
-  values: { phone?: T; tablet?: T; tv?: T; default: T }
+  values: { phone?: T; tablet?: T; desktop?: T; tv?: T; default: T }
 ): T {
   if (breakpoints.isTV && values.tv !== undefined) return values.tv;
+  if (breakpoints.isDesktop && values.desktop !== undefined) return values.desktop;
   if (breakpoints.isTablet && values.tablet !== undefined) return values.tablet;
   if (breakpoints.isPhone && values.phone !== undefined) return values.phone;
   return values.default;

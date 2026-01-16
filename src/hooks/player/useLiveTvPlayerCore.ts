@@ -184,18 +184,26 @@ export function useLiveTvPlayerCore(): LiveTvPlayerCore {
     }
   }, [currentChannelId, userId, addRecentChannel, generateStreamUrl, bufferingOverlayOpacity]);
 
-  // Screen orientation and keep awake
+  // Screen orientation and keep awake (guarded for web)
   useEffect(() => {
     const setup = async () => {
-      await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
-      await activateKeepAwakeAsync();
+      try {
+        await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
+      } catch {}
+      try {
+        await activateKeepAwakeAsync();
+      } catch {}
     };
 
     setup();
 
     return () => {
-      ScreenOrientation.unlockAsync();
-      deactivateKeepAwake();
+      try {
+        ScreenOrientation.unlockAsync();
+      } catch {}
+      try {
+        deactivateKeepAwake();
+      } catch {}
     };
   }, []);
 
@@ -356,13 +364,15 @@ export function useLiveTvPlayerCore(): LiveTvPlayerCore {
   }, [channels, currentChannelId, handleChannelChange]);
 
   const handleToggleOrientationLock = useCallback(async () => {
-    if (isOrientationLocked) {
-      await ScreenOrientation.unlockAsync();
-      setIsOrientationLocked(false);
-    } else {
-      await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
-      setIsOrientationLocked(true);
-    }
+    try {
+      if (isOrientationLocked) {
+        await ScreenOrientation.unlockAsync();
+        setIsOrientationLocked(false);
+      } else {
+        await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
+        setIsOrientationLocked(true);
+      }
+    } catch {}
   }, [isOrientationLocked]);
 
   const handleRetry = useCallback(() => {

@@ -213,7 +213,20 @@ export function useMusicPlayerCore(): MusicPlayerCore {
   useEffect(() => {
     translateY.value = 0;
     hasStartedPlayback.current = false;
-  }, [itemId]);
+
+    // When itemId changes, load the new track directly
+    // This handles cases where the queue subscription doesn't fire or the subscription condition fails
+    if (itemId && userId) {
+      const store = usePlayerStore.getState();
+      const queueItem = store.queue.find(q => q.id === itemId);
+      const currentlyPlayingId = audioService.getCurrentItemId();
+
+      if (queueItem && queueItem.item.Id !== currentlyPlayingId) {
+        audioService.loadAndPlay(queueItem.item, userId);
+        hasStartedPlayback.current = true;
+      }
+    }
+  }, [itemId, userId]);
 
   useEffect(() => {
     if (showOptions) {
@@ -267,12 +280,14 @@ export function useMusicPlayerCore(): MusicPlayerCore {
   useEffect(() => {
     if (!lyrics || lyrics.length === 0 || isSeeking) return;
 
-    const position = localProgress.position;
+    // Add offset to compensate for audio latency (show lyrics early)
+    const LYRIC_OFFSET_MS = 800;
+    const position = localProgress.position + LYRIC_OFFSET_MS;
     let newIndex = -1;
 
     for (let i = 0; i < lyrics.length; i++) {
-      const lineStart = lyrics[i].start;
-      const nextLineStart = i < lyrics.length - 1 ? lyrics[i + 1].start : Infinity;
+      const lineStart = lyrics[i].start ?? 0;
+      const nextLineStart = i < lyrics.length - 1 ? (lyrics[i + 1].start ?? Infinity) : Infinity;
 
       if (position >= lineStart && position < nextLineStart) {
         newIndex = i;
@@ -374,6 +389,14 @@ export function useMusicPlayerCore(): MusicPlayerCore {
   const handleToggleLyrics = useCallback(() => {
     setShowLyrics(!music.showLyrics);
   }, [music.showLyrics, setShowLyrics]);
+
+  const handleSeekToLyric = useCallback((index: number) => {
+    if (!lyrics || index < 0 || index >= lyrics.length) return;
+    const lyric = lyrics[index];
+    if (lyric.start !== undefined) {
+      audioService.seek(lyric.start);
+    }
+  }, [lyrics]);
 
   const handleGoToAlbum = useCallback(() => {
     const albumId = (item as any)?.AlbumId;
@@ -530,21 +553,36 @@ export function useMusicPlayerCore(): MusicPlayerCore {
     }), [startSeeking, updateSeekPosition, finishSeeking]);
 
   const dismissGesture = useMemo(() => Gesture.Pan()
-    .activeOffsetY(10)
+    .activeOffsetY(20)
     .failOffsetX([-20, 20])
+    .onStart((e) => {
+      // Only allow dismiss gesture from top 120px (header area) when lyrics are showing
+      if (music.showLyrics && e.y > 120) {
+        return;
+      }
+    })
     .onUpdate((e) => {
+      // Block gesture if started below header in lyrics view
+      if (music.showLyrics && e.y - e.translationY > 120) {
+        return;
+      }
       if (e.translationY > 0) {
         translateY.value = e.translationY;
       }
     })
     .onEnd((e) => {
+      // Block gesture if started below header in lyrics view
+      if (music.showLyrics && e.y - e.translationY > 120) {
+        translateY.value = withSpring(0, { damping: 20 });
+        return;
+      }
       if (e.translationY > 100 || e.velocityY > 500) {
         translateY.value = withTiming(500, { duration: 200 });
         runOnJS(handleClose)();
       } else {
         translateY.value = withSpring(0, { damping: 20 });
       }
-    }), [translateY, handleClose]);
+    }), [translateY, handleClose, music.showLyrics]);
 
   const modalGesture = useMemo(() => Gesture.Pan()
     .onUpdate((e) => {
@@ -685,6 +723,7 @@ export function useMusicPlayerCore(): MusicPlayerCore {
     handleToggleRepeat,
     handleToggleFavorite,
     handleToggleLyrics,
+    handleSeekToLyric,
     handleGoToAlbum,
     handleGoToArtist,
     handleAddToPlaylist,

@@ -169,3 +169,5 @@ export {
   useServerSelectScreen,
   useDetailsScreen,
 } from './screen';
+
+export { useMiniPlayerPadding } from './useMiniPlayerPadding';

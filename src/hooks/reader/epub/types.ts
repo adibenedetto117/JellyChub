@@ -21,6 +21,7 @@ export const HIGHLIGHT_COLORS: Record<HighlightColor, string> = {
 export interface TocItem {
   href: string;
   label: string;
+  depth?: number;
 }
 
 export interface PendingHighlight {
