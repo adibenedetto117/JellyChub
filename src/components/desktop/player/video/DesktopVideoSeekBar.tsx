@@ -3,6 +3,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import { VideoSeekBar } from '@/components/mobile/player/video';
 import { type ChapterInfo } from '@/components/shared/player';
 import { formatPlayerTime } from '@/utils';
+import type { TrickplayInfo } from '@/types/jellyfin';
 
 interface DesktopVideoSeekBarProps {
   position: number;
@@ -19,6 +20,12 @@ interface DesktopVideoSeekBarProps {
   itemId: string;
   mediaSourceId?: string;
   onChapterSeek: (positionMs: number) => void;
+  introStart?: number | null;
+  introEnd?: number | null;
+  creditsStart?: number | null;
+  abLoop?: { a: number | null; b: number | null };
+  trickplayInfo?: TrickplayInfo | null;
+  trickplayResolution?: number | null;
 }
 
 export function DesktopVideoSeekBar({
@@ -36,6 +43,12 @@ export function DesktopVideoSeekBar({
   itemId,
   mediaSourceId,
   onChapterSeek,
+  introStart,
+  introEnd,
+  creditsStart,
+  abLoop,
+  trickplayInfo,
+  trickplayResolution,
 }: DesktopVideoSeekBarProps) {
   return (
     <View style={styles.bottomControls}>
@@ -55,6 +68,12 @@ export function DesktopVideoSeekBar({
         itemId={itemId}
         mediaSourceId={mediaSourceId}
         onChapterSeek={onChapterSeek}
+        introStart={introStart}
+        introEnd={introEnd}
+        creditsStart={creditsStart}
+        abLoop={abLoop}
+        trickplayInfo={trickplayInfo}
+        trickplayResolution={trickplayResolution}
       />
 
       <View style={styles.timeRow}>

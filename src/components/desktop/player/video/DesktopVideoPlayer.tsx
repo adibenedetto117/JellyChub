@@ -3,17 +3,18 @@ import { View, Pressable, Text, StyleSheet, Platform } from 'react-native';
 import { router } from 'expo-router';
 import Animated, { useAnimatedStyle, withTiming, useSharedValue } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
-import { VideoView } from 'expo-video';
 import type { VideoPlayerCore } from '@/hooks';
+import { usePlayerStore } from '@/stores';
 import {
   SubtitleDisplay,
   SleepTimerSelector,
   ChapterList,
   EpisodeList,
   AudioSubtitleSelector,
+  WebVideoView,
   type ChapterInfo,
 } from '@/components/shared/player';
-import { SpeedSelectorModal } from '@/components/mobile/player/video';
+import { SpeedSelectorModal, QualitySelectorModal } from '@/components/mobile/player/video';
 import { DesktopVideoPlayerHeader } from './DesktopVideoPlayerHeader';
 import { DesktopVideoPlaybackControls } from './DesktopVideoPlaybackControls';
 import { DesktopVideoPlayerOverlays } from './DesktopVideoPlayerOverlays';
@@ -32,7 +33,6 @@ export function DesktopVideoPlayer({ core }: DesktopVideoPlayerProps) {
     mediaSource,
     streamUrl,
     player,
-    videoViewRef,
     playerState,
     progress,
     showLoadingIndicator,
@@ -58,9 +58,13 @@ export function DesktopVideoPlayer({ core }: DesktopVideoPlayerProps) {
     subtitlesLoading,
     subtitleLoadError,
     showSkipIntro,
+    isIntroPreview,
+    introStart,
     introEnd,
     handleSkipIntro,
     showSkipCredits,
+    handleSkipCredits,
+    creditsStart,
     nextEpisode,
     handlePlayNextEpisode,
     seasonEpisodes,
@@ -71,18 +75,93 @@ export function DesktopVideoPlayer({ core }: DesktopVideoPlayerProps) {
     episodeListLoading,
     handleSelectEpisode,
     chapters,
+    abLoop,
+    trickplayInfo,
+    trickplayResolution,
     handlePlayPause,
     handleSeek,
     handleClose,
     getDisplayName,
     getSubtitle,
+    streamingQuality,
+    setStreamingQuality,
   } = core;
 
   const [showControls, setShowControls] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showQualityModal, setShowQualityModal] = useState(false);
   const controlsTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const containerRef = useRef<View>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
   const controlsOpacity = useSharedValue(1);
+  const durationRef = useRef(0);
+
+  const setPlayerState = usePlayerStore((s) => s.setPlayerState);
+  const setProgress = usePlayerStore((s) => s.setProgress);
+
+  const handleTimeUpdate = useCallback((currentTime: number) => {
+    const currentTimeMs = currentTime * 1000;
+    const durationMs = durationRef.current * 1000;
+    setProgress(currentTimeMs, durationMs, durationMs);
+  }, [setProgress]);
+
+  const handleDurationChange = useCallback((duration: number) => {
+    durationRef.current = duration;
+  }, []);
+
+  const handleVideoPlay = useCallback(() => {
+    setPlayerState('playing');
+  }, [setPlayerState]);
+
+  const handleVideoPause = useCallback(() => {
+    setPlayerState('paused');
+  }, [setPlayerState]);
+
+  const handleVideoLoadStart = useCallback(() => {
+    setPlayerState('loading');
+  }, [setPlayerState]);
+
+  const handleVideoCanPlay = useCallback(() => {
+    if (playerState === 'loading') {
+      setPlayerState('paused');
+    }
+  }, [playerState, setPlayerState]);
+
+  const handleVideoEnded = useCallback(() => {
+    setPlayerState('paused');
+    if (nextEpisode) {
+      handlePlayNextEpisode();
+      router.replace(`/player/video?itemId=${nextEpisode.Id}${from ? `&from=${encodeURIComponent(from)}` : ''}`);
+    }
+  }, [setPlayerState, nextEpisode, handlePlayNextEpisode, from]);
+
+  const webPlayPause = useCallback(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    if (video.paused) {
+      video.play().catch(() => {});
+    } else {
+      video.pause();
+    }
+  }, []);
+
+  const webSeek = useCallback((positionMs: number) => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.currentTime = positionMs / 1000;
+    setProgress(positionMs, durationRef.current * 1000, durationRef.current * 1000);
+  }, [setProgress]);
+
+  const navigateToEpisode = useCallback((episodeId: string) => {
+    handleSelectEpisode(episodeId);
+    router.replace(`/player/video?itemId=${episodeId}${from ? `&from=${encodeURIComponent(from)}` : ''}`);
+  }, [handleSelectEpisode, from]);
+
+  const navigateToNextEpisode = useCallback(() => {
+    if (!nextEpisode) return;
+    handlePlayNextEpisode();
+    router.replace(`/player/video?itemId=${nextEpisode.Id}${from ? `&from=${encodeURIComponent(from)}` : ''}`);
+  }, [nextEpisode, handlePlayNextEpisode, from]);
 
   const resetControlsTimeout = useCallback(() => {
     if (controlsTimeout.current) {
@@ -104,32 +183,33 @@ export function DesktopVideoPlayer({ core }: DesktopVideoPlayerProps) {
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement)?.tagName === 'INPUT') return;
+      const video = videoRef.current;
 
       switch (e.key) {
         case ' ':
         case 'k':
           e.preventDefault();
-          handlePlayPause();
+          webPlayPause();
           break;
         case 'ArrowLeft':
           e.preventDefault();
-          handleSeek(Math.max(0, progress.position - (e.shiftKey ? 30000 : 10000)));
+          webSeek(Math.max(0, progress.position - (e.shiftKey ? 30000 : 10000)));
           break;
         case 'ArrowRight':
           e.preventDefault();
-          handleSeek(Math.min(progress.duration, progress.position + (e.shiftKey ? 30000 : 10000)));
+          webSeek(Math.min(progress.duration, progress.position + (e.shiftKey ? 30000 : 10000)));
           break;
         case 'ArrowUp':
           e.preventDefault();
-          if (player) player.volume = Math.min(1, (player.volume || 0) + 0.1);
+          if (video) video.volume = Math.min(1, (video.volume || 0) + 0.1);
           break;
         case 'ArrowDown':
           e.preventDefault();
-          if (player) player.volume = Math.max(0, (player.volume || 1) - 0.1);
+          if (video) video.volume = Math.max(0, (video.volume || 1) - 0.1);
           break;
         case 'm':
           e.preventDefault();
-          if (player) player.muted = !player.muted;
+          if (video) video.muted = !video.muted;
           break;
         case 'f':
           e.preventDefault();
@@ -170,15 +250,15 @@ export function DesktopVideoPlayer({ core }: DesktopVideoPlayerProps) {
         case '9':
           e.preventDefault();
           const percent = parseInt(e.key) * 10;
-          handleSeek((progress.duration * percent) / 100);
+          webSeek((progress.duration * percent) / 100);
           break;
         case ',':
           e.preventDefault();
-          handleSeek(Math.max(0, progress.position - 5000));
+          webSeek(Math.max(0, progress.position - 5000));
           break;
         case '.':
           e.preventDefault();
-          handleSeek(Math.min(progress.duration, progress.position + 5000));
+          webSeek(Math.min(progress.duration, progress.position + 5000));
           break;
         case '<':
           e.preventDefault();
@@ -190,6 +270,10 @@ export function DesktopVideoPlayer({ core }: DesktopVideoPlayerProps) {
           const fasterSpeed = Math.min(2, videoPlaybackSpeed + 0.25);
           handleSpeedChange(fasterSpeed);
           break;
+        case 'q':
+          e.preventDefault();
+          setShowQualityModal((prev) => !prev);
+          break;
       }
       resetControlsTimeout();
     };
@@ -197,11 +281,10 @@ export function DesktopVideoPlayer({ core }: DesktopVideoPlayerProps) {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [
-    handlePlayPause,
-    handleSeek,
+    webPlayPause,
+    webSeek,
     handleClose,
     progress,
-    player,
     isFullscreen,
     modals,
     nextEpisode,
@@ -211,6 +294,7 @@ export function DesktopVideoPlayer({ core }: DesktopVideoPlayerProps) {
     videoPlaybackSpeed,
     handleSpeedChange,
     resetControlsTimeout,
+    navigateToNextEpisode,
   ]);
 
   useEffect(() => {
@@ -240,17 +324,6 @@ export function DesktopVideoPlayer({ core }: DesktopVideoPlayerProps) {
     }
   }, []);
 
-  const navigateToEpisode = useCallback((episodeId: string) => {
-    handleSelectEpisode(episodeId);
-    router.replace(`/player/video?itemId=${episodeId}${from ? `&from=${encodeURIComponent(from)}` : ''}`);
-  }, [handleSelectEpisode, from]);
-
-  const navigateToNextEpisode = useCallback(() => {
-    if (!nextEpisode) return;
-    handlePlayNextEpisode();
-    router.replace(`/player/video?itemId=${nextEpisode.Id}${from ? `&from=${encodeURIComponent(from)}` : ''}`);
-  }, [nextEpisode, handlePlayNextEpisode, from]);
-
   const controlsStyle = useAnimatedStyle(() => ({
     opacity: controlsOpacity.value,
   }));
@@ -262,13 +335,19 @@ export function DesktopVideoPlayer({ core }: DesktopVideoPlayerProps) {
       onPointerMove={() => resetControlsTimeout()}
     >
       {streamUrl && (
-        <Pressable style={styles.videoContainer} onPress={handlePlayPause}>
-          <VideoView
-            ref={videoViewRef}
+        <Pressable style={styles.videoContainer} onPress={webPlayPause}>
+          <WebVideoView
+            ref={videoRef}
             player={player}
+            streamUrl={streamUrl}
             style={styles.video}
-            contentFit="contain"
-            nativeControls={false}
+            onTimeUpdate={handleTimeUpdate}
+            onDurationChange={handleDurationChange}
+            onPlay={handleVideoPlay}
+            onPause={handleVideoPause}
+            onLoadStart={handleVideoLoadStart}
+            onCanPlay={handleVideoCanPlay}
+            onEnded={handleVideoEnded}
           />
         </Pressable>
       )}
@@ -291,8 +370,10 @@ export function DesktopVideoPlayer({ core }: DesktopVideoPlayerProps) {
         hasStreamUrl={!!streamUrl}
         accentColor={accentColor}
         showSkipIntro={showSkipIntro}
+        isIntroPreview={isIntroPreview}
         onSkipIntro={handleSkipIntro}
         showSkipCredits={showSkipCredits}
+        onSkipCredits={handleSkipCredits}
         showNextEpisode={progress.duration > 0 && progress.position >= progress.duration - 30000 && !!nextEpisode}
         nextEpisodeNumber={nextEpisode?.IndexNumber}
         onNavigateToNextEpisode={navigateToNextEpisode}
@@ -322,9 +403,9 @@ export function DesktopVideoPlayer({ core }: DesktopVideoPlayerProps) {
 
         <DesktopVideoPlaybackControls
           playerState={playerState}
-          onPlayPause={handlePlayPause}
-          onSeekBackward={() => handleSeek(Math.max(0, progress.position - 10000))}
-          onSeekForward={() => handleSeek(Math.min(progress.duration, progress.position + 10000))}
+          onPlayPause={webPlayPause}
+          onSeekBackward={() => webSeek(Math.max(0, progress.position - 10000))}
+          onSeekForward={() => webSeek(Math.min(progress.duration, progress.position + 10000))}
         />
 
         <LinearGradient
@@ -341,17 +422,23 @@ export function DesktopVideoPlayer({ core }: DesktopVideoPlayerProps) {
           seekPosition={seekPosition}
           onSeekStart={(pos) => { setIsSeeking(true); setSeekPosition(pos); }}
           onSeekUpdate={setSeekPosition}
-          onSeekEnd={(pos) => { handleSeek(pos); setIsSeeking(false); }}
-          onTap={handleSeek}
+          onSeekEnd={(pos) => { webSeek(pos); setIsSeeking(false); }}
+          onTap={webSeek}
           chapters={chapters as ChapterInfo[] | undefined}
           itemId={itemId}
           mediaSourceId={mediaSource?.Id}
-          onChapterSeek={handleSeek}
+          onChapterSeek={webSeek}
+          introStart={introStart}
+          introEnd={introEnd}
+          creditsStart={creditsStart}
+          abLoop={abLoop}
+          trickplayInfo={trickplayInfo}
+          trickplayResolution={trickplayResolution ?? undefined}
         />
 
         <View style={styles.shortcutsHint}>
           <Text style={styles.shortcutsText}>
-            Space: Play/Pause | Arrows: Seek/Volume | F: Fullscreen | M: Mute | C: Subtitles
+            Space: Play/Pause | Arrows: Seek/Volume | F: Fullscreen | M: Mute | C: Subtitles | Q: Quality
           </Text>
         </View>
       </Animated.View>
@@ -362,6 +449,15 @@ export function DesktopVideoPlayer({ core }: DesktopVideoPlayerProps) {
         currentSpeed={videoPlaybackSpeed}
         onSelectSpeed={handleSpeedChange}
         accentColor={accentColor}
+      />
+
+      <QualitySelectorModal
+        visible={showQualityModal}
+        onClose={() => setShowQualityModal(false)}
+        screenHeight={800}
+        accentColor={accentColor}
+        currentQuality={streamingQuality}
+        onSelectQuality={setStreamingQuality}
       />
 
       <SleepTimerSelector

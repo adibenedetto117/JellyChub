@@ -1,5 +1,12 @@
-import React from 'react';
-import { View, Text, Pressable, StyleSheet } from 'react-native';
+import React, { useEffect } from 'react';
+import { View, Text, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withRepeat,
+  withTiming,
+  withSequence,
+} from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 
 interface DesktopVideoPlayerOverlaysProps {
@@ -7,8 +14,10 @@ interface DesktopVideoPlayerOverlaysProps {
   hasStreamUrl: boolean;
   accentColor: string;
   showSkipIntro: boolean;
+  isIntroPreview?: boolean;
   onSkipIntro: () => void;
   showSkipCredits: boolean;
+  onSkipCredits: () => void;
   showNextEpisode: boolean;
   nextEpisodeNumber?: number;
   onNavigateToNextEpisode: () => void;
@@ -19,18 +28,38 @@ export function DesktopVideoPlayerOverlays({
   hasStreamUrl,
   accentColor,
   showSkipIntro,
+  isIntroPreview,
   onSkipIntro,
   showSkipCredits,
+  onSkipCredits,
   showNextEpisode,
   nextEpisodeNumber,
   onNavigateToNextEpisode,
 }: DesktopVideoPlayerOverlaysProps) {
+  const rotation = useSharedValue(0);
+
+  useEffect(() => {
+    if (showLoadingIndicator) {
+      rotation.value = withRepeat(
+        withTiming(360, { duration: 1000 }),
+        -1,
+        false
+      );
+    } else {
+      rotation.value = 0;
+    }
+  }, [showLoadingIndicator, rotation]);
+
+  const spinnerStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${rotation.value}deg` }],
+  }));
+
   return (
     <>
       {showLoadingIndicator && (
         <View style={styles.loadingOverlay}>
           <View style={styles.loadingSpinner}>
-            <Ionicons name="reload" size={32} color={accentColor} />
+            <ActivityIndicator size="large" color={accentColor} />
           </View>
         </View>
       )}
@@ -41,9 +70,31 @@ export function DesktopVideoPlayerOverlays({
         </View>
       )}
 
-      {showSkipIntro && (
-        <Pressable onPress={onSkipIntro} style={styles.skipButton}>
-          <Text style={styles.skipButtonText}>Skip Intro</Text>
+      {(showSkipIntro || isIntroPreview) && (
+        <Pressable
+          onPress={onSkipIntro}
+          style={[
+            styles.skipButton,
+            isIntroPreview && !showSkipIntro && styles.skipButtonPreview,
+          ]}
+        >
+          <Text style={[
+            styles.skipButtonText,
+            isIntroPreview && !showSkipIntro && styles.skipButtonTextPreview,
+          ]}>
+            Skip Intro
+          </Text>
+          <Ionicons
+            name="play-forward"
+            size={16}
+            color={isIntroPreview && !showSkipIntro ? 'rgba(0,0,0,0.5)' : '#000'}
+          />
+        </Pressable>
+      )}
+
+      {showSkipCredits && !nextEpisodeNumber && (
+        <Pressable onPress={onSkipCredits} style={styles.skipButton}>
+          <Text style={styles.skipButtonText}>Skip Credits</Text>
           <Ionicons name="play-forward" size={16} color="#000" />
         </Pressable>
       )}
@@ -88,10 +139,16 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     gap: 8,
   },
+  skipButtonPreview: {
+    backgroundColor: 'rgba(255,255,255,0.5)',
+  },
   skipButtonText: {
     color: '#000',
     fontSize: 14,
     fontWeight: '600',
+  },
+  skipButtonTextPreview: {
+    color: 'rgba(0,0,0,0.5)',
   },
   nextEpisodeButton: {
     position: 'absolute',

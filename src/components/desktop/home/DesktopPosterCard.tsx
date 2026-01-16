@@ -8,6 +8,7 @@ import Animated, {
 import { getImageUrl } from '@/api';
 import { desktopConstants } from '@/utils/platform';
 import { useSettingsStore } from '@/stores';
+import { useResponsive } from '@/hooks/useResponsive';
 import { CachedImage } from '@/components/shared/ui/CachedImage';
 import { getWatchProgress, getDisplayName, getDisplayImageUrl, getDisplayYear } from '@/utils';
 import type { BaseItem } from '@/types/jellyfin';
@@ -24,13 +25,24 @@ interface Props {
   tabIndex?: number;
 }
 
-const DIMENSIONS = {
-  poster: { width: 160, height: 240 },
-  backdrop: { width: 280, height: 158 },
-  square: { width: 160, height: 160 },
-};
-
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
+function useDimensions(variant: 'poster' | 'backdrop' | 'square') {
+  const responsive = useResponsive();
+  return useMemo(() => {
+    const baseWidth = responsive.horizontalItemWidth;
+    switch (variant) {
+      case 'poster':
+        return { width: baseWidth, height: baseWidth * 1.5 };
+      case 'backdrop':
+        return { width: baseWidth * 1.75, height: baseWidth * 0.98 };
+      case 'square':
+        return { width: baseWidth, height: baseWidth };
+      default:
+        return { width: baseWidth, height: baseWidth * 1.5 };
+    }
+  }, [variant, responsive.horizontalItemWidth]);
+}
 
 export const DesktopPosterCard = memo(function DesktopPosterCard({
   item,
@@ -51,7 +63,7 @@ export const DesktopPosterCard = memo(function DesktopPosterCard({
   const scale = useSharedValue(1);
   const borderOpacity = useSharedValue(0);
 
-  const dimensions = DIMENSIONS[variant];
+  const dimensions = useDimensions(variant);
   const progress = useMemo(() => getWatchProgress(item), [item.UserData, item.RunTimeTicks]);
   const hasProgress = showProgress && progress > 0 && progress < 100;
 

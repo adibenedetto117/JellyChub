@@ -12,10 +12,10 @@ import Animated, {
   withTiming,
   useSharedValue,
 } from 'react-native-reanimated';
-import { VideoView } from 'expo-video';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import type { LiveTvPlayerCore } from '@/hooks';
+import { WebVideoView } from '@/components/shared/player';
 import { DesktopLiveTvControls } from './DesktopLiveTvControls';
 import {
   DesktopLiveTvChannelInfo,
@@ -219,12 +219,10 @@ export function DesktopLiveTvPlayer({ core }: DesktopLiveTvPlayerProps) {
     <View style={styles.container} onPointerMove={() => resetControlsTimeout()}>
       <Pressable style={styles.videoContainer} onPress={handleVideoClick}>
         {streamUrl && !streamError && (
-          <VideoView
+          <WebVideoView
             player={player}
+            streamUrl={streamUrl}
             style={styles.video}
-            nativeControls={false}
-            contentFit="contain"
-            allowsPictureInPicture={true}
           />
         )}
 

@@ -4,10 +4,12 @@ import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useDetailsScreen } from '@/hooks';
+import { useAuthStore } from '@/stores';
 import { CachedImage } from '@/components/shared/ui/CachedImage';
 import { Button } from '@/components/shared/ui/Button';
 import { TrackOptionsMenu } from '@/components/shared/music/TrackOptionsMenu';
 import { DownloadOptionsModal, PersonModal } from '@/components/shared/media';
+import { MetadataEditorModal } from '@/components/shared/admin/metadata';
 import {
   ProgressBar,
   SeriesProgressBar,
@@ -16,6 +18,7 @@ import {
   CollapsibleDescription,
   SeasonsList,
   EpisodesList,
+  EpisodeDetailsModal,
   TracksList,
   PlaylistTracksList,
   ArtistAlbumsList,
@@ -34,6 +37,8 @@ const HORIZONTAL_PADDING = 32;
 
 export function DesktopDetailScreen() {
   const details = useDetailsScreen();
+  const currentUser = useAuthStore((s) => s.currentUser);
+  const isAdmin = (currentUser as { Policy?: { IsAdministrator?: boolean } })?.Policy?.IsAdministrator ?? false;
 
   const contentAnimatedStyle = useAnimatedStyle(() => ({
     opacity: details.contentOpacity.value,
@@ -286,6 +291,14 @@ export function DesktopDetailScreen() {
                       )}
                     </Pressable>
                   )}
+                  {isAdmin && (
+                    <Pressable
+                      onPress={details.openMetadataEditor}
+                      style={[styles.iconButton, { backgroundColor: details.accentColor + '20' }]}
+                    >
+                      <Ionicons name="pencil" size={18} color={details.accentColor} />
+                    </Pressable>
+                  )}
                 </View>
 
                 <ProgressBar progress={details.progress} type={details.type!} />
@@ -348,6 +361,7 @@ export function DesktopDetailScreen() {
                 isItemDownloaded={details.isItemDownloaded}
                 onSeasonDownload={details.handleSeasonDownload}
                 onEpisodeDownload={details.handleEpisodeDownload}
+                onEpisodePress={details.handleEpisodePress}
                 t={details.t}
               />
             )}
@@ -443,6 +457,24 @@ export function DesktopDetailScreen() {
         visible={!!details.selectedPerson}
         onClose={() => details.setSelectedPerson(null)}
       />
+
+      <EpisodeDetailsModal
+        episodeId={details.selectedEpisodeId}
+        visible={details.showEpisodeDetails}
+        onClose={details.closeEpisodeDetails}
+        from={details.currentDetailsRoute}
+        accentColor={details.accentColor}
+        hideMedia={details.hideMedia}
+        t={details.t}
+      />
+
+      {details.item && (
+        <MetadataEditorModal
+          visible={details.showMetadataEditor}
+          onClose={details.closeMetadataEditor}
+          item={details.item}
+        />
+      )}
     </View>
   );
 }

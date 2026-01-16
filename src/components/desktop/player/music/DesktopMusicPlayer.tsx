@@ -166,6 +166,7 @@ export function DesktopMusicPlayer({ core }: DesktopMusicPlayerProps) {
     handleToggleRepeat,
     handleToggleFavorite,
     handleToggleLyrics,
+    handleSeekToLyric,
     handleGoToAlbum,
     handleGoToArtist,
     handleDownload,
@@ -419,18 +420,26 @@ export function DesktopMusicPlayer({ core }: DesktopMusicPlayerProps) {
                   lyrics.map((line, index) => {
                     const isCurrent = index === currentLyricIndex;
                     const isPast = index < currentLyricIndex;
+                    const hasTiming = line.start !== undefined;
 
                     return (
-                      <Text
+                      <Pressable
                         key={index}
-                        style={[
-                          styles.lyricLine,
-                          isCurrent && [styles.lyricLineCurrent, { color: accentColor }],
-                          isPast && styles.lyricLinePast,
-                        ]}
+                        onPress={() => hasTiming && handleSeekToLyric(index)}
+                        disabled={!hasTiming}
+                        style={({ hovered }) => hasTiming && hovered ? { opacity: 0.7 } : undefined}
                       >
-                        {line.text}
-                      </Text>
+                        <Text
+                          style={[
+                            styles.lyricLine,
+                            isCurrent && [styles.lyricLineCurrent, { color: accentColor }],
+                            isPast && styles.lyricLinePast,
+                            hasTiming && { cursor: 'pointer' },
+                          ]}
+                        >
+                          {line.text}
+                        </Text>
+                      </Pressable>
                     );
                   })
                 ) : (

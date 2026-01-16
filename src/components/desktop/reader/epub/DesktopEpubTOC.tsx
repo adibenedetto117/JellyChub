@@ -6,6 +6,7 @@ import type { HighlightColor } from '@/stores/readingProgressStore';
 interface TocItem {
   label: string;
   href: string;
+  depth?: number;
 }
 
 interface Bookmark {
@@ -101,12 +102,15 @@ export function DesktopEpubTOC({
           ) : (
             toc.map((t, i) => {
               const isCurrentChapter = currentChapterHref === t.href;
+              const depth = t.depth || 0;
+              const isSubItem = depth > 0;
               return (
                 <Pressable
                   key={`toc-${i}-${t.href}`}
                   onPress={() => onTocSelect(t.href)}
                   style={({ pressed }) => [
                     styles.tocItem,
+                    { paddingLeft: 12 + depth * 12 },
                     isCurrentChapter && { backgroundColor: accentColor + '20' },
                     pressed && { backgroundColor: accentColor + '10' },
                   ]}
@@ -119,6 +123,7 @@ export function DesktopEpubTOC({
                       styles.tocItemText,
                       { color: isCurrentChapter ? accentColor : themeColors.text },
                       isCurrentChapter && { fontWeight: '600' },
+                      isSubItem && styles.tocSubItemText,
                     ]}
                     numberOfLines={2}
                   >
@@ -268,6 +273,11 @@ const styles = StyleSheet.create({
   tocItemText: {
     fontSize: 14,
     flex: 1,
+    lineHeight: 20,
+  },
+  tocSubItemText: {
+    fontSize: 13,
+    opacity: 0.85,
   },
   bookmarkItem: {
     flexDirection: 'row',
